@@ -66,7 +66,7 @@ async function checkRpcs(name) {
   const v = env(name);
   if (v === null) return;
   const lines = v.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-  if (lines.length !== 2) return fail(name, `${lines.length} line(s); expected exactly two URLs, one per line`);
+  if (lines.length !== 2) return fail(name, `${lines.length} line(s); expected exactly two lines, each only an https:// address (no labels, no notes)`);
   const hosts = [];
   for (const [i, u] of lines.entries()) {
     const label = `${name}[${i + 1}]`;
@@ -74,19 +74,35 @@ async function checkRpcs(name) {
     try { url = new URL(u); } catch { fail(label, 'not a URL'); continue; }
     if (url.protocol !== 'https:') { fail(label, `${url.protocol} - must be https`); continue; }
     hosts.push(url.hostname);
+    // Each call names itself in a failure, so "HTTP 403" says which use the
+    // provider refused: a key restricted to the site's domain refuses the
+    // first one, a plan without archive state refuses the old balance.
+    const step = async (what, method, params) => {
+      try { return await rpc(u, method, params); } catch (e) { throw new Error(`${what} (${method}): ${errText(e)}`); }
+    };
     try {
-      const chain = Number(await rpc(u, 'eth_chainId', []));
+      const chain = Number(await step('chain id', 'eth_chainId', []));
       if (chain !== BASE_CHAIN_ID) { fail(label, `${url.hostname}: chain ${chain}, not Base (8453)`); continue; }
-      const head = Number(await rpc(u, 'eth_blockNumber', []));
+      const head = Number(await step('head', 'eth_blockNumber', []));
       // archive state: an old block's balance (RUNBOOK part 6)
-      await rpc(u, 'eth_getBalance', ['0x4200000000000000000000000000000000000006', '0xf4240']);
+      await step('archive state', 'eth_getBalance', ['0x4200000000000000000000000000000000000006', '0xf4240']);
       // the safe tag
-      await rpc(u, 'eth_getBlockByNumber', ['safe', false]);
-      // a 2,000-block log window, the most the guardian and verifier need
-      await rpc(u, 'eth_getLogs', [{ fromBlock: `0x${(head - 2000).toString(16)}`, toBlock: `0x${head.toString(16)}`, address: '0x4200000000000000000000000000000000000006', topics: ['0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c'] }]);
+      await step('the safe tag', 'eth_getBlockByNumber', ['safe', false]);
       // eth_call with no `to` and 15,000,000 gas (the keeper's probe does this)
-      await rpc(u, 'eth_call', [{ data: '0x00', gas: '0xe4e1c0' }, 'latest']);
-      pass(label, `${url.hostname}: Base, head ${head}, archive, safe tag, getLogs, eth_call without to - all answer`);
+      await step('eth_call without to', 'eth_call', [{ data: '0x00', gas: '0xe4e1c0' }, 'latest']);
+      // getLogs: the services adapt to a provider's range limit by
+      // themselves, so the widest window that answers is reported, and only a
+      // provider refusing even ten blocks fails.
+      let span = 0;
+      for (const n of [2000, 500, 100, 10]) {
+        try {
+          await rpc(u, 'eth_getLogs', [{ fromBlock: `0x${(head - n).toString(16)}`, toBlock: `0x${head.toString(16)}`, address: '0x4200000000000000000000000000000000000006', topics: ['0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c'] }]);
+          span = n;
+          break;
+        } catch { /* try a narrower window */ }
+      }
+      if (!span) { fail(label, `${url.hostname}: getLogs refuses even a 10-block window`); continue; }
+      pass(label, `${url.hostname}: Base, head ${head}, archive, safe tag, eth_call without to; getLogs over ${span} blocks${span < 2000 ? ' (the services page through narrower windows; slower but works)' : ''}`);
     } catch (e) {
       fail(label, `${url.hostname}: ${errText(e)}`);
     }
