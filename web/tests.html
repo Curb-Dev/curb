@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Curb — launch page tests</title>
+<style>
+  :root { color-scheme: light dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { margin: 0; padding: 24px; background: #0f1115; color: #e7eaf0; }
+  @media (prefers-color-scheme: light) { body { background: #f7f8fa; color: #12151b; } }
+  h1 { font-size: 17px; font-family: ui-sans-serif, system-ui, sans-serif; }
+  p.intro { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; line-height: 1.6; max-width: 780px; color: #98a2b3; }
+  #summary { font-size: 15px; margin: 18px 0; font-weight: 600; }
+  .pass { color: #6ee7a8; }
+  .fail { color: #f27b7b; }
+  .skip { color: #f5c451; }
+  li { margin: 5px 0; font-size: 12.5px; line-height: 1.5; }
+  li .why { color: #98a2b3; display: block; margin-left: 20px; }
+  #stage { position: absolute; left: -10000px; top: 0; width: 900px; }
+  input { width: 300px; }
+</style>
+</head>
+<body>
+<h1>Curb — launch page tests</h1>
+<p class="intro">
+  Runs <code>launch.js</code> — the real page logic, not a copy — against a stub wallet and a
+  <strong>real fork</strong>. Chain reads and chain state are genuine; the confirm dialog, the signing and the
+  broadcast are simulated, so nothing here says what a real wallet does.
+  Set the addresses below, or pass them as <code>?lens=…&amp;token=…&amp;rpc=…</code>.
+  The launch must be in the <strong>Waiting</strong> state before running.
+</p>
+<p class="intro">
+  lens <input id="t-lens" spellcheck="false" />
+  token <input id="t-token" spellcheck="false" />
+  rpc <input id="t-rpc" spellcheck="false" />
+  <button id="run">Run</button>
+</p>
+
+<div id="summary">not run</div>
+<ul id="results"></ul>
+
+<!-- The page's own markup, fetched from launch.html so there is one copy of it. -->
+<div id="stage"></div>
+
+<script src="tx-core.js"></script>
+<script src="wallet-stub.js"></script>
+<script>
+window.__CURB_TEST__ = true; // stop launch.js self-initialising
+// A poll that would otherwise run for two minutes past the end of its scenario.
+window.__CURB_RECEIPT_TIMEOUT_MS = 2500;
+
+const q = new URLSearchParams(location.search);
+for (const k of ["lens", "token", "rpc"]) {
+  const v = q.get(k) || localStorage.getItem("curb.tests." + k) || "";
+  document.getElementById("t-" + k).value = v || (k === "rpc" ? "http://127.0.0.1:8546" : "");
+}
+
+const results = [];
+function record(name, ok, why) { results.push({ name, ok, why }); }
+async function check(name, fn) {
+  try {
+    const why = await fn();
+    record(name, true, why || "");
+  } catch (e) {
+    record(name, false, e && e.message ? e.message : String(e));
+  }
+}
+function assert(cond, msg) { if (!cond) throw new Error(msg); }
+
+// The stub wallet lives in wallet-stub.js - see the note at its top.
+function clearPendingKeys() {
+  for (const k of Object.keys(localStorage)) {
+    if (k.indexOf("curb.launch.pending") === 0) localStorage.removeItem(k);
+  }
+}
+
+const $ = (id) => document.getElementById(id);
+const msgText = () => $("msg").textContent;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/// A fresh page for every scenario: markup reset, storage cleared, launch.js
+/// re-evaluated. Without this, state from one test leaks into the next and the
+/// suite proves less than it claims.
+let markupTemplate = null;
+
+// EVERY CONTEXT THIS SUITE CREATES, so every one of them can be retired.
+//
+// Tracking only the last one was not enough. Two scenarios evaluate launch.js a
+// second time by hand; that overwrote window.CurbLaunch, so the context that
+// had actually been left polling was no longer the one being tracked, and it
+// went on running. Its poll then wrote "Could not confirm ..." into the NEXT
+// scenario's page, and two tests failed on a message neither of them produced.
+const contexts = [];
+function trackContext(api) { contexts.push(api); return api; }
+function retireAll() {
+  for (const c of contexts.splice(0)) { try { c.dispose(); } catch {} }
+}
+
+async function freshPage(wallet, fields) {
+  // RETIRE EVERYTHING FIRST. Resetting the DOM and the storage does not stop a
+  // receipt poll the last scenario started: its closure survives, keeps its
+  // timers, and keeps writing into a page that no longer exists. The suite
+  // claimed "a fresh page every scenario" while the previous one ran on
+  // underneath it.
+  retireAll();
+
+  if (!markupTemplate) {
+    const html = await (await fetch("launch.html", { cache: "no-store" })).text();
+    markupTemplate = new DOMParser().parseFromString(html, "text/html").querySelector("main").outerHTML;
+  }
+  $("stage").innerHTML = markupTemplate;
+  localStorage.removeItem("curb.launch.addrs");
+  // AND the pending records. Without this a record from the previous scenario
+  // survives, the new "one unresolved transaction at a time" guard refuses the
+  // send, and four unrelated tests fail for a reason that has nothing to do
+  // with what they are testing - which is how this harness first behaved.
+  clearPendingKeys();
+  localStorage.removeItem("curb.launch.preparing");
+  window.ethereum = wallet;
+
+  // no-store: a harness that can silently run a cached copy of the file it is
+  // meant to be testing is worse than no harness.
+  const src = await (await fetch("launch.js", { cache: "no-store" })).text();
+  // Evaluated fresh so its module-level state (account, busy, listeners) is new.
+  (0, eval)(src);
+
+  for (const [k, v] of Object.entries(fields)) $(k).value = v;
+  await window.CurbLaunch.init();
+  return trackContext(window.CurbLaunch);
+}
+
+/// Evaluate launch.js again as a second independent context - what a second tab
+/// is. Tracked, so freshPage retires it with the rest.
+async function anotherContext() {
+  (0, eval)(await (await fetch("launch.js", { cache: "no-store" })).text());
+  return trackContext(window.CurbLaunch);
+}
+
+// ---------------------------------------------------------------- scenarios
+async function run() {
+  results.length = 0;
+  const lens = $("t-lens").value.trim();
+  const token = $("t-token").value.trim();
+  const rpc = $("t-rpc").value.trim();
+  for (const k of ["lens", "token", "rpc"]) localStorage.setItem("curb.tests." + k, $("t-" + k).value.trim());
+  const fields = { lens, token, rpc };
+
+  if (!lens || !token || !rpc) {
+    $("summary").textContent = "fill in lens, token and rpc first";
+    return;
+  }
+
+  clearPendingKeys();
+  localStorage.removeItem("curb.launch.preparing");
+
+  // ---- precondition
+  let waiting = false;
+  await check("the launch under test is Waiting", async () => {
+    const w = makeWallet(rpc);
+    await freshPage(w, fields);
+    await window.CurbLaunch.refresh(true);
+    const st = $("statusText").textContent;
+    assert(st === "Waiting", `it is ${st}; drive it to the waiting state first`);
+    waiting = true;
+    return "the rest of the suite depends on this";
+  });
+
+  const skipRest = (name) => record(name, null, "skipped: the launch is not Waiting");
+
+  // ---- 1. a user rejection sends nothing and says so definitively
+  if (!waiting) skipRest("a user rejection sends nothing"); else
+  await check("a user rejection sends nothing", async () => {
+    const err = new Error("User rejected the request."); err.code = 4001;
+    const w = makeWallet(rpc, { sendError: err });
+    await freshPage(w, fields);
+    await $("connect").onclick();
+    await $("complete").onclick();
+    assert(w.sent.length === 0, "a transaction was dispatched");
+    assert(/declined it in the wallet/.test(msgText()), "wrong message: " + msgText());
+    assert(!/someone else/i.test(msgText()), "claimed someone else finished it");
+    assert(!$("complete").disabled, "the button was left disabled");
+    return msgText().slice(0, 60);
+  });
+
+  // ---- 2. the network changes DURING preparation, before the dialog
+  if (!waiting) skipRest("a network change during preparation aborts"); else
+  await check("a network change during preparation aborts before sending", async () => {
+    // connect() reads chainId once; complete() reads it at the start and again
+    // right before dispatch. The second of complete()'s reads returns a
+    // different chain.
+    const w = makeWallet(rpc);
+    await freshPage(w, fields);
+    await $("connect").onclick();
+    w.cfg.chainIdSequence = ["0x2105", "0x1"];
+    await $("complete").onclick();
+    assert(w.sent.length === 0, "a transaction was dispatched anyway");
+    assert(/Nothing was sent/.test(msgText()), "wrong message: " + msgText());
+    assert(/changed networks while this was being prepared/.test(msgText()), "wrong reason: " + msgText());
+    return msgText().slice(0, 70);
+  });
+
+  // ---- 3. the network changes WHILE the confirm dialog is open
+  if (!waiting) skipRest("a network change inside the dialog is reported as uncertain"); else
+  await check("a network change inside the confirm dialog makes the outcome uncertain", async () => {
+    const w = makeWallet(rpc, {
+      sendDelayMs: 120,
+      receipt: { status: "0x1" },
+      onSend: (tx, wallet) => { wallet.cfg.chainId = "0x1"; wallet.emit("chainChanged", "0x1"); },
+    });
+    await freshPage(w, fields);
+    await $("connect").onclick();
+    await $("complete").onclick();
+    await wait(400);
+    assert(w.sent.length === 1, "nothing was sent, so this scenario did not run");
+    assert(/switched networks|changed networks/.test(msgText()), "the switch was not reported: " + msgText());
+    assert(!/^Done/.test(msgText()), "it was reported as done despite the switch");
+    assert(/NOT a failure/.test(msgText()), "it was reported as a failure, which is not established");
+    assert(window.CurbLaunch.loadPendingAll().length === 1, "the unresolved record was dropped");
+    return msgText().slice(0, 80);
+  });
+
+  // ---- 4. the form moves to another launch while the dialog is open
+  if (!waiting) skipRest("a rejection names the token it was for"); else
+  await check("a rejection names the token it was FOR, not the one in the form", async () => {
+    const err = new Error("User rejected the request."); err.code = 4001;
+    const w = makeWallet(rpc, { sendDelayMs: 250, sendError: err });
+    await freshPage(w, fields);
+    await $("connect").onclick();
+    const p = $("complete").onclick();
+    await wait(60);
+    $("token").value = "0x000000000000000000000000000000000000bEEF";
+    await p;
+    assert(msgText().includes(token), "the message does not name the token it was for: " + msgText());
+    assert(/no longer the one in the form/.test(msgText()), "it did not say the form had moved");
+    assert(!/someone else/i.test(msgText()), "claimed someone else finished it");
+    return msgText().slice(0, 90);
+  });
+
+  // ---- 5. a transaction survives a reload, with no wallet connected
+  if (!waiting) skipRest("an unresolved transaction survives a reload"); else
+  await check("an unresolved transaction is shown after a reload with NO wallet", async () => {
+    const w = makeWallet(rpc, { receipt: null });
+    await freshPage(w, fields);
+    await $("connect").onclick();
+    $("complete").onclick();
+    await wait(300);
+    const stored = window.CurbLaunch.loadPendingAll();
+    assert(stored.length === 1, "the transaction was not persisted");
+    assert(stored[0].token.toLowerCase() === token.toLowerCase(), "the wrong token was stored");
+
+    // Reload with no wallet at all.
+    delete window.ethereum;
+    $("stage").innerHTML = markupTemplate;
+    await anotherContext();
+    for (const [k, v] of Object.entries(fields)) $(k).value = v;
+    await window.CurbLaunch.init();
+    assert(!$("msg").hidden, "nothing was shown after the reload");
+    assert(msgText().includes(stored[0].hash), "the hash was not shown: " + msgText());
+    return msgText().slice(0, 80);
+  });
+
+  // ---- 6. a second send is refused while one is unresolved
+  if (!waiting) skipRest("a second send is refused"); else
+  await check("a second send is refused while one is unresolved", async () => {
+    const w = makeWallet(rpc, { receipt: null });
+    await freshPage(w, fields);
+    await $("connect").onclick();
+    $("complete").onclick();
+    await wait(300);
+    const first = window.CurbLaunch.loadPendingAll()[0];
+    assert(first, "the first transaction was not recorded");
+
+    await $("complete").onclick();
+    assert(w.sent.length !== 0, "the FIRST send never dispatched, so this scenario did not run");
+    assert(w.sent.length === 1, "a second transaction was dispatched");
+    assert(/already a transaction for this launch/.test(msgText()), "wrong message: " + msgText());
+    const still = window.CurbLaunch.loadPendingAll();
+    assert(still.length === 1 && still[0].hash === first.hash, "the first record was overwritten");
+    return msgText().slice(0, 70);
+  });
+
+  // ---- 7. the error path does not read another chain
+  if (!waiting) skipRest("the error path is pinned to the starting chain"); else
+  await check("the error path does not read the launch on a different chain", async () => {
+    const err = new Error("provider exploded");
+    const w = makeWallet(rpc, { sendDelayMs: 80, sendError: err,
+      onSend: (tx, wallet) => { wallet.cfg.chainId = "0x1"; } });
+    await freshPage(w, fields);
+    await $("connect").onclick();
+    await $("complete").onclick();
+    await wait(200);
+    // The chain moved, so no state read may be used - and in particular the
+    // page must not announce that someone else completed anything.
+    assert(!/someone else/i.test(msgText()), "read another chain's state: " + msgText());
+    assert(/NOT certain nothing was broadcast/.test(msgText()), "wrong message: " + msgText());
+    return msgText().slice(0, 80);
+  });
+
+  // ---- 8. TWO CONTEXTS SENDING AT THE SAME TIME
+  if (!waiting) skipRest("two tabs cannot both send"); else
+  await check("two page contexts sending at once produce ONE transaction", async () => {
+    // Two independent evaluations of launch.js, each with its own module state,
+    // sharing this document and this origin's storage - which is what two tabs
+    // share. They cannot have separate DOMs here, so the assertion is on the
+    // WALLET: exactly one dispatch.
+    const w = makeWallet(rpc, { sendDelayMs: 400, receipt: null });
+    await freshPage(w, fields);
+    const A = window.CurbLaunch;
+    const B = await anotherContext();
+    assert(A !== B, "the two contexts are the same object");
+    assert(A.PAGE_ID !== B.PAGE_ID, "the two contexts share a page id");
+
+    await $("connect").onclick();     // wires whichever context loaded last
+    await B.init();
+    // Both start while neither has a hash yet - the window the claim closes.
+    // NOT awaited: whichever one wins goes on to poll for a receipt that never
+    // arrives, so awaiting would hang the suite for the poll's whole timeout.
+    A.complete();
+    B.complete();
+    await wait(1200);
+
+    assert(w.sent.length === 1, `both contexts dispatched (${w.sent.length} transactions)`);
+    const recs = A.loadPendingAll();
+    assert(recs.length === 1, `${recs.length} records were written`);
+    return "one dispatch, one record";
+  });
+
+  // ---- 9. storage that refuses to keep anything
+  if (!waiting) skipRest("a storage failure is surfaced"); else
+  await check("a browser that cannot store the hash says so", async () => {
+    const w = makeWallet(rpc, { sendDelayMs: 0, receipt: null });
+    await freshPage(w, fields);
+    await $("connect").onclick();
+
+    const realSet = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) {
+      // Any pending key, not one literal name - the layout moved to a key per
+      // transaction and this stub silently stopped intercepting anything.
+      if (String(k).indexOf("curb.launch.pending") === 0) throw new Error("QuotaExceededError");
+      return realSet.call(this, k, v);
+    };
+    try {
+      $("complete").onclick();
+      await wait(400);
+    } finally {
+      Storage.prototype.setItem = realSet;
+    }
+
+    assert(w.sent.length === 1, "nothing was sent, so this scenario did not run");
+    const text = msgText();
+    assert(/would not store/i.test(text), "the storage failure was not surfaced: " + text.slice(0, 140));
+    assert(/LOST if you reload/i.test(text), "it did not say the hash would be lost: " + text.slice(0, 140));
+    assert(/0x[0-9a-f]{64}/i.test(text), "the hash itself was not shown: " + text.slice(0, 140));
+    assert(window.CurbLaunch.loadPendingAll().length === 0, "a record was stored after all, so this did not test the failure");
+    return "the hash is shown and the loss is stated";
+  });
+
+  // ---- 10. THE LOCK IS RELEASED WHEN A CHECK REFUSES
+  if (!waiting) skipRest("the lock is released when a state check refuses"); else
+  await check("the lock is released when a state check refuses the send", async () => {
+    // The launch is Waiting, so force the "not waiting" branch by pointing at a
+    // token the registry has never heard of - status NotFound, which is neither
+    // Graduated nor Waiting and returns from the middle of the locked section.
+    const w = makeWallet(rpc, { receipt: null });
+    await freshPage(w, { ...fields, token: "0x000000000000000000000000000000000000bEEF" });
+    await $("connect").onclick();
+    await $("complete").onclick();
+    assert(w.sent.length === 0, "it sent something for an unknown token");
+    assert(/not Waiting/.test(msgText()), "wrong refusal: " + msgText().slice(0, 90));
+
+    // THE LOCK MUST BE FREE. A Web Lock is held until its page releases it or
+    // closes, so a leak here would make the launch un-sendable everywhere.
+    const name = "curb:send:0x2105:" + fields.lens.toLowerCase() + ":0x000000000000000000000000000000000000beef";
+    const state = await window.CurbLaunch.acquireSendLock(name);
+    window.CurbLaunch.dropSendLock();
+    assert(state !== "taken", "the lock was still held after the refusal");
+
+    // And so must the preparation claim.
+    const claims = window.CurbLaunch.loadPreparing();
+    assert(claims.length === 0, `${claims.length} preparation claim(s) survived the refusal`);
+    return "lock and claim both released";
+  });
+
+  // ---- 11. a record written between the first check and the lock
+  if (!waiting) skipRest("a record written by another tab is seen inside the lock"); else
+  await check("a record another tab wrote is seen INSIDE the lock, not before it", async () => {
+    // Tab A sends and records. Tab B then tries - and its pending check happens
+    // inside the lock, after A's record exists. Checking before taking the lock
+    // would have let B through on a stale reading.
+    const w = makeWallet(rpc, { receipt: null });
+    await freshPage(w, fields);
+    const A = window.CurbLaunch;
+    await $("connect").onclick();
+    A.complete();
+    await wait(300);
+    assert(w.sent.length === 1, "the first send did not dispatch");
+    assert(A.loadPendingAll().length === 1, "the first send left no record");
+
+    // A second context, freshly evaluated, with its own module state - it has
+    // never seen A's record except through storage.
+    const B = await anotherContext();
+    await B.init();
+    await B.complete();
+
+    assert(w.sent.length === 1, `B sent a second transaction (${w.sent.length} total)`);
+    assert(/already a transaction for this launch/.test(msgText()), "wrong refusal: " + msgText().slice(0, 90));
+    return "B was refused on A's record";
+  });
+
+  // ---- 12. two DIFFERENT launches, whose locks do not exclude each other
+  if (!waiting) skipRest("two different launches keep both records"); else
+  await check("two different launches recording at once keep BOTH records", async () => {
+    // Different launches hold differently-named locks, so the locks do not
+    // exclude each other at all - which is exactly why the pending records
+    // cannot live in one shared list. Written directly, because the point is
+    // the storage layout and not the send path.
+    const w = makeWallet(rpc, { receipt: null });
+    await freshPage(w, fields);
+    const api = window.CurbLaunch;
+
+    const a = { chainId: "0x2105", lens: fields.lens, token: "0x00000000000000000000000000000000000000aa", hash: "0x" + "aa".repeat(32) };
+    const b = { chainId: "0x2105", lens: fields.lens, token: "0x00000000000000000000000000000000000000bb", hash: "0x" + "bb".repeat(32) };
+
+    // Interleaved the way two tabs would: both read, then both write.
+    const beforeA = api.loadPendingAll();
+    const beforeB = api.loadPendingAll();
+    assert(beforeA.length === 0 && beforeB.length === 0, "the fixture did not start clean");
+    assert(api.savePending(a), "the first record was not stored");
+    assert(api.savePending(b), "the second record was not stored");
+
+    const all = api.loadPendingAll();
+    assert(all.length === 2, `${all.length} records survived, not 2 - one write clobbered the other`);
+    assert(all.some((t) => t.hash === a.hash) && all.some((t) => t.hash === b.hash), "the wrong records survived");
+
+    api.clearPending(a);
+    assert(api.loadPendingAll().length === 1, "clearing one removed more than one");
+    return "both records kept, and clearing one leaves the other";
+  });
+
+  // ---- 13. no Web Locks: say so rather than imply a protection
+  if (!waiting) skipRest("a browser without Web Locks is told"); else
+  await check("a browser without Web Locks is told the guard is weaker", async () => {
+    // The wallet's dialog stays open for a second: the warning must be on
+    // screen while it is, and a poll every 100 ms cannot miss a window that
+    // long.
+    const w = makeWallet(rpc, { sendDelayMs: 1000, receipt: null });
+    await freshPage(w, fields);
+    await $("connect").onclick();
+
+    const realLocks = navigator.locks;
+    let done = null;
+    let ended = true;
+    try {
+      Object.defineProperty(navigator, "locks", { value: undefined, configurable: true });
+      const C = await anotherContext();
+      await C.init();
+      assert(C.LOCKS_SUPPORTED === false, "the page still thinks Web Locks exist");
+      done = C.complete();
+      // POLLED, NOT A FIXED WAIT. The page reaches the wallet dialog only after
+      // several reads of the fork, and a fixed 120 ms failed on a slow one
+      // though the page said exactly the right thing a moment later. Every
+      // 100 ms for up to 5 s, then the same assertion as before.
+      let said = false;
+      let dialogOpen = false;
+      for (const until = Date.now() + 5000; ;) {
+        if (/no Web Locks API/.test(msgText())) { said = true; dialogOpen = w.inflight > 0; break; }
+        if (Date.now() >= until) break;
+        await wait(100);
+      }
+      assert(said, "it did not say the guard is weaker: " + msgText().slice(0, 110));
+      assert(dialogOpen, "the warning came only after the wallet dialog had closed");
+    } finally {
+      // THE SEND THIS SCENARIO STARTED IS LET FINISH, pass or fail, before the
+      // next scenario begins. complete() goes on to write its pending record,
+      // then its nonce, then waits out the receipt poll
+      // (__CURB_RECEIPT_TIMEOUT_MS); a write landing after the next scenario
+      // cleared the storage would hand it a record it never made. Once
+      // complete() has returned, nothing of it writes again.
+      if (done) ended = await Promise.race([done.then(() => true, () => true), wait(15000).then(() => false)]);
+      Object.defineProperty(navigator, "locks", { value: realLocks, configurable: true });
+    }
+    assert(ended, "the send this scenario started had not finished 15 s later, so the next scenario would not start clean");
+    return "the weaker guarantee is stated while the dialog is open";
+  });
+
+  // ---- 14. THE INTERLEAVING THE PREVIOUS TEST DID NOT CREATE
+  if (!waiting) skipRest("a record appearing mid-preparation is caught"); else
+  await check("a record written WHILE the lock is being taken still stops the send", async () => {
+    // The earlier test wrote A's record before B started, so a check placed
+    // before the lock would have seen it too - it could not tell the two
+    // orderings apart, and the race it claimed to cover could have been
+    // reintroduced without failing anything.
+    //
+    // Here B starts with NOTHING outstanding, the lock takes 400ms to grant,
+    // and the record appears during that wait. A check made before the lock
+    // reads empty and sends; a check made inside it does not.
+    const w = makeWallet(rpc, { receipt: null });
+    const api = await freshPage(w, fields);
+    await $("connect").onclick();
+    assert(api.loadPendingAll().length === 0, "the fixture did not start clean");
+
+    const realRequest = navigator.locks.request.bind(navigator.locks);
+    navigator.locks.request = (name, opts, cb) =>
+      realRequest(name, opts, async (lock) => {
+        await wait(400);              // the window the old ordering left open
+        return cb(lock);
+      });
+
+    let arrived = null;
+    try {
+      $("complete").onclick();
+      await wait(120);
+      assert(w.sent.length === 0, "it dispatched before the lock was even granted");
+      // Another tab finishes and records, mid-preparation.
+      arrived = { chainId: "0x2105", lens, token, hash: "0x" + "cd".repeat(32) };
+      assert(api.savePending(arrived), "could not plant the other tab's record");
+      await wait(900);
+    } finally {
+      navigator.locks.request = realRequest;
+    }
+
+    assert(w.sent.length === 0, `it sent anyway (${w.sent.length}) - the check is not inside the lock`);
+    assert(/already a transaction for this launch/.test(msgText()), "wrong refusal: " + msgText().slice(0, 100));
+    assert(msgText().includes(arrived.hash.slice(0, 12)), "it refused on some other record");
+    return "the record that appeared mid-preparation was the one that stopped it";
+  });
+
+  // ---- 15. migration must not eat a record it could not store
+  if (!waiting) skipRest("a migration that cannot store keeps the old records"); else
+  await check("a migration that cannot store anything keeps the old records", async () => {
+    const w = makeWallet(rpc, { receipt: null });
+    await freshPage(w, fields);
+    clearPendingKeys();
+
+    // Both old layouts: v1 held one record, v2 held a list.
+    const v1 = { chainId: "0x2105", lens, token, hash: "0x" + "11".repeat(32) };
+    const v2 = [{ chainId: "0x2105", lens, token, hash: "0x" + "22".repeat(32) }];
+    localStorage.setItem("curb.launch.pending", JSON.stringify(v1));
+    localStorage.setItem("curb.launch.pending.v2", JSON.stringify(v2));
+
+    const realSet = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, val) {
+      if (String(k).indexOf("curb.launch.pending.v3:") === 0) throw new Error("QuotaExceededError");
+      return realSet.call(this, k, val);
+    };
+    let api;
+    try {
+      api = await anotherContext();
+      api.migratePendingStore();
+    } finally {
+      Storage.prototype.setItem = realSet;
+    }
+
+    // NOTHING MAY HAVE BEEN THROWN AWAY.
+    assert(localStorage.getItem("curb.launch.pending"), "the v1 record was deleted although it was not stored");
+    assert(localStorage.getItem("curb.launch.pending.v2"), "the v2 list was deleted although it was not stored");
+    assert(/NOTHING HAS BEEN DELETED/.test(msgText()), "the user was not told: " + msgText().slice(0, 130));
+    assert(/could not be written into this browser/.test(msgText()), "it did not say WHY: " + msgText().slice(0, 130));
+
+    // And with storage working, the same call moves both and clears up.
+    api.migratePendingStore();
+    const moved = api.loadPendingAll();
+    assert(moved.length === 2, `${moved.length} records after a working migration, not 2`);
+    assert(!localStorage.getItem("curb.launch.pending"), "the v1 key survived a successful migration");
+    assert(!localStorage.getItem("curb.launch.pending.v2"), "the v2 key survived a successful migration");
+    clearPendingKeys();
+    return "kept on failure, moved and cleaned on success";
+  });
+
+  // ---- 16. a damaged store is the one thing that must never be deleted
+  if (!waiting) skipRest("a damaged old store is kept, not deleted"); else
+  await check("a store too damaged to parse is kept, and the user is told where it is", async () => {
+    await freshPage(makeWallet(rpc, { receipt: null }), fields);
+    clearPendingKeys();
+
+    // A truncated write. It is not valid JSON, but the hash is still legible in
+    // it - which is exactly why deleting it is unrecoverable and keeping it is
+    // not. Storage works perfectly here; the damage is in the CONTENT.
+    const damaged = '{"chainId":"0x2105","hash":"0x' + "33".repeat(32) + '","to';
+    localStorage.setItem("curb.launch.pending", damaged);
+
+    const api = await anotherContext();
+    api.migratePendingStore();
+
+    assert(localStorage.getItem("curb.launch.pending") === damaged,
+      "the damaged store was changed or deleted: " + String(localStorage.getItem("curb.launch.pending")));
+    assert(/too damaged to read/.test(msgText()), "it did not say the store was damaged: " + msgText().slice(0, 140));
+    assert(/NOTHING HAS BEEN DELETED/.test(msgText()), "it did not say the record is still there");
+    assert(msgText().includes("curb.launch.pending"),
+      "it did not name the key the user has to look in: " + msgText().slice(0, 140));
+    clearPendingKeys();
+    return "kept byte for byte, and the key was named";
+  });
+
+  // ---- 17. a pending record belongs to a lens, not just to a token
+  if (!waiting) skipRest("a pending record is matched on lens as well as token"); else
+  await check("a record for the same token under ANOTHER lens does not outrank this one", async () => {
+    await freshPage(makeWallet(rpc, { receipt: null }), fields);
+    clearPendingKeys();
+
+    // Same chain, same token, different LaunchLens deployment. Scoring on
+    // chainId + token alone cannot tell these apart, and the wrong one wins on
+    // sort order.
+    const otherLens = "0x" + "a1".repeat(20);
+    const mine = { chainId: "0x2105", lens, token, hash: "0x" + "44".repeat(32) };
+    const theirs = { chainId: "0x2105", lens: otherLens, token, hash: "0x" + "55".repeat(32) };
+    // theirs first, so all[0] is the wrong one unless the score fixes it.
+    assert(window.CurbLaunch.savePending(theirs), "could not plant the other deployment's record");
+    assert(window.CurbLaunch.savePending(mine), "could not plant this deployment's record");
+
+    await window.CurbLaunch.resumePending();
+
+    // The chosen record is named in full; the others only by a 12-character
+    // prefix. So the full hash of the other deployment's record appearing at
+    // all would mean it was the one picked.
+    assert(msgText().includes(mine.hash), "it did not pick this deployment's record: " + msgText().slice(0, 170));
+    assert(!msgText().includes(theirs.hash), "the other deployment's record was the one acted on");
+    assert(msgText().includes(theirs.hash.slice(0, 12)), "the other record was not even listed");
+    clearPendingKeys();
+    return "the record for the lens on screen was chosen";
+  });
+
+  retireAll();
+
+  // ---- render
+  const pass = results.filter((r) => r.ok === true).length;
+  const fail = results.filter((r) => r.ok === false).length;
+  const skip = results.filter((r) => r.ok === null).length;
+  $("summary").className = fail ? "fail" : "pass";
+  $("summary").textContent = `${pass} passed, ${fail} failed` + (skip ? `, ${skip} skipped` : "");
+  // AS TEXT, NEVER MARKUP: a result's reason is often an endpoint's own error
+  // message, and the endpoint is whatever ?rpc= named.
+  $("results").replaceChildren(...results.map((r) => {
+    const cls = r.ok === true ? "pass" : r.ok === false ? "fail" : "skip";
+    const mark = r.ok === true ? "PASS" : r.ok === false ? "FAIL" : "SKIP";
+    const li = document.createElement("li");
+    li.className = cls;
+    li.textContent = `${mark} — ${r.name}`;
+    const why = document.createElement("span");
+    why.className = "why";
+    why.textContent = r.why || "";
+    li.append(why);
+    return li;
+  }));
+  window.__testResults = { pass, fail, skip, results };
+}
+
+$("run").onclick = run;
+if (q.get("auto") === "1") run();
+</script>
+</body>
+</html>

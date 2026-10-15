@@ -1,0 +1,318 @@
+================================================================================
+CURB - MULTI-RWA: WHAT WAS BUILT, AND WHAT THE AUDIT OF IT FOUND
+================================================================================
+Date  : 19 September 2026
+Status: built and verified ON A LOCAL FORK. Nothing is deployed to mainnet.
+        The per-asset thresholds are PROPOSALS and remain a product decision.
+
+WHAT THIS FILE IS
+  The build that follows MULTI_RWA.txt's section 3 design, and an audit of that
+  build. The audit is the part worth reading: it found three defects, one of
+  them serious enough that six of the seven assets would have been listed in
+  the interface and unable to create a single launch. Section 5 then closed
+  the gap the audit had named, by running the lifecycle against each asset.
+
+WHAT WAS NOT DONE, STATED FIRST
+  - No mainnet deployment. Every figure here is from a fork at block 51171034.
+    This is the only bullet in the original list that is still true.
+
+  AND THREE THAT WERE TRUE WHEN THIS WAS WRITTEN AND ARE NOT NOW, 2026-09-20.
+  They are kept rather than deleted because the audit's value is the gap it
+  named, and a reader should be able to see the gap and its closing together.
+
+  - "The per-asset lifecycle IS verified, for all six. What is still missing
+    there is the ETH route and the issuer refusal path."
+      BOTH BUILT. PRE_MAINNET F2 and F3.
+  - "The two-hop ETH route is not built. Twelve of thirteen equities have no
+    WETH pool, so ETH entry does not work for them."
+      BUILT AND MEASURED. ETH -> WETH -> USDC -> asset is one UniversalRouter
+      command with a longer packed path; 0.05 ETH delivered 18998507 raw METAc
+      on the fork, and the minimum binds on what arrives rather than on the
+      first leg [test/fork/B20EthRoute.t.sol].
+  - "The asset list and the thresholds are proposals."
+      DECIDED. Three assets - NVDAc 60, SPCXc 88, GOOGLc 39 - sized from one
+      target value at each asset's own rate, with the bar that the largest
+      measured pool must hold at least one threshold [PRE_MAINNET F1]. The
+      sentence after it still holds: change them in DeployCurb.s.sol's
+      quoteAssets() and nothing else moves.
+
+
+================================================================================
+1. WHAT WAS BUILT
+================================================================================
+
+  CONTRACTS
+    LaunchRegistry   wire() still fixes the hook and the first launcher, once.
+                     addLauncher() admits more, ADD-ONLY: no removal, no
+                     overwrite, the hook is not a parameter, and the SAME loop
+                     check runs for every one. isLauncher/launcherCount/
+                     launcherAt expose the set.
+    Graduator        initializeCurve() now asks the registry who a launcher is
+                     instead of keeping its own narrower answer. See 2.1.
+
+  DEPLOYMENT
+    DeployCurb       one shared registry, graduator, hook and lens; then one
+                     escrow + policy + vault + factory PER ASSET, each with its
+                     own immutable quote token and threshold. The cross-checks
+                     that used to run once now run per asset, plus two new ones:
+                     the escrow must be for that factory's asset, and the asset
+                     must answer decimals() before a stack is built around it.
+
+  INTERFACE
+    app.html/app.js  a quote-asset picker filled FROM THE REGISTRY - it reads
+                     launcherCount()/launcherAt(), asks each factory its
+                     quoteToken() and each asset its symbol(). Nothing is
+                     configured in the page. Every display label and the
+                     threshold come from the chain.
+    browse.js        each card reads ITS OWN launch's quote asset out of the
+                     lens view, and asks that asset for its symbol and decimals.
+
+  TOOLING
+    script/b20/verify-assets.js   reads a finished deployment back and checks
+                     what it actually stood up, rather than what the deploying
+                     transaction believed.
+
+
+================================================================================
+2. WHAT THE AUDIT FOUND
+================================================================================
+
+2.1 F1 - THE GRADUATOR RECOGNISED ONLY THE FIRST FACTORY.  SERIOUS. FIXED.
+
+    Graduator.initializeCurve() read `registry.launcher()`, which is the FIRST
+    launcher and nothing more. Every launch initializes its curve through that
+    function, so a second factory could be deployed, admitted to the registry,
+    verified by every check, listed in the interface - and create ZERO launches.
+
+    HOW IT GOT PAST EVERYTHING ELSE. The registry work has eight tests and all
+    eight passed with this defect in place, because not one of them called
+    launch() on the second factory. Admitting a factory and that factory being
+    able to work are different claims, and only the first was being tested.
+
+    PROVEN TWICE, BEFORE THE FIX:
+      - on a real deployment: a cast send of launch() to the deployed METAc
+        factory reverted NotTheLauncher(0x312B02…), the factory's own address.
+      - in a test: W9 (below) failed with the same error.
+    PROVEN AFTER: the same cast send returned status 1, and W9 passes.
+
+    FIX: `if (!registry.isLauncher(msg.sender))`. The registry is the one place
+    that decides who a launcher is; the Graduator asks it.
+
+2.2 F2 - THE DEPLOY OUTPUT DROPPED A LINE FOUR THINGS PARSE.  FIXED.
+
+    Replacing the single "CurbLaunchFactory <addr>" console line with a
+    per-asset list removed a line that demo-app.sh and demo-waiting.sh read by
+    name (`field "CurbLaunchFactory"`), and the browser suite's global setup
+    runs demo-waiting.sh. The whole browser suite failed at setup with "could
+    not preparing a waiting launch" - a failure that looks like the node and is
+    not.
+    FIX: the line is back, naming the first factory, with the list beside it.
+
+2.3 F3 - DISCOVERY HARD-CODED ONE ASSET'S DECIMALS AND NAME.  FIXED.
+
+    browse.js divided every reserve by 1e8 and wrote "NVDAc" after it, while
+    the number came from whatever asset that launch priced against. All seven
+    assets carry 8 decimals today, so the figure would have been right and the
+    NAME wrong - until the first asset that does not, where the figure would be
+    wrong by orders of magnitude and nothing would say so.
+    FIX: quoteToken is decoded from the lens view and each asset is asked for
+    its symbol and decimals, once per asset per page.
+
+2.4 F4 - THE FLOW PAGE NAMED ONE ASSET IN TWENTY PLACES.  FIXED.
+
+    app.js printed "NVDAc" beside numbers it had read from the factory's asset.
+    Decimals were already read correctly; only the label lied.
+    FIX: symbol() is read the same way decimals() already was, and every label
+    uses it. The prose in app.html no longer names an asset either, and the
+    threshold it used to state as "60 NVDAc" is read from the factory - it is
+    per asset now, so a number written into the page would be wrong for six of
+    the seven.
+
+2.5 F5 - A MISTYPED ASSET ADDRESS WOULD HAVE DEPLOYED A STACK AROUND NOTHING.
+    ADDED DEFENCE, not a defect found in operation.
+
+    quoteAssets() is a hand-written table of addresses. A wrong one would
+    deploy an escrow, a policy, a vault and a factory around a token that does
+    not exist, and the first sign of it would be a launch nobody can buy into.
+    DeployCurb now requires the address to answer decimals() and the threshold
+    to be non-zero before it builds anything.
+
+
+================================================================================
+3. THE NEW GATES ARE LOAD-BEARING - MUTATION EVIDENCE
+================================================================================
+
+  A test that passes proves the code does something; it does not prove the test
+  would notice if the code stopped. Two mutations were injected into the new
+  gates and the suite was run against each.
+
+    M1  addLauncher() skips _checkLoopCloses()
+        EXPECTED: W6 fails.  OBSERVED: W6 failed
+        ("next call did not revert as expected").
+
+    M2  register() stops checking isLauncher
+        EXPECTED: W2 fails.  OBSERVED: W2 failed (same message).
+
+    The Graduator fix carries the same evidence without a separate mutation:
+    W9 was RED with the old code and GREEN with the new, which is what a
+    mutation of that line would have shown.
+
+  BOTH MUTATIONS WERE REMOVED and the sources checked for any remaining marker
+  before the final run. ONE EARLIER FULL-SUITE RUN IS VOID and is not counted:
+  it was started before M2 was injected and compiled against the mutated
+  source, reporting 2 failures that were the mutation, not the code.
+
+
+================================================================================
+4. WHAT WAS VERIFIED, AND HOW
+================================================================================
+
+  TESTS, on the final unmutated sources
+    57 non-fork, 196 fork (188 that existed plus 8 new), 49 browser.
+    The 8 new ones are W1..W9 in test/fork/B20Graduation.t.sol, with their
+    criteria written above them before they were measured.
+
+  THE DEPLOYMENT, read back off the chain by verify-assets.js
+    7 launchers admitted to one registry
+    each factory's quoteToken() is the intended asset, and no asset twice
+    each factory's escrow is FOR THAT ASSET
+    phantom == threshold for every one, so r = 0.5 is unchanged (at this run;
+    since 2026-10-03 each asset has its own phantom and r is about 0.27 -
+    DeployCurb.quoteAssets)
+    one hook and one platform recipient across all seven
+    launcher() is still the launcher at index 0
+
+  LAUNCH CREATION, on two assets
+    NVDAc, by the deploy script's own demo launch.
+    METAc, by hand against the deployed factory - which is what exposed F1 and
+    then confirmed the fix.
+
+  DISCOVERY, in a browser against that deployment
+    two launches on two different assets, each card showing ITS OWN asset and
+    threshold: MMEME 0.00 of 2.50 METAc, DEMO 0.00 of 60.00 NVDAc.
+
+  THE PICKER, in a browser
+    all seven assets listed, read from the registry. Choosing METAc moved the
+    factory field, every label and the threshold to METAc's.
+
+
+================================================================================
+5. THE PER-ASSET LIFECYCLE - CLOSED 20 September 2026
+================================================================================
+
+  This section used to say seven assets were stood up and one was exercised.
+  That is no longer where it stands. test/fork/B20MultiAsset.t.sol runs the
+  curve-to-pool lifecycle against EACH of the six, and all six pass.
+
+  SIX NAMED TESTS, NOT ONE LOOP. A loop stops at the first failure and says
+  nothing about the other five.
+
+  FUNDED BY IMPERSONATING A REAL HOLDER PER ASSET, because deal() writes
+  storage slots and a B20 is a precompile with none. The holders were found by
+  script/b20/find-holders.js, which scans Transfer logs and then EXCLUDES the
+  v4 PoolManager and every v3/Aerodrome pool: an address whose balance is
+  somebody else's accounting is not a funding source, and the existing NVDAc
+  fixture already refuses the PoolManager for that reason.
+
+  WHAT EACH ASSET NOW PASSES, criteria written before measuring:
+    L1  a launch is created and its record carries THAT asset
+    L2  a buy accrues exactly 50 bps to the platform and T-50 to the creator,
+        in that asset
+    L3  a sell accrues both legs on the GROSS output
+    L4  the curve's books close - what it holds equals what it owes plus what
+        is tradeable, counted outside the contract
+    L5  the threshold is crossed and the launch graduates
+    L6  the pool opens on that asset paired with the launch token, with our
+        hook, our tier and our tick spacing, and reserves arrive
+    L7  the LP position is held by a lock that pays the creator and runs the
+        full 180 days
+    L8  the sweep credits both sides in the escrow FOR THAT ASSET and each
+        side claims its own, with the money arriving
+    E1  the one-hop ETH route does NOT exist - measured, not assumed
+
+  TWO CORRECTIONS THIS WORK FORCED, both in the test rather than the code:
+    - E1 first asserted the WETH pool holds ZERO. GOOGLc failed it: its
+      WETH/1% pool exists and holds ONE RAW UNIT. MULTI_RWA.txt 2.2 had
+      recorded exactly that and called it empty; the assertion did not. The
+      criterion is now "less than one threshold", which is tied to a real
+      quantity - a pool that cannot supply one threshold cannot fill a launch.
+    - E1 then passed for five assets WITHOUT MEASURING ANYTHING, because they
+      have no WETH pool at all and the assertion lived inside the loop body.
+      It counts the pools it finds now and asserts on the count, so the absence
+      is recorded rather than implied. Measured: 0 WETH pools for AAPLc,
+      AMZNc, METAc, MSFTc and SPCXc; 1 for GOOGLc, holding dust.
+
+  WHAT IS STILL NOT COVERED FOR THESE SIX
+    - THE ETH ROUTE ITSELF. It cannot be covered: there is no WETH pool to
+      route through. Building the two-hop ETH -> WETH -> USDC -> asset path is
+      real work and is not done.
+    - THE ISSUER REFUSAL PATH. All thirteen equities share policy 5 with one
+      admin, which is an argument that C1's mechanism is identical and NOT a
+      measurement that it is.
+    - Trading in the graduated pool through the official router. L6 proves the
+      pool opened correctly and holds reserves; it does not swap in it.
+
+
+================================================================================
+5b. THE ORIGINAL GAP, KEPT FOR THE RECORD
+================================================================================
+
+  *** THIS IS WHAT THE GAP WAS ON 19 SEPTEMBER, NOT WHAT IT IS. *** Section 5
+  above supersedes every "NOT DONE" below except the ETH route and the refusal
+  path. It is kept because the shape of the gap - a stack deployed before it
+  was exercised - is the thing worth remembering, and deleting it would make
+  this file look as though the work had always been finished.
+
+  MULTI_RWA.txt 4.2 lists sixteen steps an asset must pass before it is
+  offered. For the six assets other than NVDAc, THREE of them were done:
+
+    done      the factory exists with the right asset and threshold (verify)
+    done      a launch can be created (proven for METAc, by construction for
+              the rest - same factory code, same registry, same graduator)
+    done      the record carries that asset
+
+    NOT DONE  a buy on the curve, and the fee split in that asset
+    NOT DONE  a sell, and the gross-output side
+    NOT DONE  the books closing independently
+    NOT DONE  crossing the threshold and graduating
+    NOT DONE  the pool opening on the right pair at the right tier
+    NOT DONE  the LP lock and the burn
+    NOT DONE  buying and selling in the graduated pool
+    NOT DONE  the sweep, and both claims out of the escrow
+    NOT DONE  the ETH route - and for these six it CANNOT pass: there is no
+              WETH pool, which is why the two-hop route is the real work
+    NOT DONE  the policy refusal surfaced in the interface
+
+  WHY THEY ARE NOT DONE. Every one of them needs a funded balance of that asset
+  on the fork, which means a holder to impersonate per asset - the NVDAc tests
+  use one named whale. That is mechanical work, not a design question, and it
+  is the next thing to do if these assets are to be offered rather than merely
+  deployed.
+
+  AND THE ROADMAP ALREADY SAID SO. Rev 3 fixed the build order as "one quote
+  asset end to end before adding more" [ROADMAP.txt:1890]. NVDAc is end to end;
+  the other six are not. This build is therefore AHEAD of that rule, not
+  compliant with it - the mechanism and the deployment exist before the
+  lifecycle evidence does. That is a defensible order only if the six are
+  treated as NOT OFFERABLE until section 5's list is closed for each, and it
+  stops being defensible the moment one of them is shown to a user as though
+  it were finished.
+
+  UNTIL THEN, THE HONEST STATEMENT IS: seven assets are STOOD UP and one is
+  EXERCISED. "It is a B20 like NVDAc" is not evidence - MULTI_RWA.txt 2.3 is
+  the counter-example, where assets sharing every readable property share no
+  route at all.
+
+
+================================================================================
+6. STILL A PRODUCT DECISION
+================================================================================
+
+  - the asset list. Seven of thirteen, because six have no pool or only dust.
+  - every threshold. Set to the same share of each asset's largest measured
+    pool as the decided 60 NVDAc is of its own (41.38%), rounded down, which
+    keeps fillability equal and lets the dollar size range from about $1,100 to
+    $15,900. The alternative - equal dollars - makes AAPLc unfillable.
+  - whether a dollar entry is offered, which section 2.2 of MULTI_RWA.txt shows
+    is the shorter route for every asset including NVDAc.
+  - A6, the platform recipient, unchanged and still shared across all assets.

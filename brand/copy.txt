@@ -1,0 +1,129 @@
+================================================================================
+CURB - X PROFILE COPY AND ASSETS
+================================================================================
+Name    CURB
+Handle  @curbfun
+Site    curbfun.xyz
+
+FILES
+  curb-avatar.svg / .png    400x400. X crops it to a circle - the mark is built
+                            for that, and for the 24-32px sizes where a profile
+                            picture spends most of its life.
+  curb-banner.svg / .png    1500x500. X drops the avatar on the lower left and
+                            crops top and bottom on narrow screens, so the left
+                            of the header is deliberately empty and everything
+                            that must be read sits on the raised right side.
+  preview.html              Both, at the sizes X actually renders, plus a mock
+                            profile. Serve the folder and open it.
+
+  Upload the PNGs: X does not accept SVG. The SVGs are the source - re-render
+  with headless Chrome if anything changes (see the note at the end).
+
+--------------------------------------------------------------------------------
+BIO - X allows 160 characters
+--------------------------------------------------------------------------------
+
+A - RECOMMENDED. The differentiator first, because that is the only thing
+    nobody else on Base is saying. 139 characters.
+
+    Stock-paired launches on Base. Every token trades against a real ticker,
+    not against ETH. Building in public, nothing live yet. curbfun.xyz
+
+B - The name's story first. Better once there is something to look at; the
+    story earns attention it cannot yet convert. 148 characters.
+
+    The Curb Exchange was the traders who couldn't get inside the NYSE.
+    Stock-paired launches on Base. Building in public, nothing live yet.
+    curbfun.xyz
+
+C - Shortest, for when the pinned post carries the explanation. 128 characters.
+
+    Stock-paired token launches on Base. Everything trades against a real
+    ticker. Building in public - nothing live yet. curbfun.xyz
+
+  "NOTHING LIVE YET" STAYS UNTIL SOMETHING IS LIVE. A launchpad bio that reads
+  as though it is running will bring people looking to trade, and there is
+  nothing to trade. Remove that clause the day it stops being true, and not
+  before.
+
+--------------------------------------------------------------------------------
+LONGER DESCRIPTION - site, Farcaster, anywhere with room
+--------------------------------------------------------------------------------
+
+  CURB is a launchpad on Base where tokens are paired with tokenized stocks
+  instead of with ETH.
+
+  The name is the Curb Exchange: the traders who could not get inside the New
+  York Stock Exchange dealt on the kerb outside, and eventually became the
+  American Stock Exchange. "Kerb trading" is still the term for dealing outside
+  official market hours - which is what onchain equities are, all the time.
+
+  Every launch trades against a real ticker, so a token's chart is priced in
+  something with a price of its own rather than in the market's mood. When a
+  launch completes, its liquidity moves into a Uniswap v4 pool in one
+  transaction and the position is locked; the part of the supply the pool
+  cannot absorb is burned rather than held by anyone.
+
+  Being built in public. Nothing is live.
+
+--------------------------------------------------------------------------------
+PINNED POST - draft
+--------------------------------------------------------------------------------
+
+  Most launchpads price a new token against ETH, so its chart is really a chart
+  of how ETH felt that week.
+
+  CURB pairs launches with tokenized stocks on Base. NVDA, and two others to
+  start. Your token has a price because the thing it trades against does.
+
+  Not live yet. Building in the open: curbfun.xyz
+
+  (Say what exists, not what is promised. When there is a testnet, that sentence
+  becomes a link; until then it stays a sentence.)
+
+--------------------------------------------------------------------------------
+WHAT NOT TO PUT IN ANY OF IT
+--------------------------------------------------------------------------------
+
+  NO RETURNS, NO PRICE TALK, NO "OPPORTUNITY". This product is
+  securities-adjacent: the quote asset is a tokenized equity. Language that
+  reads as investment advice or as a solicitation is a different kind of
+  problem from a marketing miss.
+
+  NO PAID X ADS IN THE PLAN. X has a financial services advertising policy and
+  this would likely need certification or be rejected outright. ROADMAP section
+  15 records that; the channels to plan on are organic and Farcaster.
+
+  DO NOT CLAIM A LAUNCH DATE. There is no date. An audit has not happened, the
+  fee model's open questions are in ROADMAP section 11, and the remainder
+  policy only landed recently.
+
+--------------------------------------------------------------------------------
+COLOURS
+--------------------------------------------------------------------------------
+
+  #0A0C0F .. #181D25   asphalt, the ground both assets sit on
+  #E9ECF0              concrete, the kerb itself
+  #F5A524              paint. A painted kerb is one you may not stand on; here
+                       it marks the side you have got onto. Used sparingly - it
+                       is the only warm colour and it stops working the moment
+                       there is a lot of it.
+  #AEB6C2 / #707A88    secondary and tertiary text
+
+--------------------------------------------------------------------------------
+RE-RENDERING THE PNGs
+--------------------------------------------------------------------------------
+
+  Serve this folder, put the SVG in a bare page at its natural size, and
+  screenshot it headless:
+
+    python -m http.server 8778 --bind 127.0.0.1 --directory brand
+    chrome --headless --disable-gpu --hide-scrollbars \
+      --force-device-scale-factor=1 --window-size=1500,500 \
+      --screenshot=out.png "http://127.0.0.1:8778/page.html"
+
+  ONE TRAP, ALREADY HIT: a linearGradient on a perfectly horizontal path needs
+  gradientUnits="userSpaceOnUse". The default is objectBoundingBox, that path's
+  bounding box has zero height, and the gradient is then undefined - Chrome
+  draws nothing at all, so the painted line silently vanished from the export
+  while still looking correct in some viewers.

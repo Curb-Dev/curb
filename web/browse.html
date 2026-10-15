@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Explore · Curb — coins paired with stocks and crypto</title>
+<!-- WHAT A LINK SHOWS WHERE IT IS POSTED (X, Telegram): this is the page at
+     the domain's root, so its card is the site's. -->
+<meta name="description" content="Launch coins paired with ETH, stocks and more. Launch in one transaction, trade from the first block, liquidity locked forever." />
+<meta property="og:site_name" content="Curb" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Curb — launch coins paired with ETH, stocks &amp; more" />
+<meta property="og:description" content="Launch in one transaction, trade from the first block, liquidity locked forever." />
+<meta property="og:image" content="https://curb.fun/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Curb: launch coins paired with ETH, stocks and more" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@curbfun" />
+<!-- THE DEPLOYMENT AND THE INCIDENT SWITCHES, before any script reads them. -->
+<script src="config.js"></script>
+<link rel="icon" href="curb-mark.svg" />
+<link rel="stylesheet" href="topbar.css" />
+<style>
+  /* DARK, THE WAY THE VENUES DOING THIS ARE, WITH BASE BLUE AS THE ONE ACCENT.
+     Measured off the two references rather than guessed: StonkFun sits on
+     #071013 with a single light CTA and a 32px mark beside a 17px wordmark,
+     pons on #0d0d0d with pill buttons. Ours is Base's own blue on a near-black
+     that carries a little of its hue, one text colour, two greys, and green
+     only where a launch has actually graduated or just launched. The brand's
+     amber lives in the mark and nowhere else. The same tokens as app.html. */
+  :root {
+    color-scheme: dark;
+    --bg: #080b11; --panel: #0e131b; --panel2: #131a24; --line: #1d2633;
+    --ink: #eef2f7; --dim: #94a0b0; --dimmer: #7a8698;
+    --paint: #0052ff; --paint-hi: #2a6dff; --good: #3ddc97; --bad: #ff6b6b;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); }
+  /* NINE TENTHS OF HALF THE WINDOW PLUS 600. The old rule ran to 1400px on
+     a 1600 window, edge to edge; 45% + 540px is exactly 0.9 of it at every
+     width, so it still grows and stays centred. The bar uses the same
+     expression, so the two stay aligned, and the gutter grows with it. */
+  main { max-width: calc(45% + 540px); margin: 0 auto; padding: 0 clamp(24px, 3vw, 40px) 96px; }
+
+  button { font: inherit; font-size: 13px; font-weight: 600; padding: 9px 16px; border-radius: 9px;
+    border: 1px solid var(--paint); background: var(--paint); color: #fff; cursor: pointer; }
+  button:hover { background: var(--paint-hi); border-color: var(--paint-hi); }
+  button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  button.ghost:hover { background: var(--panel2); border-color: var(--dimmer); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--paint-hi); outline-offset: 2px; }
+
+  /* ---- THE HERO (the owner's call): one line, one sentence and the Launch
+     button on the left; the deployment's first launch on the right as a card,
+     with its price line behind it. Under 760px the card goes under the words
+     and the line is left out, so the list is soon on screen. */
+  .hero { position: relative; overflow: hidden; display: flex; align-items: center; gap: 24px;
+    min-height: 236px; margin: 8px 0 26px; padding: 34px 36px; border: 1px solid var(--line); border-radius: 18px;
+    background: radial-gradient(120% 140% at 85% 30%, #13233a 0%, var(--panel) 55%, var(--bg) 100%); }
+  .hero[hidden] { display: none; }
+  .heroCopy { position: relative; z-index: 2; flex: 1 1 52%; min-width: 0; }
+  .heroCopy h1 { font-size: clamp(30px, 3.4vw, 44px); line-height: 1.08; margin: 0 0 14px; letter-spacing: -0.04em;
+    font-weight: 800; max-width: 620px; }
+  .heroCopy p { margin: 0 0 22px; font-size: 15px; line-height: 1.55; color: var(--dim); max-width: 46ch; }
+  .heroCopy a.btn { font-size: 14px; padding: 11px 18px; border-radius: 11px; }
+  .heroLine { position: absolute; z-index: 0; right: 0; top: 0; width: 58%; height: 100%; pointer-events: none;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 22%); mask-image: linear-gradient(to right, transparent, #000 22%); }
+  .heroLine .heroPath { fill: none; stroke: #b9d3f2; stroke-opacity: .8; stroke-width: 3; stroke-dasharray: 14 9;
+    stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .heroLine .heroDot { stroke: var(--paint-hi); stroke-width: 12; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .heroCard { position: relative; z-index: 2; align-self: flex-end; flex: 0 1 320px; min-width: 0; display: grid;
+    grid-template-columns: 44px 1fr auto; grid-template-areas: "pic who go" "rule rule rule" "mc mc chg";
+    gap: 10px 12px; align-items: center; padding: 16px; border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(14, 19, 27, .86); backdrop-filter: blur(6px); color: var(--ink); text-decoration: none; }
+  .heroCard:hover { border-color: var(--dimmer); }
+  .heroCard[hidden] { display: none; }
+  .heroPic { grid-area: pic; position: relative; width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
+    display: grid; place-items: center; }
+  .heroPic .tile { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: 18px; color: #fff; }
+  .heroPic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .heroWho { grid-area: who; min-width: 0; }
+  .heroTop { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+  .heroTop b { font-size: 15.5px; font-weight: 750; white-space: nowrap; }
+  .heroTop span { font-size: 12.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .heroPair { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: var(--dim); }
+  .heroPair b { color: var(--ink); font-weight: 650; }
+  .heroDisc { position: relative; width: 16px; height: 16px; border-radius: 50%; overflow: hidden; display: grid;
+    place-items: center; flex: none; }
+  .heroDisc i { font-style: normal; font-size: 9px; font-weight: 800; color: #fff; }
+  .heroDisc img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .heroGo { grid-area: go; align-self: start; color: var(--dim); font-size: 16px; }
+  .heroRule { grid-area: rule; height: 1px; background: var(--line); }
+  .heroMcRow { grid-area: mc; display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+  .heroMcRow b { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; }
+  .heroMcRow span { font-size: 12.5px; color: var(--dim); }
+  .heroChg { grid-area: chg; font-size: 13.5px; font-weight: 700; color: var(--good); white-space: nowrap; }
+  .heroChg.down { color: var(--bad); }
+  @media (max-width: 760px) {
+    .hero { flex-direction: column; align-items: stretch; gap: 18px; min-height: 0; padding: 22px 18px; margin-bottom: 18px; }
+    .heroLine { display: none; }
+    .heroCopy h1 { max-width: none; font-size: 27px; margin-bottom: 14px; }
+    /* THE SENTENCE GOES ON A PHONE, so the list is on the first screen. */
+    .heroCopy p { display: none; }
+    .heroCard { align-self: stretch; flex: none; }
+  }
+
+  /* ---- THE HEADING, after PONS's Explore: the word, the count in a pill, one
+     line under it, and the sort and time pills on the right. */
+  .exHead { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap;
+    gap: 18px 28px; margin: 6px 0 16px; }
+  .exTitle { flex: 1 1 340px; min-width: 0; }
+  .exH1Row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; }
+  .exH1Row h1 { font-size: 30px; line-height: 1.1; margin: 0; letter-spacing: -0.035em; }
+  .countPill { font-size: 12.5px; font-weight: 600; color: var(--dim); white-space: nowrap;
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; }
+  .countPill b { color: var(--ink); font-weight: 750; }
+  .exSub { margin: 9px 0 0; font-size: 14px; line-height: 1.55; color: var(--dim); max-width: 80ch; }
+  .exMeta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px;
+    font-size: 12.5px; color: var(--dim); }
+  .exMeta .st b { color: var(--ink); font-weight: 700; margin-right: 3px; }
+  .exMeta .st span { text-transform: lowercase; }
+  .exMeta .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px;
+    vertical-align: 1px; background: var(--paint-hi); }
+  .exMeta .st.grad .dot { background: var(--good); }
+  /* A LINK, NOT A BUTTON INSIDE A LINK - that nesting is invalid HTML. */
+  a.btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 650;
+    color: #fff; background: var(--paint); border: 1px solid var(--paint); border-radius: 999px;
+    padding: 7px 14px; text-decoration: none; white-space: nowrap; }
+  a.btn:hover { background: var(--paint-hi); border-color: var(--paint-hi); }
+
+  .exTools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; max-width: 100%; }
+  /* PILL GROUPS. Scroll inside themselves if a phone is narrower than they are,
+     so the page never does. */
+  .seg { display: inline-flex; gap: 2px; padding: 3px; max-width: 100%; overflow-x: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px; scrollbar-width: none; }
+  .seg::-webkit-scrollbar { display: none; }
+  .seg .chip { flex: none; font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 999px;
+    border: 0; background: transparent; color: var(--dim); white-space: nowrap; }
+  .seg .chip:hover { background: transparent; color: var(--ink); }
+  .seg .chip.on { background: #1f2a3a; color: var(--ink); box-shadow: inset 0 0 0 1px #2b3748; }
+
+  #msg { font-size: 12px; line-height: 1.55; color: var(--dimmer); margin: 0 0 16px; min-height: 1.55em; }
+  #msg:empty { min-height: 0; margin: 0 0 6px; }
+  .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+  /* ---- THE LAUNCHES WAITING TO GRADUATE, above the grid in every order:
+     graduating one is the one action this page offers (browse.js drawWaiting). */
+  .waitBar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px;
+    margin: 0 0 16px; padding: 12px 14px; border-radius: 14px;
+    border: 1px solid rgba(0,82,255,.55); background: rgba(0,82,255,.08); }
+  .waitBar[hidden] { display: none; }
+  .waitLead { font-size: 13px; line-height: 1.5; color: var(--ink); min-width: 0; flex: 1 1 320px; }
+  .waitLead b { font-weight: 750; }
+  .waitActs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .waitActs a.btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .waitActs button { font-size: 12.5px; padding: 6px 12px; border-radius: 999px; }
+
+  /* ---- THE GRID: five across on a wide screen, two on a phone. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+  .none { grid-column: 1 / -1; font-size: 13px; color: var(--dimmer); padding: 30px 0; text-align: center; }
+
+  /* ---- THE CARD. The picture is the card's top, square and edge to edge; the
+     words under it. The whole card is its name's link (.open::after covers it);
+     the creator's links and the Graduate button sit above that cover. */
+  .launch { position: relative; display: flex; flex-direction: column; min-width: 0;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+    transition: border-color .12s, background .12s, transform .12s; }
+  .launch:hover { border-color: #2b3748; background: var(--panel2); }
+  /* KEYBOARD FOCUS ON A CARD LOOKS LIKE IT DOES ON EVERY OTHER CONTROL: the
+     site's 2px ring, round the card, and only for the card's own link - the
+     Graduate it link and the address button draw their own. */
+  .launch:has(.open:focus-visible) { outline: 2px solid var(--paint-hi); outline-offset: 2px; }
+  .pic { position: relative; aspect-ratio: 1 / 1; overflow: hidden; background: var(--panel2);
+    container-type: inline-size; }
+  /* THE LETTER IS UNDER THE PICTURE, so removing a picture that fails to load
+     uncovers it. */
+  .tile { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255,255,255,.92);
+    font-size: 64px; font-size: 38cqw; font-weight: 800; letter-spacing: -0.04em; user-select: none;
+    text-shadow: 0 2px 18px rgba(0,0,0,.25); }
+  .picImg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .launch:hover .picImg { transform: scale(1.025); }
+  .picImg { transition: transform .25s ease; }
+  /* THE PAIRED ASSET, as a round badge on the picture's corner: the files in
+     assets/ are discs already (assets/README.txt), so the logo fills it. Its
+     letters are underneath for an asset with no file. */
+  .pairBadge { position: absolute; top: 8px; left: 8px; z-index: 3; max-width: calc(100% - 16px);
+    display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px 3px 3px; border-radius: 999px;
+    background: rgba(8, 11, 17, .72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  .pairBadge:not(:has(b)) { padding-right: 3px; }
+  .pairBadge .disc { position: relative; flex: none; width: 20px; height: 20px; border-radius: 50%;
+    display: grid; place-items: center; overflow: hidden; }
+  .pairBadge i { font-style: normal; font-size: 10px; font-weight: 800; color: #fff; }
+  .pairBadge img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .pairBadge b { font-size: 11px; font-weight: 700; color: var(--ink); letter-spacing: 0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .info { display: flex; flex-direction: column; gap: 5px; padding: 11px 12px 11px; flex: 1; min-width: 0; }
+  .open { font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); text-decoration: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .open::after { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; }
+  /* ABOVE THE COVER, so their titles can be reached; a click on one still
+     opens the launch (browse.js onCardClick). */
+  .mc, .progress, .foot .age { position: relative; z-index: 3; cursor: pointer; }
+  .open:focus-visible { outline: none; }
+  .symRow { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: -2px; }
+  .sym { font-size: 12px; color: var(--dim); font-weight: 600; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .socials { display: inline-flex; gap: 4px; margin-left: auto; flex: none; position: relative; z-index: 3; }
+  .socials a { display: inline-grid; place-items: center; width: 22px; height: 20px;
+    color: var(--dim); border: 1px solid var(--line); border-radius: 6px;
+    text-decoration: none; background: var(--panel); }
+  .socials a svg { display: block; }
+  .socials a:hover { color: var(--ink); border-color: var(--dim); }
+  .mc { display: flex; align-items: baseline; gap: 5px; min-width: 0; margin-top: 3px; }
+  .mcVal { font-size: 14px; font-weight: 750; color: var(--ink); letter-spacing: -0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .mc.unknown .mcVal { color: var(--dim); }
+  .mcTag { font-size: 11px; font-weight: 600; color: var(--dim); flex: none; }
+  .progress { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+  .bar { flex: 1; height: 5px; background: #1a2230; border-radius: 999px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: inherit;
+    background: linear-gradient(90deg, var(--paint), var(--paint-hi)); }
+  .launch[data-status="2"] .bar > i { background: linear-gradient(90deg, var(--paint-hi), var(--good)); }
+  .pct { font-size: 11px; font-weight: 700; color: var(--dim); flex: none; font-variant-numeric: tabular-nums; }
+  /* WHAT IS IN AGAINST THE THRESHOLD, in the paired asset: "51.48 of 60 NVDAc". */
+  .raised { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; margin-top: -2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .gradRow, .waitRow { display: flex; align-items: center; gap: 8px; min-height: 18px; margin-top: 2px; }
+  /* HOLDERS EARN THIS LAUNCH'S FEES (LaunchView w15). Above the card's link
+     cover, so its title can be reached. */
+  .holdersEarn { position: relative; z-index: 3; align-self: flex-start; display: inline-flex; align-items: center;
+    gap: 5px; font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: 0.07em;
+    padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(255,196,0,.45); color: #ffc400;
+    background: rgba(255,196,0,.08); margin-top: 2px; }
+  .holdersEarn::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .tag { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 750;
+    text-transform: uppercase; letter-spacing: 0.07em; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--dim); }
+  .tag.graduated { border-color: rgba(61,220,151,.38); color: var(--good); background: rgba(61,220,151,.08); }
+  .tag.graduated::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .tag.waiting { border-color: rgba(0,82,255,.55); color: var(--paint-hi); background: rgba(0,82,255,.10); }
+  .waitRow .act { position: relative; z-index: 3; margin-left: auto; font-size: 11.5px; font-weight: 600;
+    padding: 4px 10px; border-radius: 999px; border: 1px solid var(--paint); background: var(--paint);
+    color: #fff; text-decoration: none; white-space: nowrap; }
+  .waitRow .act:hover { background: var(--paint-hi); border-color: var(--paint-hi); }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto;
+    padding-top: 7px; font-size: 11px; color: var(--dimmer); }
+  /* A BUTTON THAT COPIES THE WHOLE ADDRESS, drawn as the text it is. */
+  button.addr { position: relative; z-index: 3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10.5px; font-weight: 400; color: var(--dim); background: none; border: 0; padding: 0;
+    border-radius: 4px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button.addr:hover { background: none; color: var(--ink); }
+  .age { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .age.fresh { color: var(--good); font-weight: 650; }
+
+  /* ---- PLACEHOLDERS while the first page is read. */
+  .skel { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--panel); }
+  .skel .pic { animation: pulse 1.4s ease-in-out infinite; }
+  .skel .info i { display: block; height: 10px; border-radius: 5px; background: var(--panel2);
+    animation: pulse 1.4s ease-in-out infinite; }
+  .skel .info i:nth-child(1) { width: 70%; height: 12px; }
+  .skel .info i:nth-child(2) { width: 40%; }
+  .skel .info i:nth-child(3) { width: 90%; margin-top: 8px; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  @media (prefers-reduced-motion: reduce) {
+    .skel .pic, .skel .info i { animation: none; }
+    .launch, .picImg { transition: none; }
+    .launch:hover .picImg { transform: none; }
+  }
+
+  #moreWrap { display: flex; justify-content: center; padding: 22px 0 10px; }
+  #more { border-radius: 999px; padding: 9px 20px; }
+
+  /* ---- A PHONE: two across, and everything a little tighter. */
+  @media (max-width: 560px) {
+    .exH1Row h1 { font-size: 26px; }
+    .exSub { font-size: 13.5px; }
+    .exTools { width: 100%; }
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .launch, .skel { border-radius: 14px; }
+    .info { padding: 9px 10px 10px; gap: 4px; }
+    .open { font-size: 13.5px; }
+    .mcVal { font-size: 13px; }
+    .pairBadge { top: 7px; left: 7px; }
+    .pairBadge .disc { width: 18px; height: 18px; }
+    .pairBadge b { font-size: 10.5px; }
+    /* THE SYMBOL GETS THE CARD'S WIDTH: the creator's links take a line of
+       their own, instead of cutting "$MOONCAT" to "$MOO…". */
+    .symRow { flex-wrap: wrap; row-gap: 4px; }
+    .socials { margin-left: 0; flex-basis: 100%; }
+    .waitRow { flex-wrap: wrap; }
+    .waitRow .act { margin-left: 0; width: 100%; }
+    .waitActs, .waitActs a.btn { width: 100%; }
+    .waitActs a.btn { justify-content: center; }
+  }
+</style>
+</head>
+<body>
+<header id="siteBar" data-page="browse"></header>
+<script src="topbar.js"></script>
+<main>
+
+  <section class="hero" id="hero" aria-labelledby="heroTitle">
+    <svg class="heroLine" id="heroLine" viewBox="0 0 600 220" preserveAspectRatio="none" aria-hidden="true"></svg>
+    <div class="heroCopy">
+      <h1 id="heroTitle">Launch coins paired with ETH, stocks &amp; more</h1>
+      <p>Launch in one transaction, trade from the first block, liquidity locked forever.</p>
+      <a class="btn" id="heroLaunch" href="app.html#create-launch" data-carry>Launch a token →</a>
+    </div>
+    <a class="heroCard" id="heroCard" hidden>
+      <span class="heroPic" id="heroPic"></span>
+      <span class="heroWho">
+        <span class="heroTop"><b id="heroSym"></b><span id="heroName"></span></span>
+        <span class="heroPair">Paired with <span class="heroDisc" id="heroDisc"></span><b id="heroPairSym"></b></span>
+      </span>
+      <span class="heroGo" aria-hidden="true">→</span>
+      <span class="heroRule"></span>
+      <span class="heroMcRow"><b id="heroMc">—</b><span>market cap</span></span>
+      <span class="heroChg" id="heroChg" hidden></span>
+    </a>
+  </section>
+
+  <section class="exHead" aria-labelledby="exTitle">
+    <div class="exTitle">
+      <div class="exH1Row">
+        <h1 id="exTitle">Explore</h1>
+        <span class="countPill"><b id="statTotal">—</b> <span id="statWord">tokens created</span></span>
+      </div>
+    </div>
+    <div class="exTools">
+      <div class="seg" role="group" aria-label="Status">
+        <button type="button" class="chip on" id="statusAll" data-status="all" aria-pressed="true">All</button>
+        <button type="button" class="chip" id="statusBonding" data-status="bonding" aria-pressed="false"
+          title="Still selling on their curve">Bonding</button>
+        <button type="button" class="chip" id="statusGraduated" data-status="graduated" aria-pressed="false"
+          title="Trading in their Uniswap pool, priced by the pool">Graduated</button>
+      </div>
+      <div class="seg" role="group" aria-label="Sort">
+        <button type="button" class="chip on" id="sortNew" data-sort="new" aria-pressed="true">Newest</button>
+        <button type="button" class="chip" id="sortBought" data-sort="bought" aria-pressed="false"
+          title="Launches still on their curve, the one bought most recently first">Just bought</button>
+        <button type="button" class="chip" id="sortOld" data-sort="old" aria-pressed="false">Oldest</button>
+        <button type="button" class="chip" id="sortMc" data-sort="mc" aria-pressed="false"
+          title="By market cap in dollars - a graduated launch by its pool's price; a launch with no dollar figure comes after">Market cap</button>
+        <button type="button" class="chip" id="sortProgress" data-sort="progress" aria-pressed="false"
+          title="Closest to graduating first">Progress</button>
+      </div>
+      <div class="seg" role="group" aria-label="Launched within">
+        <button type="button" class="chip on" data-range="0" aria-pressed="true">All</button>
+        <button type="button" class="chip" data-range="86400" aria-pressed="false">24h</button>
+        <button type="button" class="chip" data-range="604800" aria-pressed="false">7d</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="msg" role="status">Reading launches…</div>
+  <p id="loaded" class="srOnly" aria-live="off"></p>
+
+  <div class="waitBar" id="waitingBar" hidden></div>
+
+  <div class="grid" id="grid"></div>
+
+  <div id="moreWrap">
+    <button id="more" class="ghost" disabled>Show older</button>
+  </div>
+</main>
+
+<script src="keccak.js"></script>
+<script src="token-meta.js"></script>
+<script src="prices.js"></script>
+<script src="browse.js"></script>
+</body>
+</html>

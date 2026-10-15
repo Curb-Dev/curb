@@ -1,0 +1,533 @@
+================================================================================
+CURB AGAINST ITS TWO REFERENCES - WHAT THEY DECIDED AND WHAT WE DECIDED
+================================================================================
+Date   : 20 September 2026
+Sources: PONS, from reference/ponsfamily @ debbc21f - their code, with the file
+         and constant named for every figure. Sections 1-5.
+         thestonks.exchange, which runs on BASE against the same B20 assets -
+         section 6. Their figures are from their own pages unless marked
+         MEASURED, which means asked of Base mainnet read-only.
+
+WAS PONS_ALIGNMENT.txt. Renamed when the second reference arrived, because a
+file named after one of two references is a file that will be read as covering
+only that one.
+
+WHY THIS FILE
+  The instruction was to settle the open decisions the way PONS settles them
+  rather than by asking. So this reads PONS's actual code instead of its site,
+  puts each decision beside ours, and says which of ours changed as a result.
+
+ONE THING TO KNOW BEFORE ANY COMPARISON
+  PONS RUNS ON ROBINHOOD CHAIN, not Base [contract-meta.json: "network":
+  "Robinhood Chain"]. Their pair assets are not B20 and their liquidity is not
+  the liquidity measured in MULTI_RWA.txt. A rule of theirs can be right there
+  and unworkable here, and section 3 is exactly such a case.
+
+
+================================================================================
+1. MULTI-ASSET: THEY PUT IT IN A TABLE, WE PUT IT IN A FACTORY
+================================================================================
+
+  PONS
+    ONE owner-controlled factory with two mappings:
+      approvedPairTokens[token]      -> bool
+      pairTokenEconomics[token]      -> { phantomQuote, graduationThreshold,
+                                          decimals }
+    setPairTokenEconomics() and setPairTokenApproved() are onlyOwner, and
+    approval REFUSES a token whose economics are unset or whose decimals do not
+    match what the owner declared [PonsV2LaunchFactory.sol:472-543].
+    A launch snapshots its terms, so later changes never reach a live launch.
+
+  CURB
+    One factory PER asset, terms immutable on it, and a registry that admits
+    more than one launcher, add-only. No owner anywhere in the path.
+
+  THE HONEST COMPARISON
+    PONS's costs an OWNER who can change future launches' economics; ours costs
+    a deployment per asset. Both freeze a live launch's terms, which is the
+    property that actually matters, so this is not a safety difference - it is
+    a question of who is trusted and how often you redeploy.
+    NOT CHANGED. Ours is built, tested and has no admin surface, and this
+    project has spent effort removing admin surfaces (C3). Swapping it for an
+    owner-set table would trade that away for convenience we do not need at
+    seven assets.
+
+  WHAT WE TOOK FROM THEIRS - see section 2.
+
+
+================================================================================
+2. THE DECIMALS FLOOR - ADOPTED, AND IT WAS MISSING
+================================================================================
+
+  PONS
+    MIN_PAIR_TOKEN_DECIMALS = 6, and the reason is written down: curve fees are
+    integer basis points of the quote leg, so on a coarse asset every trade
+    below BASIS_POINTS / feeBps base units rounds its fee to ZERO and a trader
+    splits one order into fee-free pieces [PonsV2LaunchFactory.sol:74, :481-486].
+    They also require the asset to REPORT the decimals the owner declared.
+
+  CURB, BEFORE
+    Nothing. No decimals check anywhere in src/curb. Our curve does the same
+    integer-bps arithmetic, so it had the same hole.
+
+  DONE
+    CurbLaunchFactory now refuses a quote asset below 6 decimals, and refuses
+    one that will not answer decimals() at all - the phantom reserve is
+    denominated in that asset's units, so silence is not something to take on
+    trust. Three tests: USDC at exactly 6 is accepted, a 4-decimal token is
+    refused, a token with no decimals() is refused.
+
+    EVERY B20 EQUITY CARRIES 8, so this bites nothing today. That is the
+    argument for adding it now, not against it.
+
+
+================================================================================
+3. THE THRESHOLD RULE - THEIRS IS CLEARER THAN OURS, AND IT DOES NOT FIT
+================================================================================
+
+  PONS'S RULE, quoted from their own comment [PonsV2LaunchFactory.sol:182-187]:
+    "Both figures are sized off chain from a target native-quote value at a
+     chosen rate. Scaling the pair by one rate leaves the curve's shape
+     untouched, since only threshold / (threshold + phantomQuote) determines
+     the fraction of supply that reaches the graduated pool, so a custom quote
+     asset trades identically to a native launch of the same size."
+
+    In plain terms: PICK ONE TARGET VALUE, convert it into each asset's units
+    at that asset's rate. Every launch raises the same amount of money. It is a
+    better-stated rule than ours and it is the one a launchpad wants.
+
+  OURS, AS BUILT: the same SHARE of each asset's largest measured pool as the
+    decided 60 NVDAc is of its own - 41.38%. Every launch is equally fillable;
+    the amounts raised differ.
+
+  APPLYING PONS'S RULE TO OUR ASSETS. 60 NVDAc at the pools' own mids is
+  $13,231. Converting that at each mid, and asking what share of that asset's
+  pool it would be:
+
+    asset      mid      pool $    PONS units   of its pool    ours today
+    NVDAc   220.51      31,971         60.00           41%         60.00
+    SPCXc   148.97      16,189         88.81           82%         44.97
+    GOOGLc  331.44      38,506         39.92           34%         48.08
+    AMZNc   253.04       7,873         52.29          168%         12.88
+    MSFTc   495.36       6,772         26.71          195%          5.66
+    AAPLc   325.93       2,692         40.59          492%          3.42
+    METAc   654.42       4,026         20.22          329%          2.55
+
+    FOUR OF THE SIX BECOME UNFILLABLE. Not expensive - impossible: the pool
+    does not hold that much of the asset at any price.
+
+  SO THREE THINGS CANNOT ALL BE TRUE AT ONCE, and this is the decision:
+
+    (a) PONS's rule - every launch raises the same amount
+    (b) D1's decided 60 NVDAc
+    (c) seven assets, each fillable from the venues that exist
+
+    KEEP (a) AND (b)  -> the enabled list is NVDAc and GOOGLc. Nothing else has
+                         a pool deep enough: carrying a $13,231 threshold at
+                         NVDAc's own 41% bar needs $31,971 of asset in a pool,
+                         and only those two clear it.
+    KEEP (a) AND (c)  -> one common target set by the tightest asset, AAPLc, at
+                         $1,114. NVDAc's threshold falls from 60 to 5.05 units,
+                         which REVERSES D1.
+    KEEP (b) AND (c)  -> what is built today: equal fillability, and amounts
+                         raised from $1,108 to $15,909.
+
+  NOT CHANGED, AND WHY. Every branch either drops five assets or reverses a
+  decision recorded on 16 September. That is a product decision with a real
+  cost on every side and it is not mine to take - the same reason F1 is still
+  open. What has changed is that it is now a choice between three named
+  options with the arithmetic attached, instead of an open question.
+
+  MY READING, FOR WHAT IT IS WORTH: (a)+(b) is the honest launchpad. Two assets
+  that work beat seven that half-work, and it needs no decision reversed. The
+  five that drop out are not lost - they come back when their liquidity does,
+  which is one line in quoteAssets().
+
+
+================================================================================
+4. WHAT PONS HAS THAT WE DO NOT
+================================================================================
+
+  Listed because "do what PONS does" has to include the things they do that we
+  have never built. None of these is adopted here; each needs a decision.
+
+  4.1 A SNIPE TAX.  snipeTaxStartBps = 9_900 (99%), snipeTaxSeconds = 15
+      [PonsV2LaunchFactory.sol:319-320]. A launch-second tax decaying to the
+      ordinary rate over 15 seconds, with an exemption list of up to 32
+      addresses. It is their anti-sniping mechanism and WE HAVE NOTHING.
+      Against adopting: it changes trade economics, and D2 froze the fee model.
+      For: a launchpad without it hands the first block to whoever pays most
+      for it.
+
+  4.2 A GLOBAL KILL SWITCH.  setLaunchEnabled(bool), onlyOwner [:435].
+      THIS IS D4's "named halt authority", already built by somebody else. D4
+      is open and asks for exactly this plus a person and a response time.
+
+  4.3 GRADUATION RESCUE.  GRADUATION_RESCUE_DELAY = 7 days [:104]. A stuck
+      graduation has a documented way out after a week. Ours is permissionlessly
+      retryable, which covers the transient case and not the permanent one.
+
+  4.4 A LAUNCH FEE.  setLaunchFee() [:427]. We charge a fixed 0.0005 ETH per
+      launch, immutable per factory (DeployCurb); PONS's is settable. (This line
+      used to say we charge nothing to create.)
+
+  4.5 A CREATOR-FEE-RECIPIENT OVERRIDE, behind a 3-day timelock with a 3-day
+      execution window [:99, :107, :946]. WE DECIDED THE OPPOSITE: C3 records
+      that nobody can point a creator's income at an address of their choosing
+      and there is no admin recovery, and names the cost. (Since core v2 a
+      launch's creator income can be switched once, one way, by its creator -
+      or at launch, through the launch's own config - to that launch's holder
+      distributor; nobody can name the address.) PONS decided the other way
+      and paid for it with a timelock. Both are defensible; ours is recorded,
+      so it stands unless reversed deliberately.
+
+  4.6 A LAUNCHER ALLOWLIST.  setWhitelistedLauncher() [:443]. A5 decided
+      anyone can create a launch. Opposite, and also recorded.
+
+  4.7 WIDER FEE CEILINGS.  MAX_CREATOR_TAX_CEILING_BPS = 1_000 (10%) and
+      MAX_TOTAL_TRADE_FEE_BPS = 2_000 (20%) [:60-61], against our band of
+      1%-5% with a platform share of 50 bps at deployment, which the policy
+      owner can move to 0..80 bps for later launches and each launch freezes
+      (it said "a fixed 50 bps"). Ours is tighter on purpose, and the band is
+      frozen by D2.
+
+
+================================================================================
+5. WHAT THIS FILE CHANGED
+================================================================================
+
+  CHANGED
+    the decimals floor and the unreadable-decimals refusal, with three tests
+    - section 2
+
+  NOT CHANGED, and each says why above
+    the multi-asset architecture (1), the threshold rule (3), and everything
+    in section 4
+
+  DECIDED SINCE, 2026-09-20 - both were open here and are not any more
+    F1  the asset list and the thresholds - section 3 turned this into a choice
+        between three named options; the choice taken is PONS's rule, one
+        target value at each asset's own rate, and three assets clear the bar
+        [PRE_MAINNET F1]
+    D4  the halt authority - PONS's setLaunchEnabled is the shape of it (4.2),
+        and the decision was NOT to grow one: launching is permissionless by
+        A5, so what we have are monitoring thresholds and a front-end halt,
+        named as the weaker thing they are [PRE_MAINNET D4]
+
+  STILL OPEN
+    the five section-4 items that have never been decided either way
+
+
+================================================================================
+6. THESTONKS.EXCHANGE - THE CLOSER REFERENCE, AND IT HAS NO CURVE
+================================================================================
+
+  IT IS THE RIGHT ONE TO COMPARE AGAINST. PONS runs on Robinhood Chain against
+  assets that are not B20; thestonks.exchange runs on BASE, prices coins in the
+  same tokenized equities, and lists the same thirteen this project measured.
+  Where it and PONS disagree, it is the one facing our constraints.
+
+6.1 WHAT WAS MEASURED, AND WHAT IS ONLY STATED
+
+    MEASURED, on Base mainnet at block 51534420, read-only:
+      $STONKEX 0x5ab000ff9B9FfE0349CE5ffA5fD86f217C3680F5
+        symbol "STONKEX", 18 decimals, totalSupply EXACTLY 1,000,000,000
+      its Uniswap v3 pools are on the 1% TIER
+        WETH/1%  0x7692acc1...  26,403,449 STONKEX / 96.25 WETH
+        USDC/1%  0x3d3b216a...     158,427 STONKEX / 807.41 USDC
+      no v3 pool against any tokenized stock - consistent with STONKEX being
+      the platform's own token rather than a launched coin.
+
+    STATED BY THEM AND NOT VERIFIED HERE - no launched coin's address is public
+    without connecting a wallet, so there was nothing to ask the chain about:
+      no bonding curve; the whole supply is ONE single-sided v3 position
+      the LP NFT goes to a locker and is locked FOREVER
+      opening valuation around $4,000 per coin
+      trading fee 1% total, split 0.7% creator / 0.3% platform
+      of the platform's 0.3%: 80% buys back and burns $STONKEX, 20% is revenue
+      1% to 10% of supply airdropped to a leaderboard
+
+6.2 THE ARCHITECTURAL DIFFERENCE, AND IT IS THE WHOLE OF SECTION 3
+
+    THEY HAVE NO CURVE, NO THRESHOLD AND NO GRADUATION. The supply is seeded
+    single-sided at launch: the pool opens holding 100% of the coin and NONE of
+    the stock, and buyers bring the stock in.
+
+    THAT IS WHY THEY CAN LIST ALL THIRTEEN, including COINc, CRCLc and INTCc,
+    which MULTI_RWA.txt 2.2 measured as having NO POOL AT ANY VENUE. Listing an
+    asset costs them nothing IN that asset, because nobody has to acquire it to
+    launch. The liquidity that is missing still bites their BUYERS - a buyer
+    still needs the stock - but it does not bite the launch.
+
+    OURS FILLS A CURVE FIRST. A launch has to take in `threshold` units of the
+    asset before it graduates, so the asset has to be OBTAINABLE in that size.
+    That is exactly the constraint section 3 could not satisfy for four of six
+    assets, and it is a constraint of the curve model, not of Base.
+
+    SO SECTION 3'S TRILEMMA IS REAL FOR US AND ABSENT FOR THEM. Their design
+    does not answer F1; it dissolves it - at the price of replacing the curve,
+    the graduator, the v4 hook, the threshold and the phantom. That is not a
+    parameter change and it is not proposed here.
+
+6.3 WHAT IS COMPARABLE, PARAMETER BY PARAMETER
+
+    supply         THEM 1,000,000,000 at 18 decimals (MEASURED on $STONKEX)
+                   US   1,000,000,000 at 18 decimals
+                   IDENTICAL. Nothing to change.
+
+    pool tier      THEM 1% (MEASURED on their own pools; stated for launches)
+                   US   0.05%, chosen 2026-09-16 after measuring both
+                        candidates at the same sizes [D1, DEPTH.txt 3.4/3.7]
+                   A TWENTY-FOLD DIFFERENCE. A first version of this entry
+                   said "1% is where the deepest USDC pools sit", which is true
+                   of four of the seven and not of the rest - NVDAc, AAPLc and
+                   METAc are deepest at 0.3%. The SHARPER fact, and the one
+                   worth the entry, is that NONE OF THE SEVEN IS DEEPEST AT
+                   0.05%: the market for these assets picks 0.3% or 1%, and our
+                   tier is six to twenty times below either.
+
+                     0.3%  NVDAc, AAPLc, METAc
+                     1%    GOOGLc, MSFTc, AMZNc, SPCXc
+                     0.05% none
+
+                   AND IT IS AN ANALOGY, NOT A READ-ACROSS. Those are the
+                   STOCK's own pools against USDC. Our tier governs a pool we
+                   create ourselves, where our locked position is the only
+                   liquidity, so nothing is competing with us for LP capital.
+                   What the comparison actually says is what the market thinks
+                   these assets' volatility is worth charging for - and our
+                   0.05% was measured against NVDAc-like depth rather than
+                   against METAc's, whose deepest pool holds $4,590.
+
+                   WHO IT MOVES MONEY BETWEEN: the trader pays the tier on top
+                   of the launch's tax, and it goes to the locked LP position,
+                   whose fees are the CREATOR's. A lower tier is a cheaper
+                   trade and a smaller creator income, in the same proportion.
+
+                   NOT CHANGED: D1 is a decided, measured parameter and this is
+                   evidence to re-examine it, not grounds to flip it silently.
+
+    trading fee    THEM 1% total: 0.7% creator, 0.3% platform
+                   US   1%-5% total, chosen by the creator, of which the
+                        platform's share is 0.5% at deployment - settable
+                        by the policy owner to 0..80 bps for later launches,
+                        frozen per launch (this said "a FIXED 0.5%")
+                   AT ITS STARTING VALUE OUR PLATFORM TAKES MORE THAN THEIRS -
+                   50 bps against 30 - and our floor equals their whole fee.
+                   The band is frozen by D2; the platform's share is not, so
+                   this is a positioning fact about the starting value.
+
+    liquidity      THEM locked forever
+                   US   180 days
+                   Theirs is the stronger promise and the simpler one to state.
+                   Ours is a decided parameter.
+
+    platform token THEM 80% of their 0.3% buys back and burns $STONKEX
+                   US   nothing. $CURB is not decided - web/curb.html says so.
+                   This is the clearest thing they have that we do not, and it
+                   is what F1-adjacent work on $CURB would have to answer.
+
+6.4 WHAT THIS CHANGES HERE
+
+    NOTHING IN THE CODE. Every difference above is either identical already
+    (supply), frozen by a recorded decision (fee model, D2), decided and
+    measured (tier, D1; lock), or a different product (the curve itself).
+
+    WHAT IT CHANGES IS THE ARGUMENT. Section 3 offered three options for F1 and
+    recommended keeping the decided 60 NVDAc with a two-asset list. A fourth
+    option now exists and it is the one a competitor on this chain chose:
+
+      (d) DROP THE CURVE. Seed single-sided, list all thirteen, and F1 stops
+          being a question. It costs the curve, the graduator, the v4 hook and
+          every test that covers them, and it changes what the product IS - a
+          launchpad where price is discovered by trading from a fixed opening
+          rather than sold up a curve to a threshold.
+
+    I am not proposing (d). It is recorded because leaving it out would make
+    the F1 decision look narrower than it is, and because the reference the
+    instruction pointed at is built that way.
+
+
+================================================================================
+7. THE ADMIN SURFACE, ALL THREE SIDE BY SIDE - MEASURED 2026-09-21
+================================================================================
+
+  WHY THIS SECTION EXISTS. We added an owner to FeeHook on 2026-09-21 so the
+  platform's own fee leg can be changed for future launches, following PONS.
+  Adding an admin key to a product whose claim is "there is nobody to trust"
+  deserves the comparison rather than an assurance, so here is what the
+  references actually carry.
+
+  PONS - READ FROM THEIR SOURCE
+    FOUR owned contracts, all Ownable2Step, all with renounceOwnership
+    overridden to REVERT:
+      PonsV2LaunchFactory   17 owner-only functions
+      PonsV2MemeHook         9
+      PonsV2BuybackVault     1
+      PonsV2LaunchLocker     1
+    What the factory's owner can do is the part worth naming, because it is not
+    only fees: setLaunchEnabled is a global kill switch for launching at all;
+    setPairTokenApproved decides which quote assets exist; setMaxCreatorTaxBps
+    and setSnipeTax* move the economics; setWhitelistedLauncher gates who may
+    launch; setGraduationExecutor, setLaunchDeployer and setLaunchForwarder
+    SWAP OUT COMPONENTS; and setCreatorFeeRecipient redirects A CREATOR'S OWN
+    fee recipient - a power we deliberately do not have: our one call to it is
+    the one-way switch of a launch's income to that launch's own holder
+    distributor, made by its beneficiary, never to an address anybody names
+    [PRE_MAINNET C3].
+    Their rescueCurveFees is owner-only. Ours is open to the curve's
+    creator-fee recipient and the platform recipient at once, and to anyone
+    else one hour after Graduator.noteReady(token) noted the curve full and
+    ungraduated [AUDIT C-1]: the same escape hatch with the operator removed
+    from in front of it where it matters - a full curve is the only one
+    whose pending fees block graduation - and with an hour in which
+    graduate() stays open to everybody, so nobody else can force a
+    creator's fees out early, nor in the transaction that filled the
+    curve.
+
+  THESTONKS.EXCHANGE - READ OFF BASE MAINNET, read-only, 2026-09-21
+    Their site names three contracts. Two of them are PROXIES:
+
+      Launcher   0x4714f6EC81639Ca59EEBE634490a4d8671DCe7B4   130 bytes
+      FeeLocker  0x71D1D363176723f85d98B8B430DF33cde89f0A7f   130 bytes
+
+    130 bytes is not logic. The bytecode is identical in both: push the
+    ERC-1967 implementation slot, SLOAD it, DELEGATECALL. Their
+    implementations answer proxiableUUID() with that same slot, which is the
+    UUPS marker - so the upgrade authority is the implementation's own owner.
+
+      Launcher  -> impl 0x6a9f14e7742e8972fcf86429c5aa7db56589806d  21,855 bytes
+      FeeLocker -> impl 0x6c9c9fd81b914a59585d966af140211df0325273  12,750 bytes
+      owner() on BOTH proxies  0x81dd3174d55fcf396e92122881ca591705c4e1e1
+      that address has ZERO BYTES OF CODE - an EOA, one key, not a multisig
+
+    AND THEN I GOT IT WRONG, WHICH IS WORTH MORE THAN THE FINDING WOULD HAVE
+    BEEN. What this section said first:
+
+        "SO ONE KEY CAN REPLACE THE LOGIC OF BOTH CONTRACTS ... the site and
+         the bytecode disagree ... 'immutable' is not a property of the
+         deployment."
+
+    BOTH SENTENCES ARE FALSE. I measured two things - a UUPS proxy, and an
+    owner with no code - and INFERRED a third, that the upgrade path works. I
+    never called it. Then I wrote the inference up as a measurement and used it
+    to say somebody else's documentation was contradicted by their own chain.
+
+    THE MEASUREMENT I SHOULD HAVE MADE, made now: eth_call upgradeToAndCall
+    FROM THE OWNER'S OWN ADDRESS, on both proxies.
+
+        both revert, with 0xbbbfc8f8 = UpgradesFrozen()
+
+    which is exactly the "UPGRADES FROZEN" label their own page carries. The
+    upgrade function exists and refuses everyone, the owner included. Their
+    claim holds; mine did not.
+
+    SO THE ACTUAL POSITION IS THE OPPOSITE OF WHAT I WROTE: their two core
+    contracts are UUPS-shaped and permanently frozen, which is a STRONGER
+    guarantee than a plain non-upgradeable deployment would be, because the
+    freeze is enforced in code that anybody can call and watch revert.
+
+    THE WRONG VERSION IS KEPT ABOVE ON PURPOSE. It is the exact mistake this
+    project keeps writing rules against - an argument presented as a
+    measurement - and deleting it would leave the rule without the example.
+
+    WHAT THEIR OPERATOR CAN AND CANNOT DO, from their own page and consistent
+    with the above:
+      CAN   list stocks and their price feeds; override an opening anchor; and,
+            EACH BEHIND A 24-HOUR ANNOUNCED ON-CHAIN DELAY, change the fee
+            split within hard caps that always leave the creator at least 20%,
+            or reassign an abandoned token's creator.
+      CANNOT touch any LP position or locked liquidity, upgrade either
+            contract, mint or pause a launched token, or change which locker a
+            launch hands to.
+      NOT VERIFIED BY ME: the 24-hour delay and the hard caps. The upgrade
+            freeze is the only one of these I measured. Saying which is which
+            is the whole point of this section now.
+
+  AND ON THE MEASURE THAT MATTERS, THEIR LOCKER IS TIGHTER THAN OUR LOCK.
+    Their StonkFeeLocker2 has, by their description, no decreaseLiquidity, no
+    burn, no NFT transfer and no approval path - the principal cannot leave at
+    all, ever, for anyone. Ours releases to the beneficiary after the lock
+    expires, which is a different product decision (a timed lock rather than a
+    permanent one) and not a weaker version of the same one. Worth naming
+    because "locked liquidity" is said of both and means different things.
+
+  CURB - FOR COMPARISON
+      FeeHook   2 owner-only functions: the platform's recipient and its rate.
+                Ownable2Step. RENOUNCE LEFT WORKING - see below.
+      PonsV2BuybackVault (vendored)  1, and unreachable [AUDIT A-9].
+      Everything else ownerless: no proxy, no delegatecall, no selfdestruct,
+      no pause, no rescue over value, and no power over a creator's share, a
+      registry record, a locked position or anybody's balance.
+
+  THE ONE PLACE WE DELIBERATELY DO NOT COPY PONS
+    They override renounceOwnership to revert, and give their reason: "An
+    ownerless hook could never rotate the fee sweep operator, so accrued fees
+    on every graduated pool would stay stranded."
+    THAT REASON IS THEIRS. Our feeSweepOperator is a constant address(0) and is
+    never rotated, and the curve lets a creator sweep their own launch whenever
+    no buyback is involved - which is always, because buyback is off by
+    construction. An ownerless hook strands nothing of ours.
+    So renouncing is a CLEAN EXIT here rather than a hazard: it freezes both
+    values where they stand and the product returns to exactly the immutable
+    arrangement it had before the setters existed. Measured
+    [test_theFeePolicyKeyCanBeGivenUpAndThePolicyThenFreezes]. It is what makes
+    this the one reversible decision at deployment.
+
+  WHAT A TRADE COSTS, THEIRS AGAINST OURS - 2026-09-21
+    Asked because the obvious question about a live competitor on our own chain
+    is whether they are cheaper. On FEES the answer is close; on WHO KEEPS THEM
+    it is not.
+
+      THEIRS   one 1% Uniswap V3 tier fee, and nothing else.
+               0.7% creator, 0.3% platform. No curve phase, so no second fee
+               anywhere.
+      OURS     the launch's own tax T, which its CREATOR picks between 1% and
+               5%, plus our pool's 0.05% tier [POOL_FEE = 500].
+               0.5% platform always; T - 0.5% creator; the 0.05% tier accrues
+               to the locked position, whose beneficiary is the creator.
+
+      AT OUR FLOOR, WHICH IS THE ONLY FAIR COMPARISON:
+                        trader pays   platform takes   creator keeps
+        thestonks          1.00%           0.30%           0.70%
+        CURB at T=1%       1.05%           0.50%           0.55%
+
+      So at the closest configuration we can offer: the trader pays about the
+      same, WE TAKE TWO THIRDS MORE THAN THEY DO, and THEIR CREATOR EARNS MORE
+      THAN OURS. A creator choosing between the two on economics alone has no
+      reason to pick us at any T, and at T = 5% their trader pays a fifth of
+      what ours does.
+
+      AND THE COMPARISON IS NOT LIKE FOR LIKE, in both directions:
+        we have a CURVE PHASE and they have none, so a CURB launch raises
+          against the stock before a pool exists and charges T there too;
+        their opening cap is ~$4,000 for EVERY coin, anchored to the stock's
+          Chainlink feed, while ours needs 60 NVDAc - about $13,230 - before a
+          pool exists at all. Those are different products at different scales,
+          not the same product at different prices.
+        price impact is not in the table because their launched coins' pools
+          were not measured. D1 measured OURS all-in at $100: 2.13% at T=1%.
+
+      NOT A RECOMMENDATION TO CHANGE ANYTHING. D2 froze the fee model and D1
+      chose the tier on measured depth. This is the number, recorded where
+      somebody comparing us can find it.
+
+  AND THE THING ALL THREE ANSWER DIFFERENTLY: WHAT THE PLATFORM'S FEE BUYS
+    PONS               buyback-and-LOCK. The slice buys the memecoin off the
+                       curve and vests it five years - to the CREATOR and the
+                       protocol, not to holders.
+    thestonks          buyback-and-BURN. 0.3% of a 1% swap fee, of which "80%
+                       of it buys $STONKEX and destroys it, 20% is operator
+                       revenue".
+    CURB               neither. Buyback is off by construction [E1] and the
+                       platform's leg is paid out.
+
+    THE BURN IS THE INTERESTING ONE FOR US, and it answers the question that
+    started this: how do you return fees to holders of a plain ERC-20 with no
+    transfer hook and no checkpoints? You do not distribute - you reduce
+    supply. It needs no balance tracking, no claim step, no per-holder state,
+    and every holder benefits in proportion by construction. It is the one
+    shape that sidesteps the obstacle rather than engineering around it.
+    NOT PROPOSED HERE, only recorded: our fees arrive in a tokenized stock
+    rather than in our own token, so a burn would need a swap first, and that
+    is a design rather than a line.

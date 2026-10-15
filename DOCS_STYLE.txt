@@ -1,0 +1,223 @@
+================================================================================
+CURB - HOW THE DOCS PAGE IS WRITTEN
+================================================================================
+
+WHAT THIS IS
+  web/docs.md IS the docs page. docs.html fetches it and web/docs.js draws it,
+  so editing docs.md and reloading docs.html is the whole workflow. Nothing
+  else reads it and nothing builds from it.
+
+  docs.md is also served to anyone as a plain file, so these notes live here,
+  outside web/, and docs.md keeps one comment that points here. They were a
+  25-line comment at the top of docs.md until 29 September 2026: hidden on the
+  page, readable by anybody who opened the file.
+
+
+WHO IT IS FOR, AND IN WHAT ORDER
+  First, people who launch and trade. Then integrators. The page keeps that
+  order and these sections:
+
+    Overview (3-4 sentences, under the "# " title)
+    Quick start
+    How a launch works      curve to graduation; the refund of an oversized buy
+    Paired assets           the list; one general risk sentence; the warning
+                            that a price rising in the asset can fall in dollars
+    Fees                    one table; the platform-share rule in one sentence
+    Creator earnings        2-3 sentences
+    Holder sharing          what it is, who gets what, the hour, getting paid,
+                            checking it, what CURB cannot do - one screen
+    Dev buy
+    What is permanent       the lock, which is forever, said plainly
+    Risks                   short bullets
+    FAQ                     6-8 questions, one of them about $CURB
+    ---
+    Developers              Contracts, Functions, CURB router, Holder sharing
+                            contracts, Events, Fee routes
+    Contracts and security  CURB contracts, Paired-asset addresses,
+                            Audits and security contact
+
+  The user part (Overview to FAQ) stays at about 1,500-2,000 words. The
+  owner's rule, 29 September 2026: like the competitors' docs - short, plain,
+  user-first, and no extra information.
+
+
+THE VOICE
+  - English. Short sentences. No hype.
+  - No promise of profit, no yields, no "passive income" arithmetic.
+  - Say "liquidity is locked forever": the lock has no unlock time and no
+    withdrawal, for anyone. Never "rug-proof" or "rug impossible": the
+    creator can still sell tokens they hold.
+  - Never call the contracts audited by anyone outside. The owner's decision
+    of 2 October 2026: there is no outside audit; the in-house reviews
+    (AUDIT*.txt, CODEX_*) end with a final internal audit before the mainnet
+    deployment, and the page says exactly that. Do not write "external audit"
+    anywhere, and no legal text.
+  - Risks in general words. Our own measurements (liquidity notes per asset,
+    what one issuer's blocklist reached) are research, not docs.
+  - Say each rule once. The platform-share rule was once written six times.
+  - A figure worked out by arithmetic rather than read from the code says
+    "about". Dollar amounts are left out because they move.
+  - No invented contact addresses, audit firms or numbers. Where the owner has
+    to fill something in, leave a marked placeholder (see below).
+
+
+WHAT STAYS OUT OF THE USER PART
+  Function names, gas figures (WETH's 2,300-gas transfer), Permit2's one-hour
+  allowance, the registry record, the logo's size limit, the virtual reserve,
+  tick spacing, escrow internals, tokens stranded by a direct transfer, the
+  keyboard shortcut for search. They go in Developers, or nowhere.
+
+
+KEEP IT TRUE TO THE CODE
+  Every rule on the page was checked against src/curb, src/vendor and
+  script/DeployCurb.s.sol, and for what the site does against web/app.js,
+  web/token.js and web/browse.js. A sentence about what a page shows or offers
+  is a claim about that page: recheck it when the page changes.
+
+  "The launch's page" is /token/0x..., app.html in its token view, which hides
+  #launchPanel and everything in it. Checked 29 September 2026, that view:
+  - shows no unlock date, because there is none: the lock box (#lockBox,
+    inside #launchPanel) says "unlocks: never", and on a launch that shares
+    its fees the creator wallet sees "locked forever" (sharing-token.js,
+    #tvLocked) and no withdrawal;
+  - has no button for PositionLock.claimFees() (no page has), and the lock
+    has no withdrawal to offer;
+    holder sharing's harvest collects claimFees() for a launch that shares;
+  - offers ETH on both sides of a curve trade on every pair, through the CURB
+    router (token.js quoteChoices), except a curve sale on a non-ETH pair where
+    the router is not on the chain (then the pair's asset only).
+  docs.md says so in Quick start, Creator earnings, What is permanent and
+  Functions. When the view gains any of these, change those places.
+  For a launch that shares its fees the view also has the "Holders earn" card
+  (#tvShare): the figures, the payout in force, announced role changes, Push
+  pending payouts, the holder's Claim (and Claim to another address when the
+  issuer blocks theirs) and Check the payout files yourself. docs.md's Holder
+  sharing section says what they do.
+
+
+FACTS docs.md AND curb.html MUST AGREE ON
+  Checked 29 September 2026. Change both pages together, or neither.
+
+  - $CURB IS NOT LAUNCHED. Supply, distribution, timing and governance are not
+    decided. No contract is $CURB today.
+  - THE TREASURY POLICY, decided 22 September 2026, is a policy and not code:
+    80% of the platform's fee income buys $CURB and burns it, 20% runs the
+    platform, done by hand when a threshold is reached. Never call it automatic
+    or on-chain. No burn has happened yet. In the contracts buyback is off:
+    FeePolicy.BUYBACK_BURN_BPS is 0 and every launch records buybackBurnBps 0,
+    so no launch pays a buyback vault.
+  - FEES. One tax per launch, 100 to 500 bps (LaunchRegistry MIN_TOTAL_TAX_BPS
+    and MAX_TOTAL_TAX_BPS), chosen by the creator, charged in the paired asset
+    on buys and sells, on the curve and in the pool. The platform's share comes
+    out of it: 50 bps at deployment, at most FeeHook.maxPlatformFeeBps() = 80.
+    A change is announced 24 hours ahead (POLICY_CHANGE_DELAY), must be applied
+    within 7 days (POLICY_CHANGE_WINDOW) and reaches only launches created
+    after it; each launch freezes the terms in force when it is made. The
+    pool's own LP fee is 0.05% (DeployCurb POOL_FEE 500). There is no
+    launch fee: DeployCurb sets launchFee 0, so launching costs gas only.
+  - THE LOCK. The LP position is locked forever at graduation: PositionLock
+    has no unlock time and no withdrawal. Only its LP fees move.
+  - AN OVERSIZED BUY fills to the threshold and refunds the rest in the same
+    transaction. Paid in ETH through the CURB router, the refund comes back in
+    that transaction: ETH on an ETH pair, the paired asset on other pairs.
+    Without the router, the curve pays WETH on an ETH pair and the site unwraps
+    it straight after: a second confirmation.
+  - CONFIRMATIONS (the owner's call, 2026-10-01). An ETH buy on a curve is one
+    transaction on every pair (CurbRouter.buyWithEth). A sale for ETH is
+    sellForEth after ONE unlimited approval to the router per token - the only
+    unlimited approval the site asks for; every other one is exact. The router
+    address and code hash live in web/app.js CURB_ROUTER, docs.md and
+    script/DeployRouter.s.sol: change all three together.
+  - DOLLAR FIGURES come from each paired asset's Chainlink feed on Base
+    (USD_FEEDS in web/prices.js); where there is none, from the asset's Uniswap
+    price in ETH times ETH / USD. Display only.
+  - CREATOR EARNINGS. One Claim on the launch's page (claimAll in web/app.js)
+    sweeps this launch's curve fees first, then claims from the escrow and the
+    hook; on an ETH pair it pays ETH. The locked position's LP fee is not part
+    of it: PositionLock.claimFees() collects that.
+  - THE DEV BUY is capped in TOKENS RECEIVED: at most MAX_DEV_BUY_BPS = 2,000
+    bps (20%) of the supply (CurbLaunchFactory DevBuyAboveShare), and the
+    amount it spends must be below the graduation threshold (DevBuyTooLarge).
+    The cap limits only the buy made inside the launch transaction. (This
+    line said "7,500 of the threshold", a quote ceiling the factory dropped
+    when the cap moved to tokens; docs.md repeated it.)
+  - HOLDER SHARING (core v2): a creator switches a launch's creator income to
+    its holders once, one way - at launch (LaunchConfig.holderShareFactory)
+    or later (Graduator.enableHolderSharing). Creator share 0% while on;
+    time-weighted shares (CURB-SHARE v1, services/sharer/spec); about hourly;
+    at most 2% of each payout for gas (MAX_KEEPER_FEE_BPS 200); each payout
+    waits 1 hour (VETO_WINDOW) and the multisig or a vetoer can stop it;
+    shares accumulate below the push threshold (about $0.05) and never expire;
+    the LP principal stays locked forever, as on every launch. Say "about hourly" and "about $0.05": both are the
+    keeper's, not the contract's.
+  - THE SITE IS STATIC. There is no CURB server behind the site; holder
+    sharing's keeper is a separate service that only sends transactions and
+    publishes the payout files.
+
+
+FACTS docs.md AND terms.html MUST AGREE ON
+  Added 8 October 2026. Change both pages together, or neither.
+
+  - THE SAFETY HOUR. A payout root waits one hour (VETO_WINDOW), and the CURB
+    multisig or an independent vetoer can stop it in that hour. terms.html
+    named the multisig alone, which left out the vetoer docs.md names.
+  - TRADE COSTS are not quoted as figures. terms.html quoted measured costs
+    for a pool shape that no longer exists (NVDAc at a 60 threshold, where
+    DeployCurb now sets 49.1 and a thinner graduated pool); both pages point
+    to the confirmation screen, which shows the trade in front of the user.
+  - NOTHING CAN BE PAUSED OR UPGRADED, and no admin can recover funds; a bug
+    in a contract every launch shares reaches existing launches; the multisig
+    can add a paired asset at once (LaunchRegistry.addLauncher, once the
+    registry is handed to it) and cannot change an existing launch. docs.md's
+    Risks says so in one bullet; INCIDENT.txt is the same fact written for
+    the operator.
+
+
+PLACEHOLDERS THE OWNER MUST FILL
+  Each is marked in docs.md with a "PLACEHOLDER (owner)" comment.
+  - CURB's contract addresses, under "CURB contracts": now "Not deployed yet".
+    Fill them from ADDRESSES.txt after the mainnet deployment.
+  - The security contact, under "Audits and security contact": now "to be
+    published before the mainnet launch".
+  - The code repository at the deployed commit, under "Holder sharing
+    contracts": now https://github.com/<org>/<repo>/tree/<commit>/services/sharer.
+    Fill it with the address web/sharing.js CODE_AT names (DEPLOY.txt STEP 5).
+  - Audit reports: links once there are any. Until then the unaudited wording
+    stays.
+
+
+THE MARKDOWN docs.js UNDERSTANDS, AND ONLY THIS
+  Headings: one "# " page title; "## " a section and "### " a subsection, both
+  listed in the contents.
+  Paragraphs are separated by a blank line; a single line break inside a
+  paragraph is joined with a space.
+  Lists: "- " or "* " for bullets, "1. " for numbered items. A line indented by
+  two or more spaces under an item continues that item. Lists do not nest.
+  Inline: **bold**, *italic*, `code`, and [text](url) where url is https:// or
+  http://, a page of this site such as terms.html or terms.html#anchor, or
+  #anchor alone. Any other link is shown as plain text.
+  Code blocks: a line of three backticks, the code, and another line of three
+  backticks.
+  Callouts: lines starting with "> ". Start the first one with **Note:**,
+  **Warning:** or **Tip:** for a tone.
+  Tables: a header row like "| a | b |", then a separator row like
+  "|---|---|", then the rows.
+  A line holding only three hyphens is a divider. HTML comments are hidden.
+  Raw HTML is not supported: angle brackets are shown as the characters
+  themselves.
+
+  Heading anchors are the heading in lowercase with every run of other
+  characters turned into "-", so "## How a launch works" is
+  #how-a-launch-works. A repeated heading gets -2, -3 on its anchor.
+
+  TRAPS WHEN WRAPPING A LINE: a wrapped line that starts with "- ", "* ",
+  "1. ", "> ", "#", "|" or "---" starts a new block. Write "times" or the
+  multiplication sign, not an asterisk, which starts italics.
+
+
+WHAT THE TESTS CHECK
+  web/e2e/site.spec.js loads docs.html and requires more than five "##" or
+  "###" sections, a contents list that names them in order with every entry
+  landing on a heading, no page errors, and no sideways scroll at 375 px.
+  Wide content goes in a table (it scrolls inside its own box) or a code span
+  (it wraps); keep tables to three columns so they read on a phone.

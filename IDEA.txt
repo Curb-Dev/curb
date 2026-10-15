@@ -1,0 +1,155 @@
+# CURB — The Idea
+
+*Stock-paired launchpad and trading destination on Base.
+One-page summary. The binding document is ROADMAP.txt.
+Last updated 11 Sep 2026 (Rev 11).*
+
+---
+
+## What it is
+
+A consumer destination where new tokens launch priced in tokenized US
+equities, and where the existing Coinbase B20 stocks trade — on Base.
+
+Not a brokerage. Not "buy NVDA, but nicer." A place where equities are a
+degen primitive.
+
+## Why now
+
+- **Coinbase's tokenized stocks went live natively on Base on 24 Aug 2026** —
+  B20 standard, backed 1:1 by real shares in regulated custody,
+  **permissionless secondary market** (no wallet whitelist, no platform
+  lock-in). 13–14 tickers. Chainlink feeds, 24/5.
+- **~$227.7M DEX volume in 30 days.** Peak day $33M+. NVDAc alone does
+  ~$10.6M/24h and is ~57% of all volume.
+- **The format is proven, just not here.** PONS (Robinhood Chain) passed
+  pump.fun in daily revenue on 2 Sep at $1.1M/day. StonkFun (Solana) passed
+  it on 6 Sep at $1.5M/day.
+- **On Base nobody owns this lane.** Clanker — the largest Base launchpad —
+  supports zero stock quote assets. Flaunch and Zora likewise. Only vvveity
+  does stock-paired launches on Base, and it is tiny.
+- **Our read is that Coinbase will not enter the fun lane.** A regulated,
+  publicly traded issuer putting a dog coin next to NVDA is hard to picture.
+  They will own "buy NVDA easily"; we think they will not own "do degenerate
+  things with NVDA." This is a judgement about their incentives, not a fact —
+  it is the assumption the whole position rests on, so re-check it.
+- Base's own front door, `base.org/stocks`, is a list of venues and contract
+  addresses. There is no destination.
+
+## The plan
+
+**Phase 1 — Launchpad.** New tokens launch on a bonding curve quoted in B20
+stocks. Graduation lands in a venue we control, so we keep earning from the
+volume afterwards. Launchpads solve cold start because they hold exclusive
+inventory; a trading venue for 13 existing tokens does not.
+
+**Phase 2 — Destination.** Conditional, not automatic: it needs repeat use,
+positive revenue after costs, and a credible answer to why NVDAc flow would
+come to us rather than Aerodrome. MEME/NVDAc liquidity does not solve
+NVDAc/USDC liquidity.
+
+**Phase 3 — Conditional.** Weekend basis tooling. Possibly a Mag7 basket —
+all seven are live on Base — but that carries ETF-shaped regulatory weight.
+
+## Approach
+
+**Our own product, PONS as reference.** PONS V2's source is public and MIT
+(its dependencies are not entirely — see `REUSE_ANALYSIS.txt`). Reuse is
+decided file by file, not by a blanket fork or a blanket rewrite. PONS ships
+no build or test infrastructure, so a compiling workspace and tests we write
+are step one — "run its existing tests" is not an option.
+
+**First deliverable:** the complete lifecycle — launch, buy, sell,
+graduation, pool trade, fee claim — working on a *single* B20 quote asset in
+a test environment, with a minimal interface whose core is a discovery
+screen. Not a bigger document; something you can click.
+
+## The differentiator
+
+Two layers, and they are not the same thing:
+
+- **The position:** stock pairing on Base. Nobody meaningful holds this lane
+  today. This alone is a real position, and v1 competes on it.
+- **The defensibility:** Coinbase onramp + embedded wallets + Base App /
+  Farcaster miniapp. A user goes from a card to a stock-paired token in one
+  flow, never seeing a seed phrase. Coinbase Onramp also supports Solana, so
+  this infrastructure is not exclusive to Base — the point is that nobody has
+  assembled the flow for stock-paired tokens. It comes after v1 and holds the
+  position against the next entrant.
+
+## Known hard problems
+
+**0. B20 integration — measured, and smaller than feared.** Earlier drafts
+of this file carried a "confirmed blocker": PONS's `setPairTokenApproved()`
+requires `pairToken.code.length != 0`, and Base's docs say precompiles hold
+no bytecode, so B20 would be rejected. **That was wrong.** Measured on Base
+mainnet across four addresses (NVDAc, AAPLc, METAc, GOOGLc): each returns
+`codesize 1`, code `0xef`. The check passes on those. Why the marker is
+there is not established — only that "no bytecode" in the docs cannot be
+read as `extcodesize == 0`. `name`, `symbol`, `decimals`, `totalSupply`,
+`balanceOf` and `allowance` all read correctly, and `transfer()` from an
+unfunded account reverts with exactly
+`InsufficientBalance(address,uint256,uint256)` — a correct rejection, which
+is not evidence that a funded transfer works.
+
+What remains is ordinary integration work, not a blocker: funded
+transfer/approve round trips, Permit2, SafeERC20 behaviour, and finding the
+multiplier accessor version (`multiplier()` works and returns 1e18; `uiMultiplier()` reverts despite being in the current interface). Compatibility
+still needs live-precompile testing — `base-forge`, or a node running
+`base-anvil --base`; stock Anvil does not host them — because the Solidity
+mock is a different implementation and can hide divergences.
+
+*The lesson worth keeping:* a claim about chain state was "verified" by
+reading a second document. One `cast` call disproved it.
+
+1. **Quote-asset depth — the real ceiling.** ~$3M seeded liquidity. A single
+   launch routing $500K through USDC→NVDAc moves the stock token itself off
+   the real stock. The limit is the quote asset's depth, not the curve.
+
+2. **Weekend pricing.** Feeds run 24/5 and hold the last close; the pool
+   trades 24/7. As far as we can see nobody has solved this — a judgement
+   from the venues we surveyed, not a verified fact. Concrete consequence: if
+   Chainlink is the only reference, the USDC in/out path closes every
+   weekend. That has to be a designed state, not an error users discover.
+
+3. **Issuer power.** B20 carries `isAuthorized()` and allow/blocklist
+   capability. If the issuer restricts transfers, no contract of ours routes
+   around it — so we never promise an exit, only that accounting survives,
+   retries work, and blockage is shown.
+
+4. **Concentration.** NVDAc is ~57% of volume. Launch with three names total
+   — NVDA plus two others; a UI of 13 equal tiles lies and looks empty.
+
+5. **Distribution.** The contracts are the smaller half of the work. PONS was
+   made by Uniswap Labs taking a position; StonkFun by a Raydium LaunchLab
+   integration. Neither was a technical move.
+
+## Non-problem
+
+The B20 multiplier is not an AMM hazard. B20 is total-return: on a 4:1 split
+the multiplier goes to 4x and per-share price falls to a quarter, so token
+price stays continuous. Curve and pool math are unaffected. The constraint
+is display — never write "1 NVDAc = 1 NVDA share", and never re-apply the
+multiplier to a Coinbase feed price that already includes it.
+
+Caveat from item 0: the accessor is `multiplier()` (returns 1e18 on NVDAc),
+not `uiMultiplier()`, which reverts despite being declared in the current
+base-std interface. Pin which interface version matches the deployment.
+
+## Biggest risk
+
+The meta is roughly eight weeks old and at its peak. A clone shipped late
+lands in the decay. This is why Phase 1 is narrow, Phase 2 is gated, and the
+first deliverable is a working loop rather than a full product.
+
+## Name
+
+**CURB** (curb.fun / curb.trade / curb.markets — available as of 11 Sep 2026).
+
+The Curb Exchange was the American Stock Exchange's ancestor: traders who
+could not get inside the NYSE dealt on the curb outside, and became the real
+thing. "Kerb trading" is the term for unofficial dealing outside official
+market hours — which is what 24/7 onchain equities are.
+
+Alternative: **LIMIT UP** (limitup.fun / .app / .trade / .markets available).
+Stronger for acquisition, weaker for Phase 2.

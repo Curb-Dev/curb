@@ -1,0 +1,142 @@
+{
+  "name": "v10-zero-weight-with-income",
+  "description": "Quote income exists (fees from traders who bought and sold inside one block), but every non-excluded account weighs 0, so W = 0 and no epoch is produced; the income waits for the next attempt.",
+  "covers": [
+    "W = 0 with income"
+  ],
+  "setup": {
+    "chainId": "8453",
+    "distributor": "0xd157000000000000000000000000000000000001",
+    "factory": "0xfac7000000000000000000000000000000000001",
+    "launchToken": "0x70ce000000000000000000000000000000000001",
+    "quoteToken": "0x4200000000000000000000000000000000000006",
+    "quoteIsWeth": true,
+    "quoteDecimals": "18",
+    "rules": {
+      "version": "1",
+      "exclusions": [
+        {
+          "address": "0xc0be000000000000000000000000000000000001",
+          "reason": "the launch curve"
+        },
+        {
+          "address": "0x400c000000000000000000000000000000000001",
+          "reason": "the launch hook"
+        },
+        {
+          "address": "0xe5c0000000000000000000000000000000000001",
+          "reason": "the launcher FeeEscrow"
+        },
+        {
+          "address": "0x96ad000000000000000000000000000000000001",
+          "reason": "the Graduator"
+        },
+        {
+          "address": "0x0b4a000000000000000000000000000000000001",
+          "reason": "the v4 PoolManager"
+        },
+        {
+          "address": "0x0b4b000000000000000000000000000000000001",
+          "reason": "the v4 PositionManager"
+        },
+        {
+          "address": "0x7e91000000000000000000000000000000000001",
+          "reason": "the LaunchRegistry"
+        },
+        {
+          "address": "0x10c0000000000000000000000000000000000001",
+          "reason": "the launch PositionLock"
+        },
+        {
+          "address": "0xea20c3266229a01cd0f45d9c7921a45d5b359561",
+          "reason": "CurbRouter"
+        }
+      ],
+      "keeperKeys": [
+        "0xcee9000000000000000000000000000000000001",
+        "0xcee9000000000000000000000000000000000002"
+      ],
+      "ammFactories": [
+        {
+          "address": "0xa33f000000000000000000000000000000000002",
+          "reason": "listed v2-style factory"
+        },
+        {
+          "address": "0xa33f000000000000000000000000000000000003",
+          "reason": "listed v3-style factory"
+        }
+      ]
+    },
+    "contracts": {},
+    "keeperTxs": [],
+    "sharingSince": "10",
+    "opening": {
+      "block": "9",
+      "balances": {
+        "0xc0be000000000000000000000000000000000001": "1000"
+      }
+    },
+    "timestamps": {
+      "9": "100",
+      "10": "102",
+      "11": "104",
+      "12": "106",
+      "13": "108",
+      "14": "110"
+    },
+    "transfers": [
+      {
+        "block": "12",
+        "logIndex": "0",
+        "from": "0xc0be000000000000000000000000000000000001",
+        "to": "0xaa00000000000000000000000000000000000007",
+        "value": "100"
+      },
+      {
+        "block": "12",
+        "logIndex": "1",
+        "from": "0xaa00000000000000000000000000000000000007",
+        "to": "0xc0be000000000000000000000000000000000001",
+        "value": "100"
+      },
+      {
+        "block": "13",
+        "logIndex": "0",
+        "from": "0xc0be000000000000000000000000000000000001",
+        "to": "0xa100000000000000000000000000000000000001",
+        "value": "5"
+      },
+      {
+        "block": "13",
+        "logIndex": "1",
+        "from": "0xa100000000000000000000000000000000000001",
+        "to": "0x0b4a000000000000000000000000000000000001",
+        "value": "5"
+      }
+    ]
+  },
+  "epochs": [
+    {
+      "input": {
+        "toBlock": "14",
+        "harvestTx": "0x0000000000000000000000000000000000000000000000000000000000000014",
+        "uri": "",
+        "received0": "500",
+        "received1": "20",
+        "price": null
+      },
+      "expected": {
+        "result": "none",
+        "reason": "no-weight",
+        "epoch": "1",
+        "fromBlock": "10",
+        "toBlock": "14",
+        "supply": "1000",
+        "floor": "0",
+        "W": "0",
+        "I0": "500",
+        "I1": "20"
+      }
+    }
+  ]
+}

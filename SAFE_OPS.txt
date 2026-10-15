@@ -1,0 +1,300 @@
+================================================================================
+CURB - THE SAFES, THE SIGNERS AND THE ACCOUNTS
+================================================================================
+Written   8 October 2026
+Status    Nothing here is deployed or created yet. The owner fills in the
+          blanks (........) before DEPLOY.txt STEP 0, in two places:
+          - IN THIS FILE, COMMITTED, ONLY PUBLIC FACTS: each Safe's address and
+            threshold, and the platform recipient's choice (its tick, and the
+            treasury Safe's address if that is the choice). The chain shows
+            each of them anyway.
+          - EVERYTHING ELSE IN A PRIVATE COPY of this file, kept outside the
+            repository and never committed: who the signers are, where each
+            phrase copy is, who covers which veto hours, the recipient's
+            custody (each blank marked "private copy" below), and the ticks
+            and DNS records of ACCOUNTS.
+          Why: the repository is public (services/sharer/RUNBOOK.md 4.1), so
+          whatever is committed here is published at the next push; and an
+          uncommitted edit to any tracked top-level .txt, this one included,
+          stops DEPLOY.txt STEP 0's status line and the preflight's tree check
+          (its section 1, at PREP 1's STEP 2 too, and the recheck at STEP 4).
+          So nothing is written here that is not committed at once.
+
+WHAT THIS IS
+  How the keys that control CURB after the deployment are held and used: the
+  two Safes and their signers, how a signature is checked before it is
+  made, how a signer is replaced, who is reachable during a payout's veto
+  hour, the platform recipient's custody, and the accounts that control the
+  site, the code and the keeper's secrets. Anyone who can push to main or
+  take over the host or the domain controls what users sign; for a
+  launchpad that is a more common attack than a contract bug, so the accounts
+  get the same care as the keys.
+  What to do in an incident is INCIDENT.txt; how the Safes are created is
+  DEPLOY.txt decision 3.
+
+
+================================================================================
+THE SAFES
+================================================================================
+  SAFE A - THE POLICY SAFE (CURB_POLICY_OWNER)
+    address               0x............................................
+    signers               private copy: ........  ........  ........
+    threshold             .. of ..
+    owns                  the FeeHook (the platform's share and recipient for
+                          future launches, behind 24 hours), the
+                          SharingCatalog, the HolderDistributorFactory, and -
+                          once it accepts at DEPLOY.txt STEP 4B - the
+                          LaunchRegistry, whose addLauncher admits a new paired
+                          asset AT ONCE and for good. A launcher admitted can
+                          make launches of its own and reach no existing one:
+                          the registry records a launch only for a curve that
+                          names its token, its quote asset and that
+                          launcher's own Graduator, each curve once, and the
+                          Graduator acts only on a record whose curve names
+                          its token (DEPLOY.txt decision 2). Before those
+                          checks, one wrong addLauncher could drain every
+                          launch still on its curve. The asset preflight
+                          prints the call with the asset's dollar start and
+                          graduation beside it (DEPLOY.txt, ADDING A QUOTE
+                          ASSET, step 6): sign neither without the other
+    at once, it can       admit a launcher; freeze holder sharing, revoke the
+                          publisher, add a vetoer, veto; retire a distributor
+                          version; cancel an announced change
+    behind a delay        a new platform share or recipient (24 hours); a new
+                          publisher or keeper payee, removing a vetoer, ending
+                          a freeze (48 hours); a new distributor version (7
+                          days)
+  SAFE B - THE VETOER SAFE (one of CURB_SHARING_VETOERS)
+    address               0x............................................
+    signers               private copy: ........  ........  ........
+    threshold             .. of ..
+    can                   veto a pending payout root inside its hour, and
+                          freeze. Nothing else: it cannot publish, pay or
+                          unfreeze.
+  A vetoer can only delay payouts, and only Safe A can end a freeze. So Safe B
+  may run at a lower threshold than Safe A, to be quick in the veto hour -
+  the owner's call, written above.
+
+  SIGNER DEVICES AND BACKUPS
+    - Every signer of either Safe is a hardware wallet, one per person, used
+      for nothing else. No signer is a browser key, a phone key or an
+      exchange account.
+    - Each device's recovery phrase is written on paper or metal and kept in
+      two places apart from each other, never photographed, typed, emailed or
+      stored online. Where each copy is goes in the private copy only
+      (Status above), never here, where it would be public:
+        private copy: ........ : ........ and ........
+    - No two signers keep their phrases or devices in the same place. The
+      threshold means nothing if one burglary or one fire meets it.
+
+
+================================================================================
+BEFORE ANY SIGNATURE
+================================================================================
+  The Bybit loss of February 2025 was a Safe whose signers approved what
+  their screens showed, not what their devices signed. So every signature,
+  every time, routine or urgent:
+
+  1. KNOW WHAT YOU EXPECT before you open the Safe: the contract (from
+     ADDRESSES.txt), the function, its arguments, value 0. The runbook step
+     or the alert you are acting on says which. A transaction nobody can tie
+     to a step or an alert is not signed.
+  2. READ THE DECODED CALL in the Safe app: the "to" is that contract, the
+     function and every argument are the ones expected, and the selector is
+     the one in the table below.
+  3. OPERATION MUST BE 0 (CALL). An operation of 1 (DELEGATECALL) runs
+     someone else's code as the Safe itself and can take the Safe over. No
+     call CURB ever needs is a delegatecall.
+  4. THE NONCE is the Safe's next one, or the one you are deliberately
+     replacing.
+  5. COMPARE THE HASHES ON THE DEVICE. A Ledger shows the domain hash and the
+     message hash it is signing. Compute both independently from the decoded
+     fields (to, value, data, operation, nonce and the rest) on another
+     machine - a tool such as safe-tx-hashes-util does this - and check the
+     device, the independent result and the Safe app all agree. Any
+     difference: stop, sign nothing, tell the other signers.
+  6. NEVER SIGN FROM A LINK someone sent you, an "urgent" message, or a page
+     you did not open yourself from a bookmark.
+
+  THE CALLS CURB USES, AND THEIR SELECTORS (the first four bytes of data)
+    0x79ba5097  acceptOwnership()              the registry handover (STEP 4B)
+    0xf2fde38b  transferOwnership(address)     handing any of the four on
+    0x3c4e094c  addLauncher(address)           a new paired asset, registry
+    0x62a5af3b  freeze()                       distributor factory
+    0x4668d37b  revokePublisher()              distributor factory
+    0x68a601e5  addVetoer(address)             distributor factory
+    0xb66ae26c  veto(address,uint32,bytes32)   distributor factory
+    0x1455c21e  vetoMany(address[],uint32[],bytes32)
+    0xcc33b514  announceUnfreeze()             distributor factory
+    0xdedad97d  cancelPending()                distributor factory
+    0xe2469ec6  announcePublisher(address)     distributor factory
+    0xa9b58f08  announceKeeperPayee(address)   distributor factory
+    0x8c482e34  announceVetoerRemoval(address) distributor factory
+    0x9e6371ba  retire(address)                sharing catalog
+    0x4c33fe94  cancel(address)                sharing catalog
+    0x01267951  propose(address)               sharing catalog
+    0x471ce061  setRecommended(address)        sharing catalog
+    0xcbef6a1b  announcePlatformRecipient(address)   hook
+    0xdd698f6d  announcePlatformFeeBps(uint16)       hook
+    0xb47dcffb  cancelPlatformRecipient()            hook
+    0x9b60f81b  cancelPlatformFeeBps()               hook
+    0x60651129  executePlatformRecipient()           hook
+    0x06e86cbf  executePlatformFeeBps()              hook
+    0xe318b52b  swapOwner(address,address,address)   the Safe itself
+    0x694e80c3  changeThreshold(uint256)             the Safe itself
+    0x0d582f13  addOwnerWithThreshold(address,uint256)  the Safe itself
+  A selector that is not in this list is a reason to stop and ask, not to
+  look it up and carry on.
+
+
+================================================================================
+REPLACING A SIGNER
+================================================================================
+  A lost or doubtful device is replaced AT ONCE, before a second one fails:
+  a 2-of-3 that loses two keys is locked for good, and with it whatever it
+  owns.
+  In the Safe app: Settings, Setup, the signer, Replace. Underneath it is the
+  Safe calling itself with
+      swapOwner(prevOwner, oldOwner, newOwner)
+  where prevOwner is the signer listed just before oldOwner in getOwners(),
+  or 0x0000000000000000000000000000000000000001 when oldOwner is the first.
+  Check the decoded call as above: "to" is the Safe's own address, oldOwner
+  is the key being removed, newOwner is a fresh hardware wallet whose
+  address its holder read off the device. Then read getOwners() and
+  getThreshold() back, and update THE SAFES above in the same day: the
+  signers in the private copy, a changed threshold here, committed.
+  A changed threshold (changeThreshold) or an added signer
+  (addOwnerWithThreshold) goes the same way. A compromised signer is an
+  incident (INCIDENT.txt): replace it before anything else is signed.
+
+
+================================================================================
+THE VETO HOUR - WHO IS AWAKE
+================================================================================
+  Every holder-sharing payout root waits one hour before it pays. The guardian
+  vetoes a wrong one within minutes; when it cannot (its RPC down, out of
+  ETH, its key not a vetoer), the alert reaches people, and enough signers
+  of Safe A or Safe B must sign the ready-made veto INSIDE THAT HOUR - at
+  night too, and on holidays.
+  So, from the first launch that shares with holders:
+    - every signer of Safe B (and of Safe A) receives the PAGE alerts on a
+      phone (services/sharer/RUNBOOK.md part 13 lists the sinks);
+    - at any hour, at least a threshold of Safe B's signers is reachable with
+      their device. Write who covers which hours, and who covers for whom
+      when someone travels, in the private copy (Status above):
+        private copy: ........
+    - once a quarter, one signer runs a dry signature with the others: open
+      the Safe, build a veto, check it as above, reject it.
+  If nobody can cover the hour, say so in the private copy - it decides how
+  much the guardian alone must be trusted.
+
+
+================================================================================
+THE PLATFORM RECIPIENT - CUSTODY
+================================================================================
+  Every launch made while an address is the platform recipient pays it for as
+  long as the launch exists. One key losing or leaking that address loses or
+  leaks all of it. The recorded choice (DEPLOY.txt decision 1, A6) is
+  0x52483b53c8C08Ece00932A65DaE70487dcCD21E0, a fresh EOA. Keeping it, or
+  moving to a treasury Safe, is THE OWNER'S DECISION. Tick one here and
+  commit it, with the Safe's address if that is the choice - every launch's
+  record names its recipient, so the choice is public anyway. The EOA's
+  custody goes in the private copy (Status above), never here.
+
+  [ ] KEEP THE EOA, with its custody written in the private copy:
+        device            private copy: ........ (a hardware wallet used for
+                          nothing else)
+        phrase backups    private copy: ........ and ........ (two places, as
+                          above)
+        who claims        private copy: ........ - FeeEscrow.claimToken(asset)
+                          on each asset's escrow, and FeeHook.claim(asset),
+                          from that address; on WETH it is paid as ETH
+        how often         private copy: ........
+        gas               a little ETH kept on it for the claims
+  [ ] MOVE TO A TREASURY SAFE  0x............................................
+        Cheapest before STEP 2: pass it as CURB_PLATFORM_RECIPIENT and update
+        DEPLOY.txt decision 1's recorded choice. Afterwards it is Safe A's
+        announcePlatformRecipient, 24 hours, execute - and only launches made
+        after it pay the Safe. Once executed, ADDRESSES.txt records it under
+        "platform terms changed since the run", and check-deployment.sh runs
+        with CURB_HOOK_RECIPIENT=<the Safe> beside the run's own
+        CURB_PLATFORM_RECIPIENT (DEPLOY.txt, ADDING A QUOTE ASSET, step 7).
+
+
+================================================================================
+ACCOUNTS - THE HARDENING CHECKLIST
+================================================================================
+  Done before PREP 3 of DEPLOY.txt is ticked, and re-checked every quarter.
+  The boxes are ticked in the private copy (Status above): an unticked box
+  in a public file tells an attacker where to push.
+
+  EVERY ACCOUNT BELOW
+  [ ] a hardware security key (or passkey) as its second factor - not SMS,
+      not an authenticator app on the same phone as the email
+  [ ] its recovery codes printed and stored offline with the phrase backups
+  [ ] a unique password, in a password manager
+  [ ] the fewest people who need it, each with their own login
+  [ ] the email address it recovers to is itself protected this way - the
+      mailbox is the master key to all of them
+
+  THE ACCOUNTS
+  [ ] the email account(s) behind the others
+  [ ] GitHub: the organisation and every member's own account
+  [ ] the host (Vercel, or Netlify / Cloudflare Pages)
+  [ ] the domain registrar, and the DNS provider if separate
+  [ ] Pinata and Filebase (the keeper's pins)
+  [ ] the RPC providers and the alert sinks (the Telegram bot's owner, the
+      Discord server, the email API)
+  [ ] X, the project's account
+
+  THE DOMAIN
+  [ ] registrar transfer lock on, and registry lock if the registrar offers it
+  [ ] DNSSEC on, if the registrar and the host support it
+  [ ] the DNS records the site needs, written in the private copy, so a
+      change can be seen:
+        private copy: ........
+
+  THE CODE
+  [ ] main is protected: no force-push, no deletion, changes through a pull
+      request (with a review once there is a second person)
+  [ ] write access for as few people as possible; outside collaborators none
+  [ ] the GitHub Actions environments (sharing-mainnet, sharing-verify) are
+      limited to main, as services/sharer/RUNBOOK.md part 9.1 says; their
+      secrets live only there; fine-grained tokens with an expiry, each in a
+      calendar
+  [ ] no deploy keys, OAuth apps or GitHub Apps that are not needed
+
+  THE SITE
+  [ ] the site is published from main only: the host's production branch is
+      main, and nobody publishes to production from a laptop
+  [ ] preview deployments never answer on the production domain
+  [ ] no deploy hooks and no access tokens that are not needed
+
+
+================================================================================
+IF THE SITE IS NOT OURS ANY MORE
+================================================================================
+  A page that changed without a commit, a DNS record nobody set, an account
+  login nobody made - treat it as a takeover until shown otherwise.
+  1. TAKE IT DOWN. In the host, remove the production domain or pause the
+     project. If the host account is lost, point the domain away at the
+     registrar. If the registrar is lost, call its security line.
+  2. TELL PEOPLE, on X at once: the site is not safe right now, do not
+     connect a wallet or sign anything on it, and revoke any approval given
+     on it since <the time>. Name the real contract addresses (docs.md,
+     ADDRESSES.txt) so people can tell them from a fake.
+  3. GET THE ACCOUNTS BACK: reset passwords, end every session, revoke every
+     token (GitHub, the host, the registrar), remove SSH keys, deploy keys
+     and apps nobody recognises.
+  4. FIND WHAT CHANGED: git log on main, the host's list of deployments and
+     which commit is live, the DNS records against the list above (in the
+     private copy).
+  5. ROTATE WHAT COULD HAVE BEEN READ. A GitHub environment secret an
+     attacker could reach is stolen: the publisher key is then an incident
+     of its own (services/sharer/RUNBOOK.md part 14), and every other
+     secret is replaced (part 12).
+  6. REPUBLISH FROM A KNOWN COMMIT on main, after checking web/config.js and
+     web/app.js's CURB_ROUTER against ADDRESSES.txt, line by line. Then
+     DEPLOY.txt STEP 8's domain checks again, before the domain comes back.
+  7. SAY IT IS OVER on X and in the site's banner, and write it up
+     (INCIDENT.txt, COMMS).

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Curb &mdash; what a launch fixes</title>
+<meta name="description" content="What a Curb launch fixes when it is made: the supply, the curve, the tax and where the fees go." />
+<meta property="og:site_name" content="Curb" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Curb — what a launch fixes" />
+<meta property="og:description" content="What a Curb launch fixes when it is made: the supply, the curve, the tax and where the fees go." />
+<meta property="og:image" content="https://curb.fun/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Curb: launch coins paired with ETH, stocks and more" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@curbfun" />
+<!-- THE DEPLOYMENT AND THE INCIDENT SWITCHES, before any script reads them. -->
+<script src="config.js"></script>
+<link rel="icon" href="curb-mark.svg" />
+<link rel="stylesheet" href="topbar.css" />
+<style>
+  /* THE SAME PALETTE AS THE OTHER PAGES. Copied rather than shared because
+     this page loads no script and should stay one file. */
+  :root {
+    color-scheme: dark;
+    --bg: #080b11; --panel: #0e131b; --line: #1d2633;
+    --ink: #eef2f7; --dim: #94a0b0; --dimmer: #5f6b7c; --paint: #0052ff;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); }
+  main { max-width: 648px; margin: 0 auto; padding: 0 clamp(24px, 3vw, 40px) 96px; }
+  h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  a { color: var(--paint); }
+  p.lede { font-size: 13.5px; line-height: 1.65; color: var(--dim); margin: 0 0 26px; }
+  p.note { font-size: 13px; line-height: 1.7; color: var(--dim); margin: 0 0 20px; }
+  p.note strong { color: var(--ink); font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 28px; }
+  .back { display: inline-block; font-size: 12.5px; margin-bottom: 22px; }
+</style>
+</head>
+<body>
+<header id="siteBar" data-page="terms"></header>
+<script src="topbar.js"></script>
+<main>
+  <a class="back" href="app.html" data-carry>&larr; Back to the launch form</a>
+  <h1>What a launch fixes, and what it cannot change afterwards</h1>
+  <p class="lede">
+    Everything below is decided when the launch transaction is mined. There is no
+    function anywhere &mdash; not for the creator and not for us &mdash; that changes any of
+    it later. It is here rather than in the form because a form nobody finishes
+    reading is not a form that informs anyone.
+  </p>
+  <div class="panel">
+        <p class="note">
+          <strong>Your dev buy happens inside the launch transaction.</strong> Without it there is a
+          block between the launch and your own first trade in which anybody can be the first buyer of
+          your launch. It is paid in the <span class="qs">quote asset</span> and the tokens go to the
+          creator wallet. <strong>It is capped at 20% of the token supply</strong> (200 million tokens),
+          counted in the tokens it receives — the factory refuses a dev buy that would receive more, and the
+          launch form shows the most it can be in the paired asset at your creator tax.
+          <strong>That cap limits only the buy made inside the launch transaction.</strong> It does not
+          reserve anything for the public: the curve is open to every buyer the moment the launch exists, so
+          anyone, the creator included, can buy more in the same block, or even in the same transaction as
+          the launch, before anybody else can trade.
+          <strong>It is spent in full</strong>: below the threshold the curve never has to clamp a fill,
+          so there is nothing left over to come back.
+        </p>
+        <p class="note">
+          <strong>The creator wallet receives the creator fees and owns the locked LP position.</strong>
+          Leave it blank and it is the account you are connected with. Fill it in and it is permanent: the
+          curve&#39;s creator fee, the pool&#39;s creator share and the locked position all answer to it, and
+          there is no function anywhere that can point them at another address afterwards. <strong>An address
+          you do not control loses you all three.</strong>
+        </p>
+        <p class="note">
+          <strong>Holder sharing, once on, is permanent too.</strong> With &ldquo;Share fees with holders&rdquo; on
+          at launch, or &ldquo;Enable holder sharing&rdquo; pressed later by the creator wallet, the creator fee, the
+          pool&#39;s creator share and the locked position&#39;s LP fees go to the launch&#39;s holders instead, and
+          nothing can switch them back - not the creator and not us. Your creator share becomes 0%. What you earned
+          before stays yours. The locked position stays in the lock forever, as on every launch. Shares are time-weighted and paid about hourly; at most 2% of
+          each payout covers gas; every payout is public and waits one hour before it pays, in which the CURB
+          multisig or an independent vetoer can stop it; and unclaimed shares never expire.
+        </p>
+        <p class="note">
+          <strong>The name, image, description and links are optional, and all of them are permanent.</strong>
+          They are written into the token itself when the launch is created and there is no function to
+          change them afterwards — not for the creator and not for us. A launch made with these blank
+          stays blank. <strong>The image is stored as bytes in the token, not as a link</strong>, which is
+          why it is shrunk first: it costs calldata, and it survives without anybody&#39;s server.
+        </p>
+        <p class="note">
+          <strong>The tax is the only economic number you choose, and it is permanent.</strong> Between 1% and 5%, on
+          the <span class="qs">quote asset</span> side of every trade — the amount you spend on a buy, the gross
+          amount a sell produces.
+          <strong>The platform&#39;s share is the same at every setting</strong> — 0.5% at deployment, and whatever
+          it is when you launch is written into your launch and never changes; everything above it is yours, or
+          your holders&#39; if you share it.
+          Raising the tax raises your half and nothing else. It is written into the launch&#39;s record when the launch
+          is created and nobody — including us — can change it afterwards, on the curve or in the pool.
+        </p>
+        <p class="note">
+          <strong>Your fees wait for you to collect them.</strong> While the launch is on its curve they stay in the
+          curve until you sweep them to the escrow (or the launch graduates, which sweeps them); from the escrow you
+          claim them. In the pool, on a pair quoted in WETH every fee is kept by the pool&#39;s hook until claimed, and
+          on other pairs a fee is kept there only when it could not be paid directly. The sweep and both claims are
+          on the launch form (app.html). On a WETH pair a claim pays ether, or the wrapped token if the receiving
+          address cannot take ether.
+        </p>
+        <p class="note">
+          <strong>Leftover <span class="qs">quote asset</span> comes back to you</strong> — your connected account is
+          the refund address. It is only that asset: the launch tokens the pool could not absorb are
+          <strong>burned</strong>, not returned, and
+          that is roughly 7% of the supply rather than dust.
+        </p>
+        <p class="note">
+          Everything else is fixed by the factory and is not yours or ours to pick per launch:
+          <strong>the curve's shape</strong> (a launch starts at about $4,000 and graduates at about $55,000),
+          1,000,000,000 supply, an LP lock that never ends, and a
+          <strong>0.05% pool tier</strong>. These are <strong>decided</strong> parameters, chosen 16 September 2026
+          after measuring both tier candidates at the same trade sizes — not a demo default. The threshold is per
+          asset and read from the factory above, because the pools these assets trade in differ by more than
+          two orders of magnitude. The pool&#39;s own LP fee is
+          separate from the tax and goes to the locked position, which pays the creator: at a lower tier a trader pays
+          less LP fee, and the creator&#39;s LP fee income per trade falls by the same amount.
+        </p>
+        <p class="note">
+          <strong>What a trade costs is shown before you confirm it.</strong> The launch&#39;s tax, the 0.05% pool
+          fee once it has graduated, price impact and, when you pay or receive ETH on a pair that is not ETH, the
+          swap through other pools between ETH and the paired asset all add up. They differ by asset, by size and
+          from one moment to the next, so no single figure here would stay true. The confirmation screen shows the
+          cost of the trade actually in front of you, and gas is on top.
+        </p>
+  </div>
+</main>
+</body>
+</html>

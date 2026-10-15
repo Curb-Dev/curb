@@ -1,0 +1,1961 @@
+================================================================================
+CURB - ROADMAP
+Stock-paired launchpad and trading destination on Base
+================================================================================
+Date     : 11 September 2026
+Status   : Phase 0 ready. No code, no entity, no commitment.
+Contents : Research findings, architecture decisions, phasing, open questions.
+
+Turkish review mirror: ROADMAP_TR.txt
+Revision history: end of document.
+
+MARKING: [MEASURED] is verified from public sources (listed at the end).
+[DECISION] is a chosen direction. [OPEN] is undecided. This document states
+current decisions only - superseded claims are deleted, not annotated.
+
+
+================================================================================
+1. THESIS
+================================================================================
+
+Tokenized US equities are live on Base and doing real volume, but there is no
+consumer destination. Everything that exists is infrastructure: DEXes,
+aggregators, lending, vaults. There is no front end.
+
+We close that gap in two phases:
+
+  PHASE 1  Launchpad    - new tokens launch priced in B20 equities
+  PHASE 2  Destination  - the existing 13 B20 stocks trade in the same venue
+
+Phase 1 is the customer acquisition engine. Phase 2 is the retention and
+monetization layer. Building Phase 1 on a venue we control makes Phase 2
+possible without starting over - but not automatic and not free. Phase 2 is
+gated on Phase 1 showing repeat use and net revenue against numbers frozen in
+Phase 0.
+
+
+================================================================================
+2. MARKET STATE [MEASURED]
+================================================================================
+
+THE RAW MATERIAL ON BASE
+  - B20 standard live on Base mainnet : 8 July 2026
+  - Coinbase tokenized stocks live    : 24 August 2026
+  - First batch                       : AAPLc, NVDAc, METAc, GOOGLc
+  - Current list (13-14)              : AAPL, AMZN, COIN, CRCL, GOOGL, INTC,
+                                        META, MSFT, MSTR, NVDA, SNDK, SPCX, TSLA
+  - Structure                         : ERC-20 compatible, Rust precompiles,
+                                        backed 1:1 by real shares in regulated
+                                        custody
+  - Secondary market                  : Permissionless. No wallet whitelist,
+                                        no platform lock-in.
+  - Pricing                           : Chainlink Data Feeds, 24/5
+  - User eligibility                  : Non-US persons
+
+VOLUME
+  - Day one           : $4.55M minted, $3.06M liquidity seeded, $10.8M volume
+  - Day one NVDAc     : ~$957K in the Aerodrome pool
+  - First four days   : $124M DEX volume
+  - Debut total       : $228M
+  - 30 days           : $227.7M DEX volume (Token Terminal)
+  - Peak day          : $33M+
+  - NVDAc today       : ~$10.6M / 24h, price ~$226
+  - NVDAc share       : ~57% of total volume
+
+  >> READ: Not dead. But what looks like a 13-ticker market is in practice a
+     1.5-ticker market.
+
+META STATE (other chains)
+  - PONS (Robinhood Chain) : Launched 14 Jul. Overtook pump.fun in daily
+                             protocol revenue on 2 Sep at $1.1M/day.
+  - StonkFun (Solana)      : Launched 3 Aug. Overtook pump.fun on 6 Sep at
+                             $1.5M/day. Moved to Raydium LaunchLab 5-6 Sep.
+                             7 Sep: 1,113 launches in 12 hours (~94/hour).
+                             STONK: ~$140M market cap peak on 6 Sep -> ~$113M.
+  - pump.fun Custom Pairs  : 9 Sep, 93 tokenized-stock pairs.
+
+  >> READ: The meta is ~8 weeks old and at its peak. This is late-stage for a
+     clone. See Section 13 for how to judge whether it is actually cooling -
+     a token price falling is not the signal.
+
+
+================================================================================
+3. COMPETITION
+================================================================================
+
+ON BASE, STOCK-PAIRED
+  vvveity      "Base's first stock-paired launchpad." Doppler multicurve ->
+               Uniswap V4. Pricing against NVDA / COIN / MSTR / S&P 500.
+               Its own token trades ~$460K/24h. So: present but small.
+               The only real competitor.
+
+  Bankr        Base-native. On 28 Aug launched agent-managed concentrated
+               liquidity for tokenized stocks on Aerodrome. But runs its
+               stock-paired LAUNCHES on Robinhood Chain (20 Jul, 90+ stocks
+               and ETFs). So: holds the infrastructure side, leaves the
+               launchpad side on Base open.
+
+ON BASE, NO STOCK SUPPORT (therefore not direct competitors)
+  Clanker      Base's largest launchpad, acquired by Farcaster.
+               Quote token list: WETH, A0X, cbBTC, DEGEN, HIGHER, NATIVE,
+               ANON, CLANKER. ZERO stocks.
+               Model: single-sided Uniswap v4 pool, creator picks a 1-3% pool
+               fee, Clanker takes 20% of LP fees.
+  Flaunch      Uniswap V4, programmable revenue splits, Progressive Bid Wall
+               buyback floor. Launch fee 0.1% of market cap.
+               Default 80/20 creator/buyback.
+  Zora         Creator coins.
+
+OTHER CHAINS - WHO PROVED THE FORMAT
+  PONS         Robinhood Chain. feeBps = base trade fee, SPLIT by
+               protocolFeeShareBps between protocol / buyback / creator -
+               the protocol does NOT receive all of it. creatorTaxBps 0-300
+               is layered on top and paid to the creator in full. Section 11
+               has the actual formula; do not read feeBps as our revenue.
+               On curve completion, a permanently locked full-range Uniswap V4
+               position. Uniswap Labs took a position in the token.
+               THIS IS OUR REFERENCE IMPLEMENTATION. See Phase 0 A.
+  StonkFun     Solana. Quotes new tokens against tokenized equities.
+  Long.xyz     Born on BASE in May 2025, moved to Robinhood Chain 14 Jul 2026.
+               IMPORTANT: when it left, Base had NO tokenized stocks - they
+               arrived 24 Aug. This is not evidence against Base.
+  Flap         BNB Chain + Robinhood Chain. Extra layer: pays stock dividends
+               to token holders.
+
+
+================================================================================
+4. WHY LAUNCHPAD FIRST
+================================================================================
+
+The cold start problem.
+
+  If the trading destination opens first: nobody has a reason to move from
+  Aerodrome or 1inch for 13 existing tokens. You compete on execution quality
+  against aggregators. A losing game for a small team.
+
+  If the launchpad opens first: the new token exists only on your venue.
+  Exclusive inventory. And every launch is a marketing event - the launchpad
+  itself is the content engine that feeds the live feed.
+
+This is the pump.fun -> PumpSwap sequence: launchpad first, then your own
+venue so you stop handing graduated volume to someone else.
+
+
+================================================================================
+5. GRADUATION: WHERE DOES THE TOKEN LAND
+================================================================================
+
+When the curve completes, where does the token graduate?
+
+  OPTION A - Graduate to Aerodrome
+    We hand the volume to Aerodrome and earn nothing from it afterwards.
+
+  OPTION B - Graduate into a venue we control
+    Graduated volume lands somewhere we capture fees.
+
+[DECISION] Direction: Option B. Graduated volume should land somewhere we
+capture fees, not on a venue we do not control.
+
+[OPEN] The implementation. Three routes must be compared in Phase 0 E before
+a line of contract code is written:
+    (a) reuse existing infrastructure (Doppler, an existing hook)
+    (b) adapt or fork an existing hook
+    (c) write a custom hook
+Cost, audit surface and time differ enormously between these. Do not assume
+(c).
+
+IMPORTANT CAVEAT: owning a hook does NOT guarantee order flow. A hook earns
+fees on trades that hit THAT pool, and aggregators route to the best price.
+For a freshly graduated memecoin our pool is usually the only pool, so capture
+is real. For an established asset like NVDAc, Aerodrome already has the depth
+and owning a hook buys us nothing. This is precisely why Phase 2 is a separate
+product with its own liquidity problem, not a free extension.
+
+Ref: https://developers.uniswap.org/docs/protocols/v4/concepts/hooks
+
+[BUILT] The graduation transaction itself, whichever route (a)/(b)/(c) the hook
+question lands on. src/curb/Graduator.sol, src/curb/LaunchRegistry.sol,
+test/fork/B20Graduation.t.sol, 10 passing against the REAL vendored bonding
+curve driven to its threshold by real NVDAc buys on the pinned fork.
+
+  SCOPE. Graduation moves the token the launch ALREADY created, plus the
+  curve's reserves, into a pool. It does not create a token.
+
+  ONE TRANSACTION: reserves leave the curve -> pool opens at the curve's final
+  price -> LP position minted through the official PositionManager -> position
+  locked for the creator -> remainder refunded. Between first and last the
+  token is quotable by neither the curve nor the pool; splitting the steps
+  would give that window a length.
+
+  THE PRICE IS NOT THE RATIO OF WHAT THE CURVE HANDS OVER. This is the finding
+  that matters most in this section. The curve PRICES against
+      phantomQuote + trackedQuote - fees
+  and can only TRANSFER trackedQuote. Measured on the fork:
+      priced quote reserve   35.00000002 NVDAc
+      transferable quote      5.00000002 NVDAc      difference = phantomQuote
+      curve final price      40833333356
+      pool opening price     40833333356            exact
+      naive "ratio of what moved" price  5833333356
+  A pool seeded at the transferable ratio would have opened at ONE SEVENTH of
+  the curve's last price - an arbitrage gap handed to whoever is watching,
+  paid for by everyone who bought on the curve. The opening price is therefore
+  read from the curve's own getReserves() BEFORE graduation and the handed-over
+  amounts deposited at that price.
+    Asserted in BOTH currency orderings, launch token placed either side of
+    NVDAc by CREATE2 on purpose, and the test checks that skipping the ordering
+    step changes the answer - so it demonstrably depends on it.
+
+  AUTHORISATION - A HOLE THAT WAS REAL. For graduation to move a curve's
+  reserves the curve must authorise the graduator, and an ERC-20 allowance
+  authorises the CONTRACT, not a caller of it. An earlier version took the
+  beneficiary, refund address and lock duration as call ARGUMENTS, so a
+  stranger could aim a graduation at someone else's funded curve and lock the
+  LP position for themselves. Now every economic term comes from a write-once
+  LaunchRegistry record and graduate() takes only the token address - there is
+  nothing left for a caller to choose. The caller must also be the registry's
+  launcher, which is defence in depth and costs liveness: see the contract.
+
+  THE POOL NOBODY ELSE CAN OPEN. Refusing a pre-opened pool at the wrong price
+  stops an attacker CHOOSING our opening price but not BLOCKING us - the key is
+  taken permanently, a pool cannot be re-initialized, and the hook is part of
+  the key. So FeeHook now holds BEFORE_INITIALIZE and only the graduator may
+  open a pool carrying it. The attack stops being possible instead of becoming
+  a permanent block, and the test shows graduation completing after an attempt.
+
+  ROLLBACK, TESTED RATHER THAN ASSUMED. Atomicity is the EVM's; that the code
+  strands nothing on the way is not. Two deliberate failures at different
+  depths - a mint refused by a hostile hook, and a lock that cannot be
+  constructed - both leave the curve's reserves untouched, no NFT, no pool.
+
+  REACHED WITH PRODUCT CONTRACTS, NOT WITH vm.prank. An earlier version set up
+  its starting state by impersonating the curve's factory role in the test.
+  That made graduation testable from a state no product contract could produce.
+  src/curb/CurbLaunchFactory.sol now creates the curve, the token, the curve's
+  initialization and the permanent registry record in one real transaction, and
+  every graduation test starts from its output.
+
+  TWO DIFFERENT FAILURE KINDS, WHICH AN EARLIER VERSION CONFUSED
+    A permanently broken configuration is NOT a retryable failure: the registry
+    record cannot be rewritten, so a launch registered with terms that cannot
+    graduate would take people's money and be stuck forever. Those are now
+    refused at LAUNCH, before a single buy - a hook holding any liquidity
+    permission, an unbounded lock duration, an illegal tick spacing.
+    A TRANSIENT failure is the retryable one, and the test shows the same
+    record graduating once the condition clears, with hasGraduated confirmed
+    not to have survived the failed attempt.
+
+  [OPEN] THE SUPPLY SPLIT IS A CURVE PARAMETER, NOT A PROPERTY OF GRADUATION
+    An earlier revision reported "73.46% remainder" as if it were a fact about
+    the design. It is what 30 NVDAc of phantom against a 5 NVDAc threshold
+    produces, and those were chosen so the fork fixture would fit the NVDAc
+    balance available to it. Fixture constraints are not product economics.
+
+    MEASURED on the real curve, one real launch per row
+    (test/fork/B20Graduation.t.sol):
+
+      phantom/thr    r     price x   sold     LP    remainder  outside pool
+        30 / 5     0.857    1.36x   14.28%  12.24%   73.46%      87.74%
+        18 / 6     0.75     1.78x   25.00%  18.75%   56.24%      81.24%
+         9 / 9     0.50     4.00x   50.00%  25.00%   24.99%      74.99%
+         3 / 9     0.25    16.00x   75.00%  18.75%    6.24%      81.24%
+         1 / 9     0.10   100.00x   90.00%   9.00%    0.99%      90.99%
+
+    With r = phantom / (phantom + threshold):
+      sold = supply(1-r)   LP = supply*r(1-r)   remainder = supply*r^2
+      price multiplier across the curve = 1/r^2
+    The last column is NOT "free float": it is what sits outside the pool, and
+    only while the remainder goes to an ordinary address. The pool's own tokens
+    are purchasable - locking the LP NFT locks the POSITION, not the tokens
+    inside it.
+
+    r IS NOT A FREE CHOICE. Shrinking the remainder means widening the gap
+    between the first and last buyer on the curve: the multiplier is 1/r^2, so
+    3/9's 6% remainder costs a 16x run where 9/9's 25% remainder costs 4x.
+
+    THE THRESHOLD IS THE OTHER LEVER, AND IT IS NEARLY INDEPENDENT. The pool is
+    seeded with what buyers actually paid, so LP depth in quote terms IS the
+    threshold. Both candidates below were measured at a 9 NVDAc threshold and
+    produced IDENTICAL price impact - depth, not the split, is what a trader
+    feels.
+
+[SUPERSEDED 2026-10-03 - THE CURVE IN THE DEPLOYMENT NOW]
+  A launch opens at a market cap of about $4,000 and graduates at about
+  $55,000 (the owner's call). Each asset has its own phantom V and threshold T,
+  sized to those dollar values [DeployCurb.quoteAssets] - WETH 1.46 / 3.94,
+  NVDAc 18.1 / 49.1 - so r = V/(V+T) is about 0.27: about 73% of the supply
+  sells on the curve, about 20% opens the pool and about 7% is burned, and the
+  curve's price runs about 13.7x from the first buyer to the last. The pool's
+  quote depth is still the threshold. Dev buy capped at 20% of the supply; LP
+  locked forever and no launch fee (2026-10-04). Everything below in this
+  block is the record of the r = 0.5 shape it replaced.
+
+[CANDIDATE - DEFAULT TEST PARAMETERS, NOT A LAUNCH DECISION]
+  phantom = threshold = 60 NVDAc, i.e. r = 0.5.
+
+  Labelled DECIDED in an earlier revision. It was not: it is the candidate the
+  comparison converged on and the value the test suite now runs at. Running the
+  tests at these numbers and shipping a launch at them are different acts, and
+  only the first has happened.
+
+  WHAT IT BUYS, MEASURED, NOT ARGUED
+    supply       50% sold on the curve / 25% into the LP / 25% remainder
+    curve price  runs 4x from the first buyer to the last
+    pool depth   60 NVDAc of quote
+    trade cost   a 1 NVDAc buy costs 299 bps against the opening pool, inside
+                 the 3% target and asserted in the test suite
+
+  WHAT THE TARGET IS AND IS NOT. 3% is an OPENING-STATE EXECUTION cost target:
+  against the pool's spot price immediately before the trade, including the
+  0.30% LP fee and the 1% hook fee. It is not a price guarantee for any later
+  moment, and it excludes gas, a USDC->NVDAc conversion on the way in, and the
+  price moving while a transaction waits.
+
+  THE DEFAULT TEST FIXTURE IS NOW THESE PARAMETERS. It used to be 30/5, chosen
+  because that fitted the small NVDAc holder - which let a fixture constraint
+  masquerade as product economics in every number the suite reported. It needs
+  a larger holder, and that is the right way round.
+
+  HOW BIG DOES THE POOL HAVE TO BE - THE SAME TRADES AT DIFFERENT THRESHOLDS
+    A trade sized as a PERCENTAGE of depth costs the same percentage wherever
+    depth is set. That is why the earlier table showed two candidates with
+    identical impact and why it could not answer this question. A user does not
+    scale their order to our pool; they buy some amount. Measured, r = 0.5,
+    effective cost in bps (includes the 0.30% LP fee and the 1% hook fee):
+
+      pool depth     0.05 NVDAc      0.25 NVDAc       1.00 NVDAc
+                    buy    sell     buy    sell      buy     sell
+       2 NVDAc      383     369     1394   1223      5181    3413
+       4 NVDAc      257     251      762    708      2656    2099
+       8 NVDAc      194     190      447    427      1394    1223
+
+    Doubling depth roughly HALVES the excess over the fee floor. About 130 bps
+    of every figure is the two fees and does not fall with depth at all.
+
+    THE CLOSED FORM, WHICH THE MEASUREMENTS MATCH EXACTLY
+        cost  =  1/(0.997 x 0.99) - 1  +  T / (0.99 x depth)
+      The first term is the two fees: 131.404 bps, and it does not fall with
+      depth. Measured against the chain at 60 NVDAc depth and a 1 NVDAc trade:
+      299 bps predicted, 299 bps measured. At 28 NVDAc: 492 and 492.
+
+      SOLVED FOR DEPTH, AND THE 0.99 BELONGS IN IT:
+          depth  >=  T * 10,000 / (0.99 * (C - 131.40431395...))
+      with C the limit in bps. Dropping that 0.99 - which one summary of this
+      work did - returns 59.31 for a 3% limit instead of 59.91, and so breaks
+      the limit it is solving for. For a 1 NVDAc trade:
+          <= 3%  needs 59.9126 NVDAc        <= 5%  needs 27.4040 NVDAc
+      Scaling: T = 0.5 NVDAc at 3% needs 29.96; T = 2 NVDAc at 3% needs 119.83.
+
+      ROUNDING THOSE DOWN BREAKS THE LIMIT, and an earlier revision of this
+      document did exactly that by quoting 59 and 27. Measured: 59 NVDAc costs
+      302 bps and 27 NVDAc costs 505 bps. The test candidates are 60 and 28,
+      and both limits are ASSERTED in test/fork/B20Graduation.t.sol rather than
+      reported - together with two tests confirming 59 and 27 miss, so the
+      assertions are load-bearing.
+
+      AND THE LIMIT IS CHECKED BEFORE ROUNDING. Comparing a cost already
+      rounded to whole basis points lets anything under limit+1 bps through:
+      59.9 NVDAc of depth costs 300.0355 bps, reports as 300, and passed a
+      300 bps assertion. The check now cross-multiplies the unrounded ratio,
+      and that 59.9 case is a regression test - it must still REPORT 300 and
+      still be rejected.
+
+    WHAT "COST" COVERS, NARROWLY. Execution against the pool's spot price
+    immediately before the trade, including the 0.30% LP fee and the 1% hook
+    fee. NOT gas, NOT a USDC->NVDAc conversion on the way in, NOT the price
+    moving while the transaction waits. A user arriving with USDC pays more
+    than this and that total has not been measured.
+
+    SO THE QUESTION IS NOT "9 OR 3". It is: what is the typical trade, and what
+    cost is acceptable for it? The threshold follows from those two, and r
+    stays free to be chosen for the supply split.
+
+    AND THESE ARE TWO SEPARATE DECISIONS, NOT ONE.
+      (1) the threshold, i.e. what a typical trade may cost
+      (2) what happens to the remainder
+    Choosing (1) does not approve (2). 60 and 28 are TEST CANDIDATES; neither
+    is a chosen product parameter, and the remainder policy is still open.
+
+  WHAT THE CANDIDATE COMPARISON DID AND DID NOT SHOW
+    9/9 and 3/9 produced identical trade costs. That is narrower than "the same
+    tradeability": it was measured at the pool's OPENING state, at those sizes,
+    through a direct PoolManager call. The two leave very different amounts in
+    buyers' hands - 50% of supply against 75% - so the selling pressure that
+    can arrive afterwards is not the same, and nothing here measures that.
+
+  [APPROVED - THE REMAINDER IS BURNED]  Approved by the project owner on
+  13 September 2026. Implemented in src/curb/Graduator.sol.
+
+    WHY BURN AND NOT THE OTHER TWO. Creator vesting and protocol inventory both
+    create an address someone has to be trusted with, for a quarter of the
+    supply. Burning creates none, and the float buyers were told about is the
+    float that exists.
+
+    IT IS NOT A PARAMETER. No per-launch setting routes the remainder anywhere
+    else, so no launch can be configured wrong and nothing has to be validated
+    at registration. The QUOTE remainder - usually zero - still goes to the
+    record's refund address, because NVDAc is not ours to destroy.
+
+    THE BURN IS REAL, AND CHECKED ON totalSupply. CurbLaunchToken.burn()
+    destroys the caller's own tokens through ERC20._burn. Sending to address(0)
+    or a dead address does not reduce totalSupply and would leave every reader
+    of the supply quoting a float that does not exist.
+      The graduator checks totalSupply fell by EXACTLY the amount burned. An
+      earlier version only checked its own balance was empty afterwards - which
+      a burn() that merely transferred the tokens elsewhere satisfies just as
+      well, i.e. precisely the case the check existed to catch.
+      TESTED WITH A BURN THAT ACTUALLY MOVES THE TOKENS, by etching a
+      storage-layout-compatible implementation over the real launch token: the
+      graduator is emptied exactly as an honest burn would empty it, and only
+      totalSupply separates the two. Verified load-bearing by deleting the
+      supply check and watching that test fail.
+      A first attempt mocked burn() into a no-op, which does NOT express this
+      adversary - the graduator is left holding the tokens, so the old
+      balance-only check caught it by accident and the test proved nothing. It
+      is kept as a second, weaker case, and it still passes with the supply
+      check removed.
+
+    MEASURED at the candidate parameters:
+      supply at launch                1,000,000,000
+      sold on the curve to buyers       500,000,000   50.00%
+      into the LP position              250,000,000   25.00%
+      BURNED                            250,000,000   25.00%
+      supply after the burn             750,000,000   75.00% of launch supply
+        held by buyers                                66.66% of what remains
+        in the pool                                   33.33% of what remains
+
+    AND IT UNWINDS. The burn is ordered LAST, after the quote refund. An
+    earlier version burned first and the claim "nothing internal can fail after
+    the burn" was then simply false - the refund was right there. Reordering
+    makes the claim structural rather than an argument about which remaining
+    step can revert.
+      So a failure after the burn has to come from outside the call: a batch, a
+      multicall, any caller that throws later.
+      test_aFailureAfterTheBurnUnwindsTheBurn runs a complete graduation and
+      then reverts, and the harness reports the supply either side of the burn
+      in a custom error the test matches in full - an earlier version only
+      asserted the outer call failed, which a graduation that reverted long
+      before the burn would have satisfied while proving nothing. Everything
+      comes back: totalSupply, the curve's allocation, the reserves, the closed
+      flag, the NFT, hasGraduated. The same launch graduates afterwards.
+
+    WHAT BURNING IS NOT. A supply change, not a price guarantee and not a
+    "clean chart". The pool's own tokens stay purchasable - locking the LP
+    position does not lock them out of the market.
+
+
+================================================================================
+6. CONTRACT ARCHITECTURE (draft)
+================================================================================
+
+6.1  LAYERING - what is in the critical path and what is not
+--------------------------------------------------------------------------
+This separation is load-bearing. It keeps oracle and router failures out of
+the core.
+
+  CORE - deterministic, no oracle, no swap
+    BondingCurve and graduation operate in RAW B20 UNITS only.
+    Per the PONS V2 design, the curve collects the quote asset of the pool it
+    will graduate into from the start, so graduation requires neither a swap
+    nor a price feed. VERIFY THIS AGAINST THE V2 SOURCE in Phase 0 A before
+    depending on it.
+
+  EDGE - convenience, outside the critical path
+    QuoteRouter converts USDC/ETH in and out for users who do not already
+    hold the B20 asset. If the router is unavailable, a user who already holds
+    NVDAc can still trade directly against the curve.
+
+  DISPLAY AND GUARDS - not consensus-critical
+    PriceAdapter provides USD display and defined trade protections.
+
+6.2  COMPONENTS
+--------------------------------------------------------------------------
+  LaunchFactory      CREATE2, deterministic addresses. Freezes launch
+                     parameters (quote asset, curve shape, fees, graduation
+                     threshold). Immutable per launch.
+
+  BondingCurve       Quote = a B20 equity token. Raw-unit accounting.
+                     Full supply on the curve until the graduation threshold.
+
+  Graduation         Into the venue chosen in Phase 0 E. Opens the position,
+                     locks LP, enforces fee policy.
+
+  QuoteRouter        Edge layer. USDC/ETH <-> B20 with a depth guard. See 7.1.
+
+  FeeRouter          Protocol/creator split. One-way, no generic call.
+
+  PriceAdapter       Chainlink feed + DEX TWAP. Display and guards. See 7.2.
+
+6.3  SECURITY REVIEW SCOPE
+--------------------------------------------------------------------------
+  - Curve accounting: rounding, precision, raw-unit handling
+  - Graduation: the transition itself, AND failed graduation
+  - The venue integration: fee logic, LP lock, upgrade and authority surface
+  - Fee distribution
+  - QuoteRouter and its depth guard
+  - Mass-sell / bank-run scenarios against both the curve and the graduated pool
+  - B20 transfer restrictions - see the honest requirement below
+
+  B20 TRANSFER RESTRICTIONS - what we can and cannot promise
+    isAuthorized() and allow/blocklist capability exist in the standard, and
+    the issuer can pause or restrict transfers.
+
+    WE CANNOT GUARANTEE AN EXIT IN ALL CASES. If the issuer blocks the pool's
+    B20 transfers, no contract of ours routes around that. Saying otherwise
+    in the product or its marketing would be a promise we cannot keep.
+
+    The honest requirement is:
+      (a) a failed transfer must not corrupt accounting
+      (b) retryable states must be supported
+      (c) issuer-caused blockage must be surfaced explicitly to the user
+
+  Ref: https://developers.uniswap.org/docs/protocols/v4/security
+  Ref: https://docs.base.org/build-on-base/integrate-defi/list-tokenized-stocks
+
+6.4  GRADUATION FAILURE - designed in, not bolted on
+--------------------------------------------------------------------------
+Graduation is the one moment where funds move between two systems. Its
+failure path is a v1 requirement, not error handling to be added after
+something goes wrong in production.
+
+  [x] Pool creation must be RETRYABLE. Tested at three depths in
+      test/fork/B20Graduation.t.sol: a transient failure before anything moves
+      (the curve not yet at its threshold), an injected mint failure after the
+      reserves have left the curve AND the pool has been initialized, and a
+      revert from outside the call after the burn. In each case everything
+      unwinds - reserves, the curve's closed flag, the pool, the NFT, the
+      hasGraduated flag, the burn - and the SAME launch, on the same
+      never-rewritten record, graduates afterwards.
+      A PERMANENTLY broken configuration is a different thing and is refused at
+      LAUNCH instead, before anyone can buy: there is no retry that fixes a
+      record that cannot work, because the record cannot be rewritten.
+  [x] SINGLE-SHOT PER LAUNCH, PROTECTED AGAINST DUPLICATE CREATION. Called
+      "idempotent" in an earlier revision, which it is not: a second call
+      REVERTS rather than returning the first result. hasGraduated refuses it;
+      a pool already open at OUR price is accepted rather than duplicated, and
+      one at any other price is refused; and the hook's beforeInitialize means
+      nobody but the graduator can open the pool at all, so the racing case
+      cannot start.
+  [x] Where the funds sit is explicit at every step OF THE GRADUATION CALL,
+      which is one transaction: the test asserts every unit that left the curve
+      is in the PoolManager, refunded, or destroyed, with the graduator, the
+      curve and the creator holding none of it.
+      THAT IS NOT THE SAME AS "there is no transition", which an earlier
+      revision claimed. See the state list below: the launch itself can sit
+      between "ready" and "graduated".
+  [ ] What the user can and cannot do mid-transition must be defined and
+      shown: can they still sell on the curve, is the position frozen, for
+      how long.
+  [~] A graduation that cannot complete - for example an issuer-side B20
+      restriction per 6.3 - must surface the reason rather than stall silently.
+      TESTED AGAINST INJECTED FAILURES ONLY. No B20 issuer restriction was
+      triggered on chain: we have no restricted address, so the live behaviour
+      - its selector, whether it reverts at all rather than returning false -
+      is UNKNOWN and none of this may be read as "B20 restrictions behave like
+      this".
+      What the injected tests establish about OUR side:
+        - a REFUSED quote transfer takes the whole attempt down. Reserves,
+          the curve's flag, the NFT and the supply are all untouched, the
+          launch stays in the waiting state, and once the refusal lifts ANY
+          caller completes the same launch on the same record.
+        - a transfer that returns FALSE is refused by the curve's SafeERC20,
+          with SafeERC20FailedOperation(NVDAc). Its own test: an earlier note
+          claimed the next case covered this, and it did not - that one returns
+          TRUE, which is a different path with a different guard.
+        - a transfer that returns true and moves NOTHING is caught by the
+          graduator measuring what arrived rather than trusting the curve's
+          return value. SafeERC20 cannot see this: the call succeeded.
+          It is NOT true that only the measurement catches this, as an earlier
+          revision said - the zero-reserve check a line later refuses it too.
+          The measurement's contribution here is naming the asset and the
+          shortfall instead of a bare ZeroReserves.
+        - a transfer that delivers HALF is the case ONLY that measurement
+          catches, and the one that matters most. Total non-delivery is refused
+          anyway by the zero-reserve check a line later; a short delivery is
+          not. MEASURED BOTH WAYS on a double that is honest in every other
+          respect, real burn included, so a graduation can actually run to
+          completion on a short reserve:
+            with the check     ReservesDidNotArrive(token, 500,000,000,
+                               250,000,000)
+            without the check  graduation COMPLETES and the curve closes.
+
+          THE LP FIGURE IS NOT THE TELL, and an earlier revision reported it as
+          if it were. Against a healthy run at the same parameters the pool
+          receives about the same either way, because the quote side binds:
+
+                                healthy        short delivery, no check
+            into the LP         250,000,000    249,999,999
+            burned              249,999,999    ~0
+            stranded in curve   0              250,000,000
+
+          A quarter of the supply sits in a curve that has closed and reported
+          success, and nothing can move it.
+          A first version of that double halved every transfer and had no
+          burn(), so removing the check merely moved the failure to the burn -
+          which proved something went wrong, not that the check was what
+          stopped a bad graduation completing.
+          Shown on the launch token, where such a double can be etched; the
+          same shape on the B20 quote asset is reasoned, not measured, because
+          it is a precompile.
+      [ ] Obtain or construct a genuinely restricted B20 address and record
+          what the live rejection actually looks like.
+
+  [x] THE STATES BETWEEN READY AND GRADUATED, tested in
+      test/fork/B20Graduation.t.sol.
+
+      NORMALLY THERE IS NO GAP. PonsV2BondingCurve calls factory.graduate() the
+      instant a buy exhausts the allocation, so the crossing trade carries the
+      migration: the pool opens, the position is minted and locked and the
+      remainder burned, all inside that buy.
+
+      THE GAP IS REAL WHEN THE AUTOMATIC ATTEMPT FAILS. The crossing buyer sets
+      their own gas limit and can leave it too little under the 63/64 rule; the
+      curve catches the failure, emits AutoGraduationFailed and lets the buy
+      stand. The event carries no reason - the catch takes no data - so the
+      event and the receipt say an attempt failed and nothing more. A trace is
+      where a reason would have to come from. The launch is then READY BUT NOT
+      GRADUATED, and in that state BOTH sides of the curve are shut - sell()
+      reverts once readyToGraduate() is true, and there is no allocation left
+      to buy. A holder can reach neither the curve nor a pool that does not
+      exist yet.
+
+      WHICH IS WHY GRADUATION IS PERMISSIONLESS. An earlier version restricted
+      it to the registry's launcher. That bought nothing the write-once record
+      did not already provide - graduate() takes only the token, so no caller
+      can redirect anything - and it broke the curve's own design: its call was
+      refused, and the party who most needs the state unstuck is a holder, not
+      an operator. Tested: a stranger can end the wait, and the position still
+      locks for the registered creator.
+
+      THREE STATES, AND ONE EVENT THAT IS NOT A STATE.
+        selling      readyToGraduate() false, graduated() false
+        waiting      readyToGraduate() true,  graduated() false  <- name this
+        graduated    graduated() true, hasGraduated[token] true
+
+        AutoGraduationFailed is an EVENT, not a fourth state. An earlier
+        revision listed it as one. A launch that graduated perfectly well on a
+        later attempt still carries that event in its history, so an interface
+        reading the log to decide what to show would report a healthy launch as
+        failed. Current state comes from the two booleans; the event only says
+        an attempt once failed.
+
+      [x] The interface must read the state from those booleans, show the
+          waiting one, and offer the button that ends it.
+          src/curb/LaunchLens.sol returns all three in one call, derived - it
+          stores no status of its own, because a second copy is a second thing
+          that can be wrong. web/launch.html reads it and offers the button.
+          EXERCISED AGAINST THE FORK, through the page: Selling with the
+          progress bar moving 0% -> 32.00% on a real buy; Waiting, with the
+          button shown and disabled while no wallet is connected; Graduated
+          after an UNRELATED account completed the move, with the supply down
+          to 750,000,000 and the pool key to route to.
+          THE WALLET PATH WAS THEN RUN, with a stubbed provider against the
+          real fork - chain reads genuine, wallet interaction simulated. Each
+          of these was exercised rather than read: a user rejection sends
+          nothing and re-enables the button; a receipt that never arrives keeps
+          the hash and is NOT called a failure; a network switch mid-flight
+          names itself; a form changed mid-flight still reports the result for
+          the token the transaction was SENT for; and a launch someone else
+          finished first is detected BEFORE sending, so no gas is spent on a
+          move that already happened.
+          AND IT IS NOW A GATE, not a thing someone has to remember to open.
+          `cd web/e2e && npm test` prepares its own Waiting launch, drives the
+          real launch.html in a real browser, runs the eighteen in-page
+          scenarios as part of the same command, and exits non-zero if any of
+          it fails. The preparation proves the node is the pinned fork from its
+          own anvil_metadata - origin chain, fork block and fork block hash -
+          before deploying anything onto it, and it proves it about THE NODE IT
+          DEPLOYS TO: the first version checked whatever env.sh named while the
+          deployment went to an overridable RPC, so one node could be verified
+          and another used. script/b20/selftest-fork-gate.sh starts a second
+          node on a different fork block and fails if that ever happens again.
+          Each rejection is checked for its REASON - the fork-point line naming
+          both blocks - because "not the pinned fork" is also what an
+          unreachable node produces, so the weaker check passed when the node
+          under test had merely gone away. It also checks that the rejected
+          node's height does not move, which shows no transaction of ours was
+          INCLUDED; "no send was attempted" would need a record of the RPC calls
+          made, and nothing there keeps one.
+          It also covers what the in-page suite structurally cannot: that
+          launch.html wires its own script at all, a wallet already permitted
+          on the site being recognised with no click (and one that is NOT
+          permitted not being), an actual reload, and two real tabs sharing one
+          origin's storage and Web Locks.
+          Mutation-tested six ways - a <script src> at a missing file, both
+          cross-tab guards disabled, the lens dropped from record scoring,
+          init() not reading eth_accounts, init() asking permission on every
+          load, and the fork pin moved elsewhere - each failing the run with
+          exit 1, and each failing only the test that describes it. See
+          web/README.txt.
+          AND THE WHOLE FLOW IS NOW A PAGE: web/app.html. Create a launch,
+          trade the curve, cross the threshold, complete the move, trade the
+          pool through the official UniversalRouter, and read the LP lock and
+          the burn. web/e2e/app.spec.js drives all of it with transactions that
+          are actually mined - the wallet stub forwards them to the node, which
+          signs - and asserts the balance delta equals the QUOTED amount to the
+          wei on every trade, on the curve and in the pool.
+          WHAT THAT TURNED UP, all open:
+            [ ] launch() is owner-only, so "connect a wallet and create a
+                launch" is true for exactly one address. The demo works because
+                the deployment makes the demo account that owner.
+            [ ] the curve has no preview function, so every interface has to
+                reimplement its pricing and keep it in step by hand
+            [ ] the Graduator stores neither the lock address nor the burned
+                amount - both only in events, and public endpoints cap
+                eth_getLogs at 2,000 blocks
+            [ ] script/DeployCurb.s.sol makes the deployer the fee hook's fee
+                recipient, so a trade from that account cannot be told apart
+                from the fee it collects
+          AND FOUR THINGS THE PAGE ITSELF GOT WRONG, found by reading it and
+          since fixed: it never compared the wallet's chain with the RPC's, it
+          recorded nothing so a reload lost the hash, a cleared amount field
+          left a live amount on the button, and the last buy - the one that
+          takes the rest of the allocation - was previewed with the fees charged
+          against the whole offer rather than against what is actually spent and
+          refunded. The send-path protections now live in web/tx-core.js, shared
+          with launch.html rather than copied. See web/README.txt.
+          [ ] NOT exercised: a REAL wallet. The stub stands in for the confirm
+              dialog, the signing and the broadcast, so gas estimation,
+              replacement transactions and a real wallet's error shapes are
+              untested. This flow is the place to try one.
+      [x] Whether enough gas survives the 63/64 rule for the curve's catch to
+          run. MEASURED - and the EVENT ITSELF is the measurement: it was
+          emitted, so the catch executed. By a real failed attempt rather than
+          injection, with nothing mocked: a crossing buy sent with a 900,000
+          gas limit - while graduate() sent on its own cost about 1,470,000,
+          which is a different call context and not a measurement of what the
+          nested attempt needed - left the buy standing and emitted
+          AutoGraduationFailed carrying 29,483. That number is gasleft() read
+          INSIDE the catch, after the call returned: not the gas the attempt
+          was given, and not a reason. The reason is in neither the event nor
+          the receipt; a trace could still be asked, and none was taken. One
+          data point at one limit, not a proof for all of them.
+
+A failed graduation is also an automatic halt condition in Phase 1C.
+
+
+================================================================================
+7. THREE REAL B20-SPECIFIC PROBLEMS
+================================================================================
+
+7.1  QUOTE-ASSET LIQUIDITY  -- the hard scaling ceiling
+--------------------------------------------------------------------------
+     The user arrives with USDC; the curve wants NVDAc. Every buy through the
+     router is two hops. About $3M of liquidity was seeded across all pairs at
+     launch. NVDAc turns over $10.6M/day, but that is VOLUME, not depth.
+
+     Risk: one popular launch routes $500K through USDC->NVDAc and moves the
+     STOCK TOKEN ITSELF. NVDAc drifts off real NVDA. That is both an arbitrage
+     opportunity and a reputational bomb. Our scaling limit is the quote
+     asset's depth, not our curve.
+
+     TWO SEPARATE GUARDS - do not merge these under "slippage guard"
+     They protect against different things and fail in different conditions.
+
+       1. EXECUTION GUARD (minimum output)
+          Protects the user against the trade filling worse than quoted.
+          Needs no external price: minimum received + deadline, checked
+          against the actual fill. Works on weekends and with no oracle.
+
+       2. REFERENCE-DEVIATION GUARD
+          Protects against the B20 token itself being pushed off the real
+          stock. Needs a verifiable reference price. This is the one that
+          depends on the oracle, and the one that closes per 7.2 A.
+
+     APPROACH - v1 keeps this simple:
+       - Reference-deviation guard: if a buy would move NVDAc more than X bps
+         off reference, REJECT it. No splitting, no time-slicing in v1.
+       - Execution guard: always show minimum received, deadline and total
+         cost before signing
+       - Explicit warning on large buys - never silent slippage
+       - MEASURE IN PHASE 0 B, both directions
+
+     DEFERRED past v1: splitting or time-slicing large orders, multi-venue
+     routing across Aerodrome + Uniswap + 1inch. Rejecting an oversized order
+     is an acceptable v1 behaviour; silently executing it is not.
+
+7.2  WEEKENDS, AFTER HOURS, AND ORACLE DEGRADATION
+--------------------------------------------------------------------------
+     Chainlink feeds run 24/5. They hold the last close through weekends and
+     holidays, and freeze during corporate actions. Updates on 0.5% deviation
+     or a 24h heartbeat. But the pool trades 24/7.
+
+     On Saturday, which "NVDA price" do you show the user?
+       Show Chainlink  -> you are lying, the market moved
+       Show the DEX    -> honest, but it diverges from the "stock price" they expect
+
+     As far as we can see nobody has solved this - a judgement from the
+     venues we surveyed, not a verified fact. The problem itself is
+     structural and Base-specific. Get it right and it is differentiation.
+     Ignore it and you lose trust the first weekend.
+
+     UI APPROACH:
+       - Show both prices, labelled: "Last close" / "Onchain now"
+       - Show the basis between them openly. Do not hide it.
+       - Keep the after-hours state visible at all times
+
+     DEGRADATION - define per layer, never globally
+     "Halt trading" is too blunt. Each layer behaves differently:
+
+     Two different failures get confused constantly. Keep them apart:
+     an ORACLE stall is a price event; a B20 TRANSFER restriction is a token
+     event. They have different blast radii.
+
+     A. ORACLE STALL - stale feed, weekend, or a corporate action
+        Chainlink stops updating the feed during a corporate action. That is
+        a stale-price condition, not a token restriction, and it is handled
+        exactly like any other stale feed.
+
+       Price display      Show the last value with an explicit staleness
+                          label and timestamp. Never present a stale price
+                          as live.
+       QuoteRouter        Needs a price reference for its slippage guard.
+                          In v1, if a fresh reference cannot be verified:
+                          CLOSE the router path. Do NOT widen the guard and
+                          ask the user to confirm - consent is not a
+                          substitute for a technical control. Closing an edge
+                          layer does not stop the core.
+       Direct B20 trades  A user holding NVDAc trading against the curve in
+                          raw units needs NO oracle. This path stays open.
+
+        PRODUCT CONSEQUENCE - face this, do not bury it. If the only
+        reference is Chainlink, and Chainlink not updating at the weekend is
+        normal and expected behaviour, then the USDC in/out path CLOSES
+        EVERY WEEKEND. Direct B20 trading staying open does not solve this
+        for a user who arrived with USDC and holds no NVDAc.
+
+        [OPEN] PHASE 0 EXIT ITEM - two questions, one answer:
+          (a) What verifiable price source does the reference-deviation
+              guard use at the weekend? A DEX TWAP across venues? A widened
+              band anchored to the last close? Nothing at all?
+          (b) If no acceptable source exists, what exactly is offered to a
+              USDC user on a Saturday - a clear "conversion paused until
+              Monday", or a path with a different guard?
+        Whatever the answer, the weekend behaviour must be a designed state
+        with its own screen, not an error the user discovers.
+
+     B. B20 TRANSFER RESTRICTION - a token-level event, far wider blast radius
+        The issuer can pause or restrict transfers. This reaches the CORE -
+        curve and graduation included - because no path can move the asset.
+        Our contracts cannot override it.
+
+       All layers         Surface the reason, mark the affected market, halt
+                          new launches on that asset (Phase 1C), and never
+                          claim an exit. See 6.3.
+
+7.3  JURISDICTION
+--------------------------------------------------------------------------
+     Coinbase's tokenized stocks are for NON-US persons, and every other
+     tokenized-equity issuer restricts the same way.
+
+     Founder decision (11 Sep 2026): no geographic blocking. See Section 12,
+     "DECIDED - GEOGRAPHIC ACCESS", for what that changes and what still
+     applies regardless (sanctions screening).
+
+     The live question is therefore not "where do we block" but "where are we
+     incorporated." That decision now gates the rest and is the first question
+     for counsel. This document does not substitute for legal advice.
+
+
+================================================================================
+8. THE MULTIPLIER IS NOT THE PROBLEM IT LOOKS LIKE
+================================================================================
+
+B20 handles corporate actions through an onchain multiplier (ERC-8056
+uiMultiplier): the raw balance stays fixed and the multiplier adjusts the
+shares-per-token ratio. Total-return logic.
+
+  4:1 split  -> multiplier goes to 4x, per-share price falls to 1/4
+             -> TOKEN PRICE STAYS CONTINUOUS
+  Dividend   -> multiplier rises, token price stays continuous
+
+So AMM math and curve accounting DO NOT break. Base designed it this way
+("positions already deployed in DeFi do not break").
+
+The remaining issues are DISPLAY and one arithmetic trap:
+  - NEVER write "1 NVDAc = 1 NVDA share" in the UI. It is a total-return wrapper.
+  - Transfers emit both raw and UI-adjusted values (TransferWithScaledUI)
+  - Keep raw-unit accounting in the core; the multiplier is a display concern
+
+WHEN TO APPLY THE MULTIPLIER - three cases, and the middle one is the trap
+
+  1. Computing a token price from a RAW SHARE price  -> APPLY the multiplier
+  2. Using the Coinbase B20 Chainlink feed           -> DO NOT APPLY IT
+     That feed already reports the multiplier-adjusted token price.
+     Multiplying it again produces a wrong number that looks plausible.
+  3. Computing represented SHARES from a token balance -> APPLY it
+
+"Apply the multiplier in the display layer" is not a sufficient rule on its
+own, because case 2 lives in the display layer too. Write the source of each
+price into the code and pick the rule from the source, not from the layer.
+
+MEASURED (11 Sep 2026, NVDAc on Base mainnet):
+    multiplier()    -> 1000000000000000000   (1e18, currently 1.0)
+    uiMultiplier()  -> reverts, 0xa60bf13d
+
+The accessor is multiplier(). uiMultiplier() IS declared in the current
+base-std IB20Asset interface but the live network does not answer it - a
+source-version vs deployed-version mismatch. Use multiplier(), and pin which
+interface version matches the deployment before depending on either.
+
+The total-return logic above is unaffected; only the function name was wrong.
+
+Small distinction, but it matters legally.
+
+
+================================================================================
+9. UX AND DISTRIBUTION
+================================================================================
+
+In this category the contracts are the smaller half of the work and the
+audience is the larger half. Evidence:
+  - PONS was made by Uniswap Labs taking a position
+  - StonkFun jumped 250% on a Raydium LaunchLab integration
+Neither was a technical move.
+
+BASE'S WEAPON THAT SOLANA DOES NOT HAVE
+  onramp + embedded wallet + Base App / Farcaster miniapp
+
+  A user can go from the money on their card to holding an NVDA-paired token
+  in ONE FLOW, never seeing a seed phrase. That is what we will build on Base.
+
+  NOT a claim that other chains cannot do this. Coinbase Onramp supports
+  Solana as well as Base, so the infrastructure is not exclusive to us. The
+  claim is only that nobody has assembled this flow for stock-paired tokens,
+  and that we will.
+
+  This is an amplifier on top of the core position, not the position itself.
+  See Phase 1 for what that means for v1 scope.
+
+WHAT TO TAKE FROM STONKFUN / PUMP.FUN UX
+  - Zero-friction launch (seconds, flat fee, no configuration)
+  - A live feed of everything (social proof + FOMO)
+  - Bonding curve visual - you can see where you are
+  - One-click buy, no slippage dialog
+  - Per-token chat
+  - Mobile first
+
+BUILD CONCENTRATION INTO THE DESIGN
+  NVDAc is 57% of volume. A UI showing 13 equal tiles lies and looks empty.
+  Launch v1 with THREE NAMES TOTAL: NVDA plus two others. Three live markets
+  beat thirteen empty ones.
+
+
+================================================================================
+10. PHASING
+================================================================================
+
+Order: teardown -> choose economics and infrastructure -> narrow MVP ->
+limited launch -> measure -> expand. Distribution runs in parallel throughout,
+not at the end.
+
+PHASE 0 - TEARDOWN AND VALIDATION  (2-3 weeks, no product code)
+
+  A. PONS TEARDOWN - the reference implementation
+     CURB is our own product. PONS is a technical REFERENCE, not a base we
+     have committed to forking - that decision is made file by file in
+     REUSE_ANALYSIS.txt. Either way: read the source, do not infer it.
+     Source is public: github.com/ponsdotdev/ponsfamily (official repo).
+
+     VERSION DISCIPLINE - this is a real trap. V1 and V2 use different
+     mechanics, and our design matches V2. The root abi.json and
+     contract-meta.json in that repo belong to V1; using them by mistake
+     integrates us against the wrong protocol.
+     [x] Reference clone: reference/ponsfamily
+         commit debbc21fb27761245356fe9b61a9276437147a1c
+         dated 2026-09-10 20:57:59 +0200 ("Update staking_v1.md")
+         This is repo HEAD, NOT a verified deployment match - see below.
+     [ ] Record the corresponding deployment addresses
+     [ ] Verify and record the source <-> deployment match. HEAD is a
+         convenience pin, not evidence. Until bytecode is compared against
+         the live deployment, every source reading here is "what the repo
+         says today", not "what is running."
+     [ ] Check licences FILE BY FILE - the repo states its own contracts'
+         licences separately from its dependencies, and adaptation scope
+         depends on which is which
+
+     *** RESOLVED - THE SUSPECTED BLOCKER DOES NOT EXIST ***
+     Measured against Base mainnet with cast on 11 Sep 2026. Revisions 5-9
+     of this document recorded a "confirmed blocker" here. That was WRONG,
+     and how it was wrong matters more than the finding itself.
+
+     THE CLAIM WAS: PonsV2LaunchFactory.setPairTokenApproved() contains
+         if (pairToken.code.length == 0) revert PairTokenValidationFailed();
+     and Base's docs say precompiles "hold no bytecode", therefore B20
+     tokens would be rejected.
+
+     THE CHAIN SAYS OTHERWISE:
+         cast codesize, Base mainnet
+           NVDAc  0xb20000000000000000000078ee7ce2fE4908108C   1   0xef
+           AAPLc  0xb200000000000000000000C2e324d24d7eEcd1fb   1   0xef
+           METAc  0xb2000000000000000000008bC8786B856E61707C   1   0xef
+           GOOGLc 0xb2000000000000000000002D0BA3164cc74f58B7   1   0xef
+           WETH   0x4200000000000000000000000000000000000006   2041 (contrast)
+           EOA    0x000000000000000000000000000000000000dEaD   0    (contrast)
+
+     On the FOUR addresses measured, code.length is 1, not 0 - so the PONS
+     check does not revert on those. Not generalised to "every B20 address":
+     four were measured, the rest were not.
+
+     What can be said: the docs' "no bytecode" wording cannot be taken to
+     mean extcodesize returns zero, because on these addresses it does not.
+     WHY the one-byte 0xef marker is there, and what the docs intended by
+     that sentence, are not established - 0xef is the EIP-3541 reserved EOF
+     prefix, but any account of Base's motive would be a guess. The
+     measurement is the finding; the explanation is not.
+
+     HOW THE ERROR HAPPENED - keep this, it is the useful part.
+     The claim was about CHAIN STATE, and it was "verified" by fetching a
+     second document. Reading more prose is not verification. One cast call
+     settled it in seconds. Any future claim about what an address does gets
+     checked against the chain before it enters this document.
+
+     STILL REAL WORK - a checklist now, not a blocker
+     B20 is still not an ordinary contract. Measured so far:
+       [x] code.length          1 (0xef) - the PONS check passes
+       [x] name / symbol / decimals   "NVIDIA Corporation" / "NVDAc" / 8
+       [x] totalSupply, balanceOf, allowance   all read correctly
+       [x] transfer() from an unfunded account reverts with 0xdb42144d,
+           which matches cast sig "InsufficientBalance(address,uint256,uint256)"
+           exactly. So the failure path is implemented and correct.
+           THIS IS NOT EVIDENCE THAT A FUNDED TRANSFER WORKS. A correct
+           rejection proves rejection, nothing more.
+     Still to verify:
+       [x] transfer / transferFrom / approve on FUNDED accounts, asserted on
+           resulting balances and allowance - not on "it did not revert".
+           Throughout the fork suite: script/b20/transfer-b20.sh asserts both
+           balance deltas, and every fork test funds accounts by real transfer
+           and asserts what arrived.
+       [x] Permit2 flow against a B20 asset. The real two-step flow - token
+           approves Permit2, Permit2 approves the spender - for swaps
+           (B20UniversalRouter.t.sol) and for liquidity
+           (B20PositionManager.t.sol). Nothing impersonated, no approval
+           shortcut.
+       [x] OpenZeppelin SafeERC20 behaviour. test/fork/B20SafeERC20.t.sol,
+           12 tests against live NVDAc:
+             - safeTransfer / safeTransferFrom / forceApprove /
+               safeIncreaseAllowance / safeDecreaseAllowance all move the
+               EXACT amounts and set the EXACT allowances
+             - the three mutating calls the test exercises - transfer,
+               approve, transferFrom - each return one full word of `true`, so
+               the library's no-return-data fallback is never reached on any of
+               them. If it ever were, codesize 1 passes its extcodesize check
+               anyway. Nothing is claimed about entry points not called there
+             - forceApprove overwrites a non-zero allowance in ONE call: the
+               USDT reset-to-zero problem does not apply to B20
+             - A FAILED MOVEMENT REVERTS WITH B20's OWN ERROR, AND SafeERC20
+               BUBBLES IT UNCHANGED. Captured byte for byte:
+                 InsufficientBalance(account,balance,needed)   0xdb42144d
+                 InsufficientAllowance(spender,allowance,needed) 0x192b9e4e
+                 InvalidReceiver(receiver)                     0x9cfea583
+               These are NOT OpenZeppelin's errors (OZ's
+               ERC20InsufficientBalance is 0xe450d38c), and
+               SafeERC20FailedOperation is NOT what a caller sees. Code that
+               catches it to detect a failed NVDAc movement will never fire.
+             - trySafeTransfer returns false where the token REVERTS, rather
+               than only where it returns false
+           Mutation-tested: a wrapper that swallows the token's revert instead
+           of bubbling it fails exactly the two tests that assert bubbling.
+
+           A TOOL FINDING THAT COST AN HOUR, RECORDED SO IT IS NOT REDISCOVERED.
+           vm.expectRevert cannot assert a revert that a wrapper inspects WHEN
+           THE WRAPPER IS INLINED INTO THE TEST. The cheatcode hooks the call
+           one frame below the test; SafeERC20's functions are internal, so a
+           direct nvdac.safeTransfer(...) is inlined and that call IS the token
+           call the wrapper is about to inspect. Hooked there, the wrapper
+           produced SafeERC20FailedOperation - which the unhooked code never
+           produces - and three tests "proved" the opposite of the truth.
+
+           IT IS NOT A BLANKET RULE. Across an external boundary the hooked
+           call is the helper and the token call is a frame deeper, untouched;
+           expectRevert then matches the error SafeERC20 bubbled.
+           test_expectRevertMatchesAcrossAnExternalBoundary pins that, so the
+           scope of the rule is tested rather than asserted.
+
+           Capturing the revert data from a real call and comparing it byte for
+           byte is still what the failure tests do, because that pins the
+           arguments as well as the selector - which expectRevert with a bare
+           selector does not.
+       [ ] Address.functionCall behaviour (not yet exercised: nothing in the
+           stack routes a B20 call through it)
+       [x] THE MULTIPLIER ACCESSOR IS multiplier(), NOT uiMultiplier().
+           Measured on NVDAc, Base mainnet:
+             multiplier()    -> 1000000000000000000  (1e18, i.e. 1.0)
+             uiMultiplier()  -> reverts, 0xa60bf13d
+           uiMultiplier() IS declared in the current base-std IB20Asset
+           interface, but the live network does not answer it. That is a
+           source-version / deployed-version mismatch and it must be pinned:
+       [ ] Pin which base-std interface version matches the deployed B20,
+           and use multiplier() until proven otherwise
+       [ ] Any other dependency asserting the quote asset is a normal contract
+
+     IF a validation problem does turn up elsewhere: do not delete the check
+     for all addresses. Design a validation path appropriate to precompiles -
+     an explicit allowlist of official B20 addresses verified out of band, or
+     a positive capability probe - rather than a blanket removal.
+
+     TESTING RULE - what a passing test does and does not prove.
+
+     Mock-mode tests are genuinely valuable. Curve maths, fee distribution
+     and error paths are all properly exercised against Solidity mocks, and
+     that work counts. Keep running them and do not gate them behind this.
+
+     What they cannot prove is native B20 behaviour. The Solidity mock and
+     the Rust precompile are different implementations, and the mock can
+     hide a divergence between them. Note the mock also differs in code
+     size, so any test that reasons about extcodesize must run live.
+
+     How base-std actually chooses the mode (verified against current source):
+       - setUp() runs _detectLivePrecompiles() FIRST - a STATICCALL to
+         ActivationRegistry.admin(). A live precompile returns a 32-byte
+         address; stock forge returns zero-length returndata.
+       - If live precompiles are detected it returns BEFORE any vm.etch.
+         Nothing is overwritten.
+       - Only in reference mode does it etch the mocks at their addresses.
+       - LIVE_PRECOMPILES=true forces live mode and bypasses detection. It
+         is an escape hatch for when auto-detection fails, not the only path.
+
+     THE FLAG ALONE IS NOT ENOUGH. Base's own guide is explicit that it "does
+     NOT deploy precompiles - it only signals the test suite to expect them."
+     The precompiles must already exist in the EVM: base-forge hosting them
+     in-process (needs base-anvil, a patched foundry with --base), or a node
+     RUNNING base-anvil --base with the required features activated.
+     Install is a prebuilt-binary script; the lld / mold linker requirement
+     in Base's guide applies to BUILDING base-anvil from source, and is not
+     a general prerequisite.
+
+     "An anvil node" is not precise enough and would waste a day: stock
+     Anvil does not host Base precompiles. It must be base-anvil, started
+     with --base, with the feature IDs registered. Setting the flag against
+     a plain fork or a stock Anvil proves nothing.
+
+     COMPATIBILITY TESTS ARE A SEPARATE MANDATORY GATE
+     [ ] Run them in live-precompile mode as their own check
+     [ ] Record the command, the tool versions AND the runtime environment
+     [ ] Assert the mode from the setup log line - never infer it
+     [ ] A compatibility result from reference mode counts as unproven.
+         Every other kind of result from reference mode still counts.
+
+     MECHANICS TO EXTRACT
+     [ ] Curve formula and parameters
+     [ ] Graduation threshold and the exact graduation transaction
+     [ ] Supply distribution
+     [ ] Fee structure - see Section 11, the headline rates are NOT the
+         protocol's revenue
+     [ ] LP lock mechanism
+     [ ] Creator and admin authorities - what can they still do post-launch
+     [ ] rescueSweptGraduation() SPECIFICALLY. Verified in the source:
+         onlyOwner, a 7-day GRADUATION_RESCUE_DELAY from the sweep, and funds
+         go to an arbitrary `recipient` parameter. The graduated pool's LP
+         lock and the reserves in transit carry DIFFERENT trust assumptions.
+         If we keep this function, decide who holds the owner key and what
+         happens to rescued assets - before launch, not after an incident.
+     [ ] How the curve's final price is matched to the pool's opening price
+     [ ] CONFIRM: does the curve collect the graduation pool's quote asset
+         from the start, so graduation needs no swap and no oracle? Section
+         6.1 depends on this being true.
+     OUTPUT: an explicit table - take as-is / adapt for Base / drop
+
+  B. DEPTH MEASUREMENT - both directions, all sizes
+     [ ] Buy side: $1K / $10K / $50K / $100K / $250K / $500K - bps moved
+     [ ] SELL side, same sizes. Sell depth is usually worse and matters more.
+     [ ] Small retail trades ($50-$500) - what does a real user actually pay
+     [ ] Repeat for AAPLc, TSLAc, METAc
+     [ ] Total cost after fees and two hops, not slippage alone
+     NOTE: this measures depth as it exists today. Our own launchpad ADDS
+     demand, so also state what depth is REQUIRED at target volume.
+
+  C. WEEKEND BASIS
+     [ ] 2-3 weekends: Sat/Sun onchain price vs Friday close
+     [ ] Corporate-action freeze behaviour if one falls inside the window
+
+  D. COMPETITION AND DEMAND
+     [ ] Actually use vvveity - where it breaks, what is missing, user counts
+     [ ] Is there stock-paired interest on Farcaster? Measure, do not assume.
+     [ ] Scan the base.org/stocks venue list - who has integrated what
+
+  E. INFRASTRUCTURE CHOICE
+     [ ] Compare reuse / adapt / custom hook on cost, audit surface and time
+     [ ] Produce a rough audit cost for each route
+     [ ] Re-estimate the Phase 1 schedule from the chosen route
+
+  PHASE 0 EXIT CRITERIA - none of these may slip into Phase 1:
+     [ ] Reference V2 commit, deployment addresses and source match RECORDED
+     [ ] Curve shape and parameters FROZEN
+     [ ] Graduation threshold FROZEN
+     [ ] Fee model and creator tax FROZEN (Section 11)
+     [ ] Graduation price continuity SPECIFIED: how the curve's final price
+         equals the pool's opening price. A mismatch hands the first bot a
+         free arbitrage at the community's expense.
+     [ ] Infrastructure route chosen, with a rough audit budget
+     [ ] Quote asset set chosen
+     [ ] SUCCESS METRICS DEFINED NUMERICALLY - what counts as repeat use and
+         over what window; what counts as positive revenue and which costs are
+         included (gas, infra, audit amortisation, LP seeding). These are the
+         Phase 2 gate; define them before they can be rationalised.
+     [ ] Phase 1C operational limits and halt conditions set
+     [ ] Go / no-go on Phase 1
+  These are the product. They are not details to be picked while coding.
+
+PHASE 1 - NARROW MVP  (schedule set in Phase 0 E, not before)
+
+  BUILD ORDER: get the whole lifecycle working on ONE quote asset (NVDAc, if
+  Phase 0 B supports it) before adding any other stock. This is development
+  order, not launch scope - the public launch still opens with three names
+  total per Phase 1C.
+
+  IN SCOPE (v1):
+  [ ] BondingCurve + LaunchFactory
+  [ ] Graduation into the venue chosen in Phase 0
+  [ ] Graduation failure handling - designed in, not bolted on. See 6.4.
+  [ ] QuoteRouter + depth guard (reject-only, per 7.1)
+  [ ] FeeRouter
+  [ ] PriceAdapter including weekend mode and the degradation rules in 7.2
+  [ ] Wallet-based launch flow
+  [ ] Wallet-based buy / sell flow
+  [ ] DISCOVERY SCREEN - this is core, not decoration. A user must be able to
+      find new launches, tokens approaching graduation, and graduated tokens,
+      and act on them quickly. A launchpad nobody can browse is not a
+      launchpad.
+  [ ] Audit, scoped per Section 6.3
+
+  OUT OF SCOPE - separate work packages, not v1:
+  [ ] Per-token chat
+  [ ] Card onramp + embedded wallet
+  [ ] Miniapp
+
+  WHAT v1 IS AND IS NOT
+  Cutting the onramp does not make v1 undifferentiated. The stock pairing
+  itself is the differentiation on Base: Clanker, Flaunch and Zora support
+  zero tokenized stocks, and vvveity is the only other entrant. v1 competes on
+  that, which is a real position.
+  What the onramp adds is defensibility - against the next entrant and against
+  StonkFun-class UX. Ship v1 expecting it to compete. Ship the onramp
+  expecting it to hold the position.
+
+PHASE 1B - DISTRIBUTION  (runs IN PARALLEL with Phase 1, never after)
+  Section 9 says the audience is the larger half of the work, so it needs
+  tasks, an owner and a gate - not a paragraph.
+  [ ] Set the target number of communities to talk to before launch
+  [ ] Name who performs the first launches, agreed in advance
+  [ ] Build a launch calendar for week one
+  [ ] Name a distribution owner. On a small team this need not be a different
+      person from the build owner - but it must be an explicitly owned job
+      with its own time, not something that happens if there is room left.
+  GO-LIVE GATE: a prepared launch calendar exists. No calendar, no launch.
+
+PHASE 1C - LIMITED LAUNCH  (limits are numeric and set in Phase 0)
+
+  ASSET SCOPE
+  [ ] THREE NAMES TOTAL: NVDA plus two others (Section 9, concentration)
+
+  OPERATIONAL LIMITS - decide the numbers before going live
+  [ ] Maximum launches per day in stage one
+  [ ] Maximum trade size, and maximum position per launch
+  [ ] Acceptable total round-trip cost for a user (fees + both hops + slippage)
+
+  HALT CONDITIONS - tiered by blast radius, not one blanket rule
+
+    TRANSIENT - alert and controlled retry, do NOT halt
+    A failed auto-graduation is an expected, recoverable event. Verified in
+    PonsV2BondingCurve.sol: it emits AutoGraduationFailed(token, gasleft())
+    precisely so "a keeper can notice a launch sitting ready but ungraduated,"
+    and "graduation stays permissionlessly retryable via the factory." A
+    failed automatic attempt is not an accounting error and not a platform
+    fault.
+    [ ] Alert, retry, and track the retry-success rate
+
+    ASSET-SPECIFIC AND PERSISTENT - halt new launches on THAT quote asset
+    [ ] Quote-asset deviation: NVDAc vs reference beyond X bps
+    [ ] Depth-guard rejections above X% of attempts on that asset
+    [ ] B20 transfer restriction on that asset (7.2 B)
+    [ ] A graduation that fails repeatedly for a non-gas reason
+
+    SHARED CONTRACT OR ACCOUNTING - global halt
+    [ ] Any accounting mismatch
+    [ ] Any fault in a contract shared across launches
+
+  OWNERSHIP
+  [ ] A named person monitoring, with the authority to halt
+  [ ] Defined response time and escalation path
+
+  MEASURE - against the Phase 0 definitions
+  [ ] Repeat use, launches per day, revenue AFTER the defined cost set
+  [ ] Fix what breaks before widening the asset set
+
+PHASE 2 - TRADING DESTINATION  (conditional, not automatic)
+
+  Why it is not free: MEME/NVDAc liquidity does not solve NVDAc/USDC
+  liquidity. Owning a hook on graduated meme pools gives us nothing toward
+  being a venue for the stocks themselves - Aerodrome already has that depth
+  and aggregators route to it. Phase 2 is a real product with a real liquidity
+  problem of its own.
+
+  ENTRY GATE - all three, measured against the numbers frozen in Phase 0:
+  [ ] Repeat use over the defined window, not launch-day spikes
+  [ ] Positive revenue after the defined cost set
+  [ ] A credible answer to: why would NVDAc flow come to us over Aerodrome?
+
+  THEN:
+  [ ] 13 B20 stocks as first-class assets
+  [ ] Productize the weekend pricing layer (basis indicator)
+  [ ] Cross-pairs: NVDA/TSLA and similar - these exist nowhere
+  [ ] Portfolio view
+
+PHASE 3 - META-INDEPENDENT LAYER  (conditional)
+  [ ] Mag7 basket: all seven are live on Base (AAPL AMZN GOOGL META MSFT NVDA
+      TSLA). Mintable from B20 components. Nobody has built it.
+      WARNING: ETF-shaped regulatory surface, far heavier than a launchpad.
+      Add redemption and you are a fund. Do not start without legal opinion.
+  [ ] Weekend basis tooling - our judgement is that this is harder to copy
+      than a launchpad, because the work is in getting the pricing right
+      rather than in the contract. Untested assumption, not a moat claim.
+
+
+================================================================================
+11. FEE MODEL - BENCHMARKS AND PHASE 0 EXIT ITEM
+================================================================================
+
+  CORRECTION - "1% protocol fee" was wrong. Verified against
+  PonsV2BondingCurve.sol on 11 Sep 2026:
+
+    feeBps is the BASE TRADE FEE, and the protocol gets only a share of it:
+      uint256 protocolAmount = (pending * protocolFeeShareBps) / BASIS_POINTS;
+      uint256 creatorBucket  = pending - protocolAmount;
+    The remainder goes to buyback (if enabled) and then the creator:
+      uint256 buybackAmount = executeBuyback ? min(buybackQuoteBalance, creatorBucket) : 0;
+      uint256 creatorAmount = creatorBucket - buybackAmount + tax;
+
+    creatorTaxBps is SEPARATE and LAYERED. From the source comment: "Kept
+    entirely separate from feeBps: it is layered on top of the base trade
+    fee, not part of the protocol/buyback/creator split, and is paid to the
+    creator in full."
+
+  SO: "a 1% base trade fee" and "the platform earns 1%" are NOT the same
+  thing. Both figures are in basis points, so BOTH need converting:
+
+    gross protocol revenue from this fee line
+      = fee base x (feeBps / 10,000) x (protocolFeeShareBps / 10,000)
+
+    Worked example: a 1% base fee (feeBps = 100) with a 20% protocol share
+    (protocolFeeShareBps = 2,000) leaves the protocol 0.20% of the trade.
+    On a $1,000,000 fee base that is $2,000 gross - before any costs.
+
+  Model revenue on that formula, not on the headline rate. Treat every rate
+  below as a REFERENCE VALUE to be re-verified against live deployment
+  settings, not as fact.
+
+  SECOND-ORDER CONSEQUENCE: the Phase 2 entry gate requires "positive revenue
+  after costs." Since revenue is a fraction of a fraction of volume, the
+  volume needed to clear that gate is proportionally higher than a headline
+  rate suggests. Set the Phase 0 numeric targets from this formula.
+
+  REFERENCE RATES (verify against live deployments before relying on them)
+  PONS V2   : base trade fee feeBps, split by protocolFeeShareBps;
+              creatorTaxBps 0-300 layered on top and paid to the creator
+  Clanker   : creator picks a 1-3% pool fee, Clanker takes 20% of LP fees
+  Flaunch   : launch fee of 0.1% of market cap, default 80/20 creator/buyback
+
+  PONS model (explicit per-trade fee) or Clanker model (a cut of LP fees)?
+  The first is transparent and predictable; the second is invisible to the
+  user but produces ongoing revenue from graduated volume.
+
+  This is a PHASE 0 EXIT ITEM. Decide the split, and compute expected
+  platform revenue from the split - not from the headline rate.
+
+  WHAT THE FEE IS DENOMINATED IN - OPEN, AND NOT A DETAIL
+  Measured 11 Sep 2026, test/fork/B20FeeHook.t.sol. A hook that charges on the
+  OUTPUT side charges in a DIFFERENT TOKEN depending on trade direction:
+
+    buy  (NVDAc -> MEME)   fee arrives as MEME
+    sell (MEME  -> NVDAc)  fee arrives as NVDAc
+
+  Back to back through one pool, the platform ended the test holding 9,871 raw
+  MEME and 10,068 raw NVDAc. Those do not add up to anything. Summing them into
+  one revenue figure would be an arithmetic error dressed as a metric.
+
+  AND COLLECTING MEME IS NOT EARNING SPENDABLE REVENUE. The memecoin side of
+  every pair is the token we just launched: thin, volatile, and priced by the
+  very curve we operate. A fee taken in it is a claim whose value depends on
+  being able to sell it, into liquidity we also provide. The NVDAc side is the
+  part that behaves like revenue.
+
+  THREE OPTIONS, NONE DECIDED
+    a. charge on the output regardless of side   - simplest, what is built now,
+                                                   leaves the platform long the
+                                                   memecoin on every buy
+    b. always charge in the quote asset (NVDAc)  - real revenue on both sides;
+                                                   needs the fee taken from the
+                                                   INPUT on a buy, which is a
+                                                   different hook
+    c. charge on output, sell the memecoin       - keeps the hook simple and
+       side on a schedule                          moves the problem to
+                                                   treasury operations, with
+                                                   its own price impact
+  DECIDE THIS BEFORE ANY REVENUE NUMBER IS QUOTED, including in Phase 2's
+  "positive revenue after costs" gate. Per-token accounting is already in the
+  hook so the two streams can never be silently merged.
+
+  WHAT THE FEE HOOK TEST DOES AND DOES NOT ESTABLISH
+    ESTABLISHED  the collection MECHANISM works: the fee leaves the pool, lands
+                 in the recipient's real balance, is taken from the gross
+                 output, rounds down in the trader's favour, is bounded by the
+                 trader's minimum-output check on the NET, and survives nothing
+                 when the swap reverts. Exact-output swaps are refused rather
+                 than charged on the wrong side.
+    NOT ESTABLISHED  volume, the realisable value of what is collected, and
+                 whether any of it covers costs. One pool, one block, 1e6 raw
+                 per swap, on a fork. No claim about economics follows from it.
+
+
+================================================================================
+12. DECISIONS
+================================================================================
+
+MUST CLOSE IN PHASE 0 - these are the product
+  [ ] Quote asset set: NVDAc only, three, or all
+  [ ] Curve: reuse, adapt, or write our own
+  [ ] Graduation threshold
+  [ ] Fee model (Section 11)
+  [ ] Creator tax - yes/no, and what cap
+  [ ] Graduation price continuity: curve final price -> pool opening price
+  [ ] Infrastructure route: reuse / adapt / custom hook
+  [ ] Success metrics, numerically
+  [ ] Phase 1C operational limits and halt conditions
+
+CAN REMAIN OPEN LONGER
+  [ ] Buyback - yes/no
+  [ ] Platform token - NOT needed in v1, it is a distraction
+  [ ] Entity and jurisdiction - but see the geographic decision below, which
+      promotes this to the first question for counsel
+  [ ] Audit FIRM - selection can wait
+  [ ] Audit BUDGET - not open-ended. A rough figure comes out of Phase 0 E:
+      a custom hook and a reused one cost very differently.
+
+DECIDED - GEOGRAPHIC ACCESS
+  Founder decision, 11 Sep 2026: no geographic blocking. The platform will not
+  geofence the United States, the EU, the UK, or any other jurisdiction.
+
+  Recorded so the plan reflects it. Two factual notes kept on the record:
+
+  - OFAC / sanctions screening is a separate matter from geofencing.
+    VERIFIED: pump.fun's published terms bar users located, incorporated or
+    resident in jurisdictions sanctioned by the UK, US, EU or UN, and PONS's
+    terms list the same set plus named countries. So the comparable platforms
+    do apply it.
+    NOT VERIFIED, and overstated in an earlier revision: that every onramp,
+    RPC, hosting and payment provider mandates it contractually. OFAC's own
+    guidance describes a risk-based approach that varies by business, which
+    is not the same as a uniform contractual requirement.
+    ACTION: read the actual terms of the specific providers we intend to use
+    and budget from those, rather than assuming it is either optional or
+    universal.
+
+  - This diverges from every tokenized-equity issuer. Coinbase's B20 stocks -
+    our quote asset - are for non-US persons only. Robinhood's terms state
+    their stock tokens "may not be offered, sold, or delivered, directly or
+    indirectly" to U.S. persons. PONS does not block the US, but PONS Labs,
+    LLC is a Delaware entity governed by Delaware law and arbitrating in
+    Wilmington; it accepted US jurisdiction deliberately rather than avoiding
+    it. A non-US operator serving US persons carries the same exposure with
+    none of that structure.
+
+  Consequence for the plan: "Entity and jurisdiction" stops being a late
+  administrative task. It is the decision this one depends on, and it is the
+  first question for counsel.
+
+
+================================================================================
+13. KILL RISKS AND MONITORING
+================================================================================
+
+  RISK                        SIGNAL TO WATCH
+  --------------------------  ------------------------------------------------
+  The meta cools              A 50% revenue drop from peak is a REVIEW
+                              TRIGGER, not a verdict. Judge it on several
+                              weeks of PONS + StonkFun revenue together with
+                              active trader counts and the launch-rate trend.
+                              A launchpad token's price falling 20% proves
+                              nothing about the format on its own.
+
+  Coinbase builds a launchpad Low probability: a regulated, publicly traded
+                              issuer will not put memecoins next to NVDA.
+                              But the Base team could fund someone else.
+
+  vvveity gets funded         The only real competitor. Watch for investment
+                              or integration news.
+
+  NVDAc depth never improves  This is the scaling ceiling. Keep a monthly
+                              depth measurement, both directions.
+
+  B20 policy change           isAuthorized() and allow/blocklist capability
+                              EXIST in the standard, currently inactive. If
+                              they activate, the permissionless secondary
+                              market assumption collapses. Watch Base docs and
+                              Coinbase announcements.
+
+  No distribution             The biggest risk. Without a Farcaster presence
+                              even the best UX goes nowhere. Measure it in
+                              Phase 0; do not try to solve it in Phase 1.
+
+
+================================================================================
+14. ONE-SENTENCE SUMMARY
+================================================================================
+
+What is missing on Base is not "user-friendly," it is "fun": Aerodrome already
+works, 1inch already routes, IPOR already lends - what is missing is the sense
+of a destination. That gap has been open since 24 August, more than $10M a day
+flows through it, and our read is that Coinbase will not enter it. That last
+part is a judgement about their incentives as a regulated, publicly traded
+issuer - not a fact, and worth re-checking rather than relying on.
+
+The winner will not be whoever writes the best code. It will be whoever brings
+the first thousand users.
+
+
+================================================================================
+15. NAME
+================================================================================
+
+CURB - curb.fun / curb.trade / curb.markets (all available as of 11 Sep 2026)
+
+The Curb Exchange was the American Stock Exchange's ancestor: traders who could
+not get inside the NYSE dealt on the curb outside, and eventually became the
+real thing. "Kerb trading" is the finance term for unofficial dealing outside
+official market hours - which is exactly what 24/7 onchain equities are. The
+name carries both the outsider positioning and the after-hours differentiator.
+
+Alternative: LIMIT UP - limitup.fun / .app / .trade / .markets available.
+Stronger for acquisition: the most aspirational phrase in equities and a free
+slogan. Weaker for Phase 2.
+
+[DECIDED - 13 Sep 2026]  Name CURB. X handle @curbfun. Site curbfun.xyz.
+  Chosen by the project owner; this document previously listed @curbfun as one
+  of several candidates and could not verify any of them from here. The handle
+  and the domain now agree, which was the constraint that mattered: a name with
+  no handle is dead, not the other way round.
+
+  ASSETS: brand/ holds the profile picture, the header and the copy - bio
+  variants with character counts, a longer description, a pinned-post draft,
+  and the things that must not be said. The mark is a kerb in profile, which is
+  also a step up, which is also a rising chart; the header puts the wordmark on
+  the raised side and leaves the road empty, because that is where X drops the
+  profile picture.
+
+NOTE ON ADVERTISING: X has a financial services advertising policy, and this
+product is securities-adjacent. Paid X ads will likely require certification or
+be rejected. Plan on organic + Farcaster; do not put a paid channel in the plan.
+
+
+================================================================================
+16. IMPLEMENTATION ORDER AND FIRST DELIVERABLE
+================================================================================
+
+This document is finished for now. Further decisions should be made against a
+running version, not by extending this file.
+
+GOVERNING RULE - DO NOT INVENT WHAT ALREADY WORKS
+  We are building our own launchpad; PONS V2 is the reference we read before
+  writing. Reuse is decided file by file in REUSE_ANALYSIS.txt, not by a
+  blanket fork or a blanket rewrite.
+
+  Where we do diverge from PONS, the reason gets written down. "We would do
+  it differently" is not a reason. Do NOT redesign the curve, graduation and
+  fee system at the same time - change one thing, keep the others known.
+
+  NOTE: PONS ships no build or test infrastructure (no foundry.toml, no
+  remappings.txt, no *.t.sol). "Run its existing flow first" is not
+  available; a compiling workspace and tests we write are step one.
+
+ORDER OF WORK
+  1. Run the PONS V2 flow as-is and understand it end to end
+  2. Produce the Base/B20 adaptation diff - what must change, and why
+  3. Build the complete lifecycle on ONE quote asset:
+       launch -> buy -> sell -> graduation -> trade in pool -> fee claim
+  4. Only then add further stocks
+  5. Minimal interface, with the discovery screen as its core
+  6. Public launch with three names total and a prepared calendar
+
+WHAT MUST STAY INDEPENDENT OF DOLLAR PRICE
+  The graduation THRESHOLD and all accounting run on raw B20 units. If the
+  threshold is denominated in dollars, the oracle becomes a core dependency,
+  and a moving stock price or a stalled feed starts affecting the mechanism
+  itself. Dollars belong in the interface only. This is the practical
+  consequence of the layering in 6.1.
+
+FIRST TECHNICAL MILESTONE - acceptance criteria, before the full lifecycle
+  One narrower thing has to be demonstrably true first: token approval and
+  transfer working correctly against a REAL B20 asset. Show all five.
+
+  [ ] Pinned source and tool versions - PONS commit, base-anvil / base-forge,
+      foundry, solc - plus the exact command and the runtime environment
+  [ ] The live-precompile mode log line from setup
+  [ ] The measured codesize at the B20 address under test. Mainnet says 1
+      (0xef). This doubles as an environment sanity check: if your test
+      environment reports 0 or a large number, it is not serving real B20.
+  [ ] BEHAVIOURAL results at that same address, asserted on state - not on
+      "it did not revert":
+        - decimals() returns the expected value
+        - after approve(), allowance() reflects it
+        - after transfer(), BOTH sender and recipient balances moved by the
+          expected amounts
+  [ ] setPairTokenApproved() ACCEPTS a real B20 address on the UNMODIFIED
+      contract.
+
+      DO NOT assume a revert here means the environment is broken. Read from
+      the source at debbc21f - the function has FIVE distinct failure modes:
+
+        1. onlyOwner                                    (caller)
+        2. pairToken == address(0)  -> PairTokenValidationFailed
+        3. pairToken.code.length == 0 -> PairTokenValidationFailed
+        4. economics.phantomQuote == 0 || graduationThreshold == 0
+                                    -> PairTokenEconomicsInvalid
+        5. _requireDecimals mismatch -> PairTokenDecimalsMismatch(exp, actual)
+           or, if decimals() is unreadable -> PairTokenDecimalsUnavailable
+
+      Two consequences that will bite:
+        - PairTokenEconomics MUST be configured BEFORE approval. A naive
+          setPairTokenApproved(NVDAc, true) reverts with
+          PairTokenEconomicsInvalid and has nothing to do with B20.
+        - NVDAc has decimals = 8, not 18 (measured). Set economics.decimals
+          to 8 or _requireDecimals reverts with PairTokenDecimalsMismatch.
+          This is CONFIGURATION, not an algorithm change: the maths works in
+          raw token units and PairTokenEconomics already carries a per-asset
+          decimals field. Configure NVDAc amounts at the 10^8 scale. The
+          18-vs-8 gap is 10^10; the "twelve-order-of-magnitude mispricing"
+          in the source comment is that comment's own example, not our case.
+          The mis-scaling risk is real - the conclusion that the existing
+          maths is broken does not follow.
+
+      Diagnose the actual error before concluding anything about the
+      environment or about B20.
+
+  [ ] It STILL REJECTS an EOA and the zero address. Whatever we change later
+      must keep rejecting what should be rejected - a suite that only proves
+      acceptance would also pass if the check were simply deleted.
+  [ ] Any revert asserted by SELECTOR, never by "it reverted".
+      CAVEAT: cases 2 and 3 share the selector PairTokenValidationFailed, so
+      the selector alone does not tell you which branch fired. To exercise
+      the code-length branch specifically you need a non-zero address with
+      no code, and you still cannot distinguish it by selector - distinguish
+      it by the input you chose.
+
+  THE LOG LINE IS NOT SELF-VALIDATING. LIVE_PRECOMPILES=true bypasses
+  detection and prints the same line, so the log can claim live mode in an
+  environment that has no precompiles. These criteria only prove anything
+  TOGETHER: the log, plus the measured codesize, plus real calls returning
+  correct state. Any one alone is circular or insufficient.
+
+FIRST DELIVERABLE - the definition of done for this stage
+  Our launchpad running the complete lifecycle on a single B20 quote asset
+  in a test environment, with a minimal interface over it - built from
+  whichever PONS parts REUSE_ANALYSIS.txt justifies plus our own code.
+
+  Not a bigger document. Not three quote assets. Not the onramp.
+  One asset, one working loop, something you can click.
+
+  Every subsequent decision gets made against that running version.
+
+
+================================================================================
+REVISION HISTORY
+================================================================================
+
+Rev 12 - 11 Sep 2026, framing corrected + licence and reuse analysis
+  - FRAMING: "PONS is the thing we are porting to Base" was wrong and is
+    removed everywhere. CURB is our own launchpad; PONS is a reference. The
+    fork/no-fork decision is made file by file in REUSE_ANALYSIS.txt.
+  - "Adapt, do not redesign / run its existing flow first" replaced. PONS
+    ships NO build or test infrastructure - verified: no foundry.toml, no
+    remappings.txt, no test/, zero *.t.sol. Running its existing tests is
+    not an option because there are none.
+  - LICENCE, read from the checkout: PONS's own 15 V2 files are all MIT.
+    Vendored deps are 69 MIT and 2 BUSL-1.1 (v4-core Pool.sol and
+    Position.sol). PonsV2GraduationGuard imports BUSL Pool.sol, so "PONS is
+    MIT therefore the package is free" is false. The whole BUSL exposure is
+    one call to Pool.tickSpacingToMaxLiquidityPerTick - avoidable. Also:
+    the vendored v4-core has NO licence file, so the BUSL Change Date and
+    Additional Use Grant are absent from this tree; take Uniswap deps from
+    upstream with their licence files.
+  - 8-DECIMALS CLAIM CORRECTED. Saying it "propagates through all curve
+    maths" was overstated. PairTokenEconomics already carries a per-asset
+    decimals field and the maths runs in raw token units, so this is
+    configuration at the 10^8 scale. The 18-vs-8 gap is 10^10; the source
+    comment's "twelve orders" is its own example. The mis-scaling risk is
+    real; "the maths is broken" does not follow.
+  - Added REUSE_ANALYSIS.txt: file-by-file inventory with a recommendation.
+    ~1,911 of ~6,100 lines (staking, burn, buyback) are irrelevant to MVP.
+
+Rev 11 - 11 Sep 2026, work started - source pinned, Rev 10 tightened
+  PONS cloned to reference/ponsfamily, pinned at debbc21f (repo HEAD, not a
+  verified deployment match - recorded as such).
+
+  Four corrections to Rev 10, all from measurement or local source:
+  - THE MULTIPLIER ACCESSOR IS multiplier(), returning 1e18 on NVDAc.
+    uiMultiplier() reverts although it IS declared in the current base-std
+    IB20Asset interface - a source-vs-deployed version mismatch to pin.
+    Rev 10 said "find the real accessor"; it is found.
+  - "If it reverts in the harness the environment is wrong" was too
+    absolute and is replaced. setPairTokenApproved has FIVE failure modes
+    (onlyOwner; zero address; code.length; economics unset; decimals
+    mismatch). Two of them share the PairTokenValidationFailed selector, so
+    selector assertion cannot distinguish them - noted.
+    Two traps recorded: economics must be configured before approval, and
+    NVDAc is 8 decimals, not 18. The source calls that risk "a silent
+    twelve-order-of-magnitude mispricing."
+  - Stopped generalising four measured addresses to "every B20 address",
+    and dropped the explanation of WHY the 0xef marker exists. The
+    measurement stands; the motive was a guess.
+  - The failed-transfer result is confirmed exactly - 0xdb42144d matches
+    cast sig "InsufficientBalance(address,uint256,uint256)" - and is now
+    explicitly marked as NOT evidence that a funded transfer works.
+  - lld/mold corrected: that requirement is for building base-anvil from
+    source, not for the prebuilt-binary install.
+
+Rev 10 - 11 Sep 2026, FIRST MEASUREMENT AGAINST THE CHAIN
+  The "confirmed blocker" carried by Revs 5-9 was wrong. cast, Base mainnet:
+
+    NVDAc / AAPLc / METAc / GOOGLc  ->  codesize 1, code 0xef
+    WETH 2041 (contrast), EOA 0 (contrast)
+
+  code.length is 1, not 0, so PonsV2LaunchFactory's pair-token check PASSES.
+  There is no blocker. 0xef is the EIP-3541 reserved EOF prefix and the
+  one-byte marker appears to exist so extcodesize > 0 keeps ordinary
+  integrations working - consistent with Base's claim that B20 works with
+  existing wallets and routers unchanged. The docs' "no bytecode" refers to
+  there being no per-asset source verified on Basescan.
+
+  Root cause of the error: a claim about CHAIN STATE was "verified" by
+  fetching a second document. Two reviewers and this document all repeated
+  it across five revisions. One cast call settled it. Rule now recorded in
+  Phase 0 A: chain-state claims get checked against the chain, first.
+
+  Also measured and folded in:
+  - name/symbol/decimals, totalSupply, balanceOf, allowance all read fine
+  - transfer() from an unfunded account reverts with 0xdb42144d, i.e. it is
+    implemented and fails correctly
+  - uiMultiplier() on NVDAc REVERTS (0xa60bf13d). Section 8 carries a
+    warning: the accessor name came from docs and is not verified.
+
+  Consequent edits: Phase 0 A rewritten from blocker to checklist; the
+  acceptance criteria's "code.length == 0" became a recorded measurement
+  doubling as an environment sanity check; the comparative test was rebuilt,
+  since its premise (original check rejects B20) is false - it now proves
+  the unmodified contract ACCEPTS real B20 while still rejecting an EOA and
+  the zero address.
+
+Rev 9 - 11 Sep 2026, eighth external review - test-design refinement only
+  - The comparative test must fail for the RIGHT REASON: assert the
+    PairTokenValidationFailed selector specifically. A revert from
+    onlyOwner, a zero address or missing setup proves nothing about B20.
+  - The adapted check must still REJECT invalid addresses. A suite proving
+    only acceptance would also pass if the check were simply deleted - which
+    is the outcome Phase 0 A explicitly warns against.
+  (Rev 8 called itself the last planning revision; this one item earned an
+  exception. Planning really does end here.)
+
+Rev 8 - 11 Sep 2026, seventh external review - last planning revision
+  - "An anvil node" made precise. Stock Anvil does not host Base
+    precompiles; it must be base-anvil started with --base, with the
+    feature IDs registered. The vague wording would have cost a day.
+  - Added the circularity caveat to the acceptance criteria: the setup log
+    is NOT self-validating, because LIVE_PRECOMPILES=true bypasses detection
+    and prints the same line. The five criteria prove something only
+    together - log, plus code.length == 0, plus real calls returning correct
+    state.
+  - Behavioural assertions specified rather than left as "calls succeed":
+    decimals() returns the expected value; allowance() reflects approve();
+    both sender and recipient balances move by the expected amounts after
+    transfer(). "It did not revert" is not a result.
+  - IDEA.txt header revision number corrected.
+  Planning ends here. The next review evaluates code, pinned versions, the
+  exact command, and test output.
+
+Rev 7 - 11 Sep 2026, sixth external review
+  Three overstatements of mine about testing, corrected against the current
+  base-std source rather than a summary of it.
+  - WRONG: "without the flag, vm.etch overwrites the live precompile with a
+    mock." setUp() runs _detectLivePrecompiles() FIRST - a STATICCALL to
+    ActivationRegistry.admin() - and returns before any etch if live
+    precompiles are found. LIVE_PRECOMPILES=true bypasses that detection; it
+    is an escape hatch, not the only route to live mode. Nor is mock-etching
+    a property of Foundry fork tests generally - it is this harness's setup
+    behaviour. Accurate statement: the bytecode-carrying mock used in
+    reference mode can HIDE the incompatibility that comes from B20 having
+    no bytecode.
+  - ADDED: the flag alone is insufficient. Base's guide: it "does NOT deploy
+    precompiles - it only signals the test suite to expect them." The
+    runtime must actually host them (base-forge in-process, or an anvil
+    node). Command, tool versions and environment must all be recorded.
+  - WRONG: "everything false-passes in reference mode." Mock tests properly
+    exercise curve maths, fee distribution and error paths, and that work
+    counts. Only the COMPATIBILITY claim is unproven there. Compatibility
+    became a separate mandatory gate rather than a reason to stop other
+    testing - the earlier framing would have serialised work for no reason.
+  - ADDED to Section 16: five acceptance criteria for the first technical
+    milestone (pinned versions, proof of live mode, proof of code.length==0,
+    decimals/approve/transfer results, and a comparative test showing the
+    original check rejects and the adapted check accepts).
+
+Rev 6 - 11 Sep 2026, fifth external review
+  - Revenue formula corrected. "feeBps x protocolFeeShareBps" was
+    dimensionally wrong - both are basis points and both need converting:
+    fee base x (feeBps/10,000) x (protocolFeeShareBps/10,000). Worked
+    example added, plus the second-order effect on the Phase 2 revenue gate.
+  - Fork-testing rule made specific, and it turned out sharper than written:
+    stock `forge test` runs against Solidity mocks, and vm.etch puts mock
+    bytecode at the precompile address - so code.length != 0 is TRUE and the
+    pair-token check passes in test while failing in production. Live mode
+    (base-forge, or LIVE_PRECOMPILES=true with --fork-url) is now required,
+    and the mode must be asserted from the test log.
+  - "CONFIRMED BLOCKER" relabelled "CONFIRMED COMPATIBILITY ISSUE - BLOCKS
+    AN UNMODIFIED PONS PORT". The finding is real; it does not show the
+    project is undoable, and the earlier wording overstated it.
+  - IDEA.txt: "Weekend pricing - unsolved by anyone" hedged. This had been
+    fixed in both roadmaps but missed in IDEA, and the previous revision's
+    "no remnants" claim was broader than the scan actually checked.
+  - Section 3 still described PONS as "feeBps=100 (1% protocol) => 1-4% total
+    trader cost" - the same error corrected in Section 11 two revisions
+    earlier, surviving in a second location. Now restated and cross-
+    referenced. Third time a correction failed to propagate: pattern-limited
+    greps keep missing paraphrases, so future sweeps should search the
+    CONCEPT across the file, not the exact earlier wording.
+
+Rev 5 - 11 Sep 2026, fourth external review (first one to read the source)
+  - *** CONFIRMED BLOCKER added to Phase 0 A: unmodified PONS V2 cannot
+    approve a B20 token. setPairTokenApproved() requires
+    pairToken.code.length != 0; B20 tokens are precompiles with no bytecode.
+    Both verified against primary sources. Generalised to a class sweep
+    (decimals, transfer, allowance, Permit2, SafeERC20) with a fix direction
+    and a testing rule - an ERC-20 mock cannot prove B20 compatibility.
+  - Section 11 fee model CORRECTED. feeBps is the base trade fee and the
+    protocol takes only protocolFeeShareBps of it; creatorTaxBps is layered
+    separately and paid to the creator in full. "1% protocol fee" was wrong.
+    (The formula recorded here in Rev 5 was itself dimensionally wrong - see
+    Rev 6 above for the corrected version with the basis-point conversion.)
+  - Phase 1C halt conditions made tiered: a failed auto-graduation is an
+    expected retryable event (the source emits AutoGraduationFailed for a
+    keeper to act on) and must not halt the platform. Transient / asset-
+    specific / shared-contract tiers defined.
+  - 7.1 split into an execution guard (minimum output, needs no oracle) and
+    a reference-deviation guard (needs a price, closes per 7.2 A). Merging
+    them under "slippage guard" was ambiguous.
+  - 7.2: added the weekend product consequence - with Chainlink as the only
+    reference, the USDC path closes every weekend. Made it a Phase 0 exit
+    decision with a designed state, not a discovered error.
+  - Section 8: added the three-case multiplier rule. The Coinbase B20 feed
+    already reports the multiplier-adjusted price; applying it again is a
+    silent wrong number.
+  - Phase 0 A: rescueSweptGraduation() named explicitly - onlyOwner, 7-day
+    delay, funds to an arbitrary recipient. Different trust assumption from
+    the LP lock.
+  - Epistemic cleanup: "nobody has solved this", "Coinbase structurally
+    cannot enter", "this cannot be cloned" restated as judgements. The claim
+    that all providers contractually mandate sanctions screening was
+    overstated and is now split into what is verified and what is not.
+  - Remaining "two or three names" instance fixed.
+
+Rev 4 - 11 Sep 2026, third external review
+  - 7.2 split into A (oracle stall) and B (B20 transfer restriction). These
+    were conflated. A corporate action stops Chainlink UPDATES - a price
+    event confined to the display and router layers. A transfer restriction
+    is a TOKEN event that reaches the core. Different blast radii.
+  - 7.2 router behaviour corrected: in v1, an unverifiable price reference
+    CLOSES the router path. The earlier "widen guards and ask the user to
+    confirm" option is removed - user consent is not a substitute for a
+    technical control, and it contradicted the reject-only rule in 7.1.
+  - Removed the claim that StonkFun / Solana cannot offer a single-flow fiat
+    onramp. Coinbase Onramp supports Solana. The differentiator is restated
+    as what we will build, not what others cannot.
+  - Launch asset count standardised to THREE NAMES TOTAL (NVDA plus two)
+    everywhere; "NVDA + 2-3" and "2-3 names" both removed.
+
+Rev 3 - 11 Sep 2026, second external review
+  - Removed superseded sentences across the whole document rather than
+    annotating them. Sections 5, 9 and 10 no longer contradict the corrections
+    made in Rev 2.
+  - Section 6 restructured around a CORE / EDGE / DISPLAY layering: curve and
+    graduation run on raw B20 units with no oracle and no swap; QuoteRouter
+    and PriceAdapter sit outside the critical path. Flagged for verification
+    against the PONS V2 source.
+  - Section 6.3: removed the unkeepable promise that every path survives a
+    failed B20 transfer "without trapping funds." Replaced with: accounting
+    must not corrupt, retries must be supported, issuer blockage must be
+    surfaced. No exit guarantee.
+  - Section 7.2: "halt trading" replaced with per-layer degradation rules.
+  - Phase 0 A: added V2 version discipline (commit, addresses, source match)
+    and a file-by-file licence check.
+  - Phase 1: corrected the claim that v1 without an onramp is undifferentiated.
+    The stock pairing is the differentiation; the onramp is defensibility.
+  - Phase 1C: added real operational limits, automatic halt conditions and a
+    named owner.
+  - Phase 0 exit: success metrics must now be defined numerically before
+    Phase 1, and a rough audit budget comes out of the architecture choice.
+  - Section 13: the meta-cooling rule became a review trigger rather than a
+    verdict; token price explicitly excluded as a signal on its own.
+  - Added 6.4: graduation failure as a v1 requirement - retryable, idempotent,
+    explicit fund location, defined mid-transition user state.
+  - 7.1: router v1 narrowed to reject-only. Splitting, time-slicing and
+    multi-venue routing deferred past v1.
+  - Phase 1: discovery screen promoted from "minimal live feed" to core
+    scope; build order fixed to one quote asset end to end before adding more.
+  - Added Section 16: adapt-don't-redesign rule, order of work, and the first
+    deliverable - a working single-asset lifecycle, not a longer document.
+
+Rev 2 - 11 Sep 2026, first external review
+  - Added the PONS teardown as Phase 0 A; moved launch economics into Phase 0
+    exit criteria; narrowed the MVP; added distribution as a parallel phase
+    with a go-live gate; added a Phase 2 entry gate; widened security scope;
+    corrected the Phase 0 duration; withdrew "Phase 2 is nearly free" and the
+    4-6 week MVP estimate; recorded the geographic access decision.
+
+Rev 1 - 11 Sep 2026, initial draft.
+
+
+================================================================================
+SOURCES
+================================================================================
+
+Base / B20 / Coinbase tokenized stocks
+  https://docs.base.org/base-chain/specs/reference/b20/tokenized-stocks-on-base
+  https://docs.base.org/build-on-base/integrate-defi/list-tokenized-stocks
+  https://blog.base.dev/b20-tokenized-stocks-on-base
+  https://www.base.org/stocks
+  https://basehub.org/integration-guides/tokenized-stocks/
+  https://docs.chain.link/data-feeds/tokenized-equity-feeds/coinbase
+  https://www.coindesk.com/business/2026/08/24/coinbase-debuts-tokenized-stocks-on-base-network-joining-race-to-bring-equities-on-blockchain
+  https://www.blockhead.co/2026/08/25/coinbase-debuts-tokenized-stocks-on-base-network/
+  https://www.marketsmedia.com/tokenized-stocks-issued-by-coinbaseare-now-live-natively-on-base/
+
+Volume
+  https://cryptobriefing.com/coinbase-tokenized-stocks-dex-volume/
+  https://crypto.news/coinbase-adds-six-tokenized-stocks-after-228m-debut/
+  https://www.coingecko.com/en/coins/nvidia-coinbase-tokenized-stock
+  https://coinmarketcap.com/events/tokenized-stocks-cex-vs-onchain/
+
+Reference implementation
+  https://github.com/ponsdotdev/ponsfamily
+  https://developers.uniswap.org/docs/protocols/v4/concepts/hooks
+  https://developers.uniswap.org/docs/protocols/v4/security
+  https://github.com/base/base-std
+  https://raw.githubusercontent.com/base/base-std/main/test/lib/BaseTest.sol
+  https://raw.githubusercontent.com/base/base-std/main/LIVE_PRECOMPILE_TESTING.md
+
+Competitors / meta
+  https://stock.vvveity.com/
+  https://www.coingecko.com/learn/memecoin-launchpad-wars-pumpfun-stonkfun-ponsfamily
+  https://incrypted.com/en/stonk-surged-250-after-stonkfun-integrated-with-raydium/
+  https://medium.com/coinmonks/stonkfun-api-track-stock-paired-solana-launches-in-real-time-d21777fc7412
+  https://airdropalert.com/blogs/what-is-long-xyz/
+  https://airdropalert.com/blogs/what-is-flap-launchpad/
+  https://chainwire.org/2026/08/28/bankr-launches-agent-powered-liquidity-for-tokenized-stocks-on-aerodrome/
+  https://clanker.gitbook.io/documentation/references/supported-quote-tokens
+  https://1inch.com/blog/post/coinbase-tokenized-stocks
+  https://cryptobriefing.com/base-carry-trade-vaults-coinbase-tokenized-stocks/
+
+================================================================================
+DISCLAIMER: This document is research and product planning. It is not legal,
+financial, or investment advice. Building a consumer product on top of security
+tokens may create licensing and compliance obligations depending on jurisdiction.
+Obtain legal advice before entering Phase 1.
+================================================================================

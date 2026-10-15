@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Not found · Curb</title>
+<!-- THE HOST'S ANSWER FOR AN ADDRESS THAT IS NOT A PAGE (Vercel, Netlify and
+     Cloudflare Pages all serve 404.html at the root for one; web/e2e/serve.js
+     does the same), at whatever depth it was asked for. So the <base> puts
+     every relative link the site bar draws back at the root - under /a/b/,
+     "browse.html" would be /a/b/browse.html, another 404 - and every file
+     below is named from the root. -->
+<base href="/" />
+<meta name="robots" content="noindex" />
+<link rel="icon" href="/curb-mark.svg" />
+<link rel="stylesheet" href="/topbar.css" />
+<script src="/config.js"></script>
+<style>
+  /* THE SAME PALETTE AS THE OTHER PAGES. */
+  :root {
+    color-scheme: dark;
+    --bg: #080b11; --panel: #0e131b; --line: #1d2633;
+    --ink: #eef2f7; --dim: #94a0b0; --dimmer: #5f6b7c; --paint: #0052ff; --paint-hi: #2a6dff;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); }
+  main { max-width: 648px; margin: 0 auto; padding: 48px clamp(24px, 3vw, 40px) 96px; }
+  h1 { font-size: 28px; margin: 0 0 10px; letter-spacing: -0.02em; }
+  p { font-size: 15px; line-height: 1.6; color: var(--dim); margin: 0 0 22px; }
+  .go { display: flex; flex-wrap: wrap; gap: 12px; }
+  .go a { display: inline-block; padding: 10px 16px; border-radius: 10px; font-weight: 650; font-size: 14px;
+    text-decoration: none; border: 1px solid var(--line); color: var(--ink); background: var(--panel); }
+  .go a.main { background: var(--paint); border-color: var(--paint); color: #fff; }
+  .go a:hover { border-color: var(--paint-hi); }
+</style>
+</head>
+<body>
+<header id="siteBar" data-page=""></header>
+<script src="/topbar.js"></script>
+<main>
+  <h1>This page does not exist</h1>
+  <p>The address may be mistyped, or the page may have moved. A token's own page is
+    <code>/token/</code> followed by its full address.</p>
+  <div class="go">
+    <a class="main" href="browse.html" data-carry>See the launches</a>
+    <a href="docs.html" data-carry>Read the docs</a>
+  </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "@curb/sharer-spec",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CURB-SHARE v1 reference calculator and golden vectors",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node reference.mjs --check",
+    "test": "node --test spec.test.mjs"
+  },
+  "dependencies": {
+    "@openzeppelin/merkle-tree": "1.0.8",
+    "ethereum-cryptography": "3.2.0"
+  }
+}

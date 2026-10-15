@@ -1,0 +1,278 @@
+================================================================================
+CURB - WHEN SOMETHING GOES WRONG IN PRODUCTION
+================================================================================
+Written   8 October 2026
+Status    For use from the moment DEPLOY.txt STEP 4 lands. Nothing is deployed
+          yet. The names and phone numbers marked ........ are filled in
+          before the day IN A PRIVATE COPY of this file, kept outside the
+          repository and never committed - not here (WHO says why).
+
+WHAT THIS IS
+  The playbook for an incident after the deployment: a contract bug or an
+  exploit, a bad launch, an issuer stopping an asset, a wrong holder-sharing
+  payout, a stolen key, or the site or the domain taken over. What to look at
+  first, which levers exist and what each one CANNOT do, who signs, and what
+  users are told.
+  A deployment that fails half way is DEPLOY.txt, IF SOMETHING GOES WRONG.
+  Holder sharing's own alerts are services/sharer/RUNBOOK.md parts 13 and
+  14, and this file points there rather than repeating them. How a Safe
+  signature is made safely is SAFE_OPS.txt.
+
+THE FIRST THING TO KNOW: NOTHING CAN BE PAUSED, AND THAT IS BY DESIGN
+  No CURB contract has a pause, an upgrade path or an admin who can move
+  somebody's funds. The token has no owner; the curve has no owner; the
+  graduated pool is an ordinary Uniswap v4 pool; the lock has no withdrawal.
+  Launching is open to anyone on every factory, and factories can never be
+  removed from the registry. So in an incident there is no switch that stops
+  trading, stops launching, or gives anything back - on any launch, ever.
+  A bug in a contract every launch shares reaches launches that already
+  exist, and the fix is a NEW contract that only new launches use.
+  What does exist is listed below, with its limit next to it. Read the limit
+  before using the lever: most of them stop the SITE from leading people
+  somewhere, not the chain from doing something.
+
+
+================================================================================
+WHO
+================================================================================
+  Filled in before the day, and kept current - in the private copy, never
+  in this file. The repository is public (services/sharer/RUNBOOK.md 4.1),
+  so a name or a number committed here is published at the next push; and
+  an uncommitted edit to this tracked file, as to any top-level .txt, stops
+  DEPLOY.txt STEP 0's status line and the preflight's tree check. Everyone
+  named in it holds a copy. A name with no phone number is not on call.
+
+  incident lead         ........   (the owner) - decides, posts, signs
+  Safe A signers        ........   (the policy Safe: SAFE_OPS.txt has the
+                                    threshold, its private copy the list)
+  Safe B signers        ........   (the vetoer Safe)
+  guardian operator     ........   (services/sharer/RUNBOOK.md part 10)
+  who can publish the site   ........   (push to main + the host account)
+  who posts on X        ........
+
+  TARGET TIMES - a number to miss, not a promise. They replace PRE_MAINNET D4's
+  "look within 4 hours, act within 24" where they are shorter:
+    a wrong holder-sharing root, still pending   inside its hour. The guardian
+                                                 vetoes in minutes; if it did
+                                                 not, a Safe signs the veto
+                                                 from the alert.
+    a stolen publisher key suspected             freeze and revokePublisher
+                                                 within the hour
+    the site or the domain not ours              site down within the hour,
+                                                 X post at once
+    a contract bug with funds at risk            banner and hide within the
+                                                 hour, X post at once
+    anything else                                look within 4 hours, act
+                                                 within 24
+
+
+================================================================================
+TRIAGE - THE FIRST THIRTY MINUTES
+================================================================================
+  1. WHAT KIND IS IT? Pick one; the playbooks below follow this list.
+       a contract bug or an exploit         a key stolen or lost
+       a bad or misleading launch           the site or the domain taken over
+       an issuer stopping an asset          a launch stuck in Waiting
+       a wrong holder-sharing payout
+  2. IS MONEY MOVING RIGHT NOW? Read the chain, not the page: Basescan for the
+     contracts in ADDRESSES.txt, the transactions in the last blocks, the
+     events. A page may be the thing that is wrong.
+  3. REPRODUCE OFF CHAIN, NEVER ON IT. A fork of Base at the current block, on
+     a port of its own - never the suite's pinned node, never a broadcast:
+       base-anvil --fork-url <a Base RPC> --port 8560
+     then the transaction, the call or the script against
+     http://127.0.0.1:8560.
+  4. WHAT IS AFFECTED? Which factories (paired assets), which launches
+     (registry.launchSlice, the lens's launchPage), curve or pool, sharing or
+     not. Write it down: the X post needs it.
+  5. PICK THE LEVERS from the table below, and the playbook's order.
+  6. START A LOG - times, transactions, decisions - from the first minute. It
+     becomes the write-up.
+
+
+================================================================================
+THE LEVERS, AND THE LIMIT OF EACH
+================================================================================
+  WHO: "Safe A" is the policy Safe (it owns the hook, the catalog, the
+  distributor factory and, after DEPLOY.txt STEP 4B, the registry); "a
+  vetoer" is Safe B, the guardian key or Safe A; "anyone" is any address.
+
+  THE SITE - web/config.js, one commit to main, live in minutes
+    banner                 a notice at the top of every page
+      who / how fast       whoever can publish the site / minutes
+      cannot               reach anyone who does not use the site
+    hiddenLaunches         takes a launch out of Launches, the hero and the
+                           search
+      cannot               stop its trading, or a direct link or explorer
+                           from reaching it
+    hiddenFactories        takes a paired asset out of the create form and the
+                           lists - the halt PRE_MAINNET D4 describes
+      cannot               stop anyone launching on that factory directly, or
+                           trading what exists
+    featured               the only launches a ?featured= link may put in the
+                           front page's card; a link naming any other launch
+                           is ignored. Take a launch out to stop such links
+                           featuring it.
+      cannot               choose what the plain front page features: the
+                           registry's first ETH pair, unless hidden
+    the router             change one digit of web/app.js's CURB_ROUTER
+                           codehash and publish: the page sends nothing to a
+                           router whose code does not hash to it, and takes
+                           the longer flows (swap then buy; approve, sell,
+                           unwrap)
+      cannot               stop the router itself, which has no owner; anyone
+                           can still call it
+    take the site down     the host's own switch, or the domain pointed away
+      cannot               stop the chain - and it also stops the claims,
+                           the checks and the notice users need. Last resort,
+                           and for a site that is no longer ours.
+
+  HOLDER SHARING - the HolderDistributorFactory and the SharingCatalog
+    veto / vetoMany        stops a pending root inside its hour
+      who / how fast       a vetoer / at once
+      cannot               touch an active root, which keeps paying
+    freeze()               stops publishing and holds every pending root (each
+                           can then be vetoed whatever its hour)
+      who / how fast       a vetoer or Safe A / at once
+      cannot               stop an active root's payouts; unfreezing takes
+                           announceUnfreeze and 48 hours
+    revokePublisher()      the publisher key can propose nothing more
+      who / how fast       Safe A / at once
+      cannot               bring a new publisher in under 48 hours
+    catalog retire(f)      no new launch can switch to that distributor
+                           version
+      who / how fast       Safe A / at once
+      cannot               change a launch already switched to it
+    cancelPending()        withdraws an announced publisher, keeper payee or
+                           unfreeze
+      who / how fast       Safe A / at once, inside the 48 hours
+  THE PLATFORM POLICY - the FeeHook
+    announcePlatformRecipient / announcePlatformFeeBps, then execute after 24
+    hours, within 7 days; cancel... withdraws one
+      who / how fast       Safe A / 24 hours
+      cannot               reach any launch made before the change: each keeps
+                           the share and recipient it was created with
+  THE REGISTRY
+    addLauncher            admits a new paired asset (DeployAssetStack.s.sol)
+      who / how fast       Safe A after STEP 4B (the deployer before) / at once
+      cannot               remove one. There is no removal; 32 at most.
+  ANYONE, WITHOUT ASKING
+    Graduator.graduate(token)          completes a launch stuck in Waiting
+                                       (the page's Complete the move)
+    Graduator.noteReady(token)         notes a full, ungraduated launch
+                                       stuck; the keeper sends it itself when
+                                       graduate() would revert
+    Graduator.rescueCurveFees(token)   pays a full curve's fees straight out
+                                       when the issuer blocks the escrow, so
+                                       it can graduate (DEPLOY.txt, A LAUNCH
+                                       STRANDED BY THE ISSUER). Its
+                                       creator-fee recipient and the platform
+                                       recipient at once; anyone else an hour
+                                       after noteReady(token).
+    a distributor's harvest()          pulls a launch's income in; push and
+                                       claim pay the active root's leaves from
+                                       its published file. All without the
+                                       keeper - but no new root without it.
+
+  WHAT NOTHING CAN DO
+    stop trading on any curve or pool       change any launch's terms
+    stop launching on any factory           take liquidity out of a lock
+    move or freeze anybody's tokens         recover a lost creator key
+    undo a payout that was made             pay out more than a distributor
+                                            received
+
+
+================================================================================
+PLAYBOOKS
+================================================================================
+  A CONTRACT BUG OR AN EXPLOIT
+    1. Triage 1-4. Reproduce it on the fork; know which contracts and which
+       launches before saying anything specific.
+    2. Banner at once: what is affected, what to avoid ("do not buy on X
+       pair", "do not approve Y"), that the contracts cannot be paused.
+    3. Hide what leads people into it: hiddenLaunches, hiddenFactories, or
+       the router out of CURB_ROUTER, whichever the bug lives in.
+    4. Post on X (COMMS below), then update at fixed times.
+    5. If holder sharing is involved, freeze it (Safe A or a vetoer).
+    6. The fix is a new contract, reviewed and tested like the first: a new
+       factory for a paired asset (DeployAssetStack.s.sol, admitted by Safe
+       A), a new distributor version (catalog propose, 7 days). Existing
+       launches stay on the old code; say so plainly.
+  A BAD OR MISLEADING LAUNCH (a copy of a real brand, a launch posing as
+  CURB's own, a launch whose links lead to a scam)
+    hiddenLaunches, then a note on X if people are being misled. It keeps
+    trading; the site stops pointing at it. $CURB is the token ADDRESSES.txt
+    names (registry.launchAt(0), unless DEPLOY.txt's $CURB IS NOT LAUNCH ZERO
+    happened) - say so when a copy circulates.
+  AN ISSUER STOPPING AN ASSET (a pause, a blocklist)
+    Nothing of ours routes around it (PRE_MAINNET D7). hiddenFactories for
+    that asset, a banner naming it, and nothing else to sign. A full curve
+    whose escrow is blocked: rescueCurveFees, then graduate. The platform
+    Safe (the platform recipient) may rescue at once and is the quickest way
+    out; anyone else an hour after Graduator.noteReady(token), which the
+    keeper sends itself when graduate() would revert.
+  A WRONG HOLDER-SHARING PAYOUT
+    services/sharer/RUNBOOK.md part 13 (the alert table) and part 14. While a
+    root is pending: veto. Once it became payable: freeze, then RUNBOOK part
+    13's row for a root no longer vetoable. Know what the freeze costs:
+    active roots keep paying, publishing stops for EVERY launch until the
+    unfreeze (announced, then 48 hours), and nothing paid comes back.
+  A KEY STOLEN OR LOST
+    the publisher            RUNBOOK part 14: freeze and revokePublisher at
+                             once; then announce the new publisher and the
+                             unfreeze (48 hours each), and execute unfreeze()
+                             before executePublisher(), which a freeze
+                             refuses
+    a pusher or the guardian RUNBOOK part 14 and part 12
+    a Safe signer            SAFE_OPS.txt, REPLACING A SIGNER: swap it out
+                             before the remaining keys fall below the
+                             threshold
+    the deployer             before STEP 4B it owns the registry: the Safe
+                             accepts the handover at once (DEPLOY.txt STEP
+                             4B). After it, the key owns only the buyback
+                             vaults, which hold nothing and do nothing.
+    the platform recipient   every launch made while it is the recipient pays
+                             it forever. Safe A announces a new recipient now
+                             (24 hours) so later launches pay the new one, and
+                             whoever holds the old key claims what is owed
+                             to it as soon as possible (SAFE_OPS.txt,
+                             PLATFORM RECIPIENT).
+    a creator's own key      nothing of ours can help: the creator wallet is
+                             permanent. Say so if asked.
+  THE SITE OR THE DOMAIN TAKEN OVER
+    SAFE_OPS.txt, IF THE SITE IS NOT OURS ANY MORE. In short: take it down,
+    tell people on X not to sign anything there, get the account back,
+    republish from a known commit, check web/config.js and CURB_ROUTER
+    against ADDRESSES.txt before the domain comes back.
+  A LAUNCH STUCK IN WAITING (AutoGraduationFailed)
+    The keeper finds it within ten minutes and sends Graduator.graduate()
+    itself (DEPLOY.txt, IMMEDIATELY AFTER 3); it pages when it cannot, or
+    when the call would revert. Anyone can also press Complete the move on
+    its page. If it fails again, reproduce it on the fork to find why - an
+    escrow blocked by the issuer needs Graduator.rescueCurveFees(token)
+    first: the platform recipient may send it at once, anyone else an hour
+    after Graduator.noteReady(token) - the keeper sends that note itself and
+    its page says when the rescue opens.
+
+
+================================================================================
+COMMS
+================================================================================
+  WHERE, IN THIS ORDER
+    1. X, from the project's account - the first place people look.
+    2. The site's banner (web/config.js banner), pointing to the X thread.
+    3. docs.md, if a fact on it changed.
+  WHAT EACH POST SAYS - only what is known
+    what happened, in one sentence; which contracts and which launches, by
+    address; what users should do now (stop trading X, revoke the approval to
+    Y with their wallet or a token-approval tool, nothing to do); what CURB
+    can do and cannot do - the contracts cannot be paused, nothing can be
+    reversed; when the next update comes.
+  WHAT IT NEVER SAYS OR DOES
+    asks anyone for a seed phrase, a private key or a transaction to sign;
+    links to a "fix", a "migration" or a claim page; guesses at a cause or a
+    figure not yet measured; promises an outcome. Anyone who sends people a
+    link to sign "for the incident" is not us - say that in the first post.
+  AFTERWARDS
+    A write-up from the log: timeline, cause, what was done, what changes.
+    Kept in the repository next to this file.

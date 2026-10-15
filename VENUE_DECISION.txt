@@ -1,0 +1,203 @@
+================================================================================
+VENUE DECISION - WHERE A GRADUATED LAUNCH LIVES
+Closes DIFF_TABLE.txt C1 and ROADMAP.txt Phase 0 E
+================================================================================
+Date  : 11 September 2026
+Status: RECOMMENDATION. Not yet ratified by the founder.
+
+
+================================================================================
+0. THE QUESTION, STATED PRECISELY
+================================================================================
+
+When a curve completes, the launch token needs a permanent market. Section 5
+of ROADMAP.txt already decided the DIRECTION - graduated volume should land
+somewhere we capture fees - and deferred the implementation. This is that
+implementation choice.
+
+THE PAIR MATTERS AND IS EASY TO GET WRONG.
+The graduated pool is MEME/NVDAc, not NVDAc/USDC. That distinction shapes what
+follows - though on its own it settles less than an earlier draft claimed, for
+the routing reason in 2.1.
+
+
+================================================================================
+1. THE OPTIONS
+================================================================================
+
+A. AERODROME SLIPSTREAM
+   Base's dominant DEX by a wide margin: ~$650M TVL, ~$25B annualised volume,
+   ~180k monthly active accounts, more than twice the combined TVL of every
+   other Base DEX including Uniswap. Slipstream is a concentrated-liquidity
+   implementation in the Uniswap v3 style, with veAERO gauge emissions that
+   can direct liquidity to a pool.
+
+B. UNISWAP V4 WITH OUR OWN HOOK
+   v4 shipped on 31 January 2025, live on ten networks including Base from
+   that day. (An earlier draft of this file said 30 January 2026. That came
+   from a search summary I did not check against the announcement, and it was
+   wrong by a year.) Verified live on chain today:
+     PoolManager      0x498581ff718922c3f8e6a244956af099b2652b2b   24,009 bytes
+     PositionManager  0x7c5f5a4bbd8fd63184577525326123b519429bdc   23,877 bytes
+     StateView        0xa3c0c9b65bad0b08107aa264b0f3db444b867a71    3,531 bytes
+     Permit2          0x000000000022D473030F116dDEE9F6B43aC78BA3    9,152 bytes
+   PositionManager.poolManager() returns exactly the PoolManager above, which
+   is the same pairing check PonsV2LaunchFactory's constructor performs.
+
+C. UNISWAP V4 VIA DOPPLER
+   Whetstone Research's liquidity-bootstrapping protocol, built as a v4 hook,
+   live on Base, reviewed by Certora and run through a Cantina competition.
+   This is what vvveity, the one existing stock-paired launchpad on Base, uses.
+
+   Its migration is MODULAR, which an earlier draft of this file got wrong.
+   Four targets: no-migration, Uniswap V2, V3, and V4 "with programmable fee
+   streaming to beneficiaries". The Dutch-auction curve is an auction-type
+   choice, separate from the migration target.
+
+
+================================================================================
+2. THE ARGUMENT THAT DECIDES IT
+================================================================================
+
+2.1  THE PAIR WE CREATE HAS NO INCUMBENT DEPTH
+Aerodrome's depth in tokenized stocks is in NVDAc/USDC. Our graduated pool is
+MEME/NVDAc - a pair that exists nowhere until we create it. There is no
+incumbent depth to join, on either venue.
+
+A user arriving with USDC needs USDC -> NVDAc -> MEME. Those legs are
+genuinely separable, and the quote leg can be served from Aerodrome's depth
+whichever venue holds the meme leg.
+
+  CORRECTION. An earlier draft said aggregators would combine the two legs
+  automatically, so siting the meme pool on v4 "costs us nothing". That is
+  not guaranteed. A router has to support both venues AND our specific hook,
+  and Uniswap documents a process for getting hooks into routing at all.
+  Liquidity being reachable and user flow actually arriving there are two
+  different results. Which routers we can rely on is now an open item in
+  Section 5, and it is a real cost of choosing a hooked pool.
+
+2.2  V4's FEE MODEL FITS OUR DESIGN; AERODROME'S IS A DIFFERENT SHAPE
+  [WITHDRAWN] An earlier draft claimed only v4 can pay us, on the grounds
+  that Slipstream has no hooks. The conclusion does not follow. Unstaked
+  Slipstream LP positions accrue fees that are collectable through
+  NonfungiblePositionManager.collect(), so a platform-controlled LP position
+  is a workable revenue design on Aerodrome. "No hooks, therefore no revenue"
+  was wrong.
+
+What remains true is that the two are different models:
+  v4 hook    - a fee taken on swaps in the pool, set by policy, and read by
+               the curve at launch. This is the shape PONS already uses and
+               the shape our fee model is written against.
+  Aerodrome  - revenue accrues to an LP POSITION we hold and must collect,
+               which means holding the position, managing its range, and
+               depending on that position remaining ours.
+
+So this is a preference, not a disqualification. The v4 model is simpler for
+us because our fee policy is already expressed that way.
+
+2.3  THE REFERENCE IMPLEMENTATION IS ALREADY V4-SHAPED
+PONS's graduation path is built around PoolKey, IPositionManager, IHooks and
+a locker for the position NFT. Choosing v4 makes that readable and portable.
+Choosing Aerodrome discards it and we design graduation from nothing.
+
+This, plus 2.2, is now the actual case for v4. It is a fit-and-cost argument,
+not the elimination the earlier draft claimed.
+
+
+================================================================================
+3. THE OTHER AXES
+================================================================================
+
+B20 COMPATIBILITY
+  B20 presents as an ordinary ERC-20 and, as measured on mainnet, carries a
+  one-byte 0xef marker so extcodesize > 0 and standard contract checks pass.
+  v4 addresses currencies by address through its Currency type, so nothing in
+  the pool machinery should object.
+  NOT YET PROVEN. No B20 asset has been put through a v4 pool in this
+  repository. This is the first thing the environment work must establish.
+
+HOOK FEES
+  v4 hooks can take a fee on swaps in the pool they govern. That is the
+  mechanism Section 5 Option B depends on, and PONS uses it: its curve reads
+  a frozen FeePolicySnapshot from the hook at launch.
+  Aerodrome's equivalent is different in kind, not absent: fees accrue to an
+  LP position we would hold and collect. See 2.2.
+
+GRADUATION INTEGRATION COST
+  Aerodrome: highest. New graduation design with no reference to work from,
+    plus a position to hold, range and collect from - an operational burden
+    the hook model does not have.
+  v4 + own hook: moderate. BaseHook plus PONS's MemeHook as reference. Pulls
+    in v4-hooks-public, which imports only v4-core and v4-periphery.
+  v4 + Doppler: UNRESOLVED, and an earlier draft dismissed it on a false
+    premise - that Doppler necessarily replaces our curve. Its migration is
+    modular (no-op / V2 / V3 / V4 with programmable fee streaming) and the
+    Dutch-auction curve is a separate axis. What is genuinely unexamined is
+    whether OUR curve can hand off into Doppler's Airlock, since our curve is
+    not one of its auction types. That is an integration question nobody has
+    answered, not a settled impossibility.
+    The one real consideration that survives: it would put us on the same
+    stack as the only competitor in this lane.
+
+WHAT WE GIVE UP BY NOT CHOOSING AERODROME
+  Stated plainly rather than buried: veAERO gauge emissions are a genuine
+  liquidity-bootstrapping tool, and being on the venue with most of Base's
+  volume has routing value - which matters more now that router support for a
+  hooked pool is an open question rather than an assumption.
+  We are trading those for a fee model that fits our existing design and a
+  reference implementation we can read. That is a narrower gain than the
+  earlier draft claimed, and it is worth re-testing if router support turns
+  out to be hard.
+
+
+================================================================================
+4. RECOMMENDATION
+================================================================================
+
+[RECOMMENDED] Option B - Uniswap v4, with our own hook.
+
+"Our own" means started from BaseHook and read against PONS's MemeHook, not
+written from nothing. The hook is where our fee model lives, so it is one of
+the few places we should expect to write code rather than adopt it.
+
+CONSEQUENCES TO ACCEPT WITH THIS CHOICE
+  - v4-hooks-public comes back as a dependency, for BaseHook. Its footprint
+    is v4-core and v4-periphery only; the 32k-file figure measured that
+    repository's own test vendoring and was wrong to cite here.
+  - The hook is new code and carries the audit weight that implies. The
+    security scope in ROADMAP.txt 6.3 already lists it.
+  - BUSL, scoped properly. An earlier draft said it "applies to any v4
+    route", which is too broad. Sending transactions to the already-deployed
+    PoolManager is not the same use as copying BUSL source into our own
+    distribution. The licence review belongs on the files we actually copy or
+    compile - concretely, PonsV2GraduationGuard's use of Pool.sol, which is
+    still the one identified case. Change Date 2027-06-15, Change Licence
+    MIT, Additional Use Grant unresolved from its ENS records.
+
+WHAT THIS DOES NOT DECIDE
+  Whether to reuse PONS's MemeHook, adapt it, or write a narrower one. That is
+  the next file-level reuse decision and it needs the same treatment the curve
+  got: read it, diff it against what we need, decide from the table.
+
+
+================================================================================
+5. OPEN, AND NOT CLOSED BY THIS DOCUMENT
+================================================================================
+  [ ] Founder ratification.
+  [ ] Put a B20 asset through a v4 pool and prove it works. Until that is
+      done, section 3's compatibility paragraph is an expectation.
+  [ ] Stand up the B20 native environment (base-anvil --base). foundry.toml's
+      [profile.fork] is still comments only.
+  [ ] MemeHook reuse decision.
+  [~] ROUTER SUPPORT - partly answered, see ROUTER_ACCESS.txt.
+      CONFIRMED from Uniswap's own docs: inclusion in interface routing
+      requires ALLOWLISTING ("fill out the hook allowlisting form"), so a new
+      hook is not routed by default. The alternative is running a UniswapX
+      filler for our pools, which is operational infrastructure rather than a
+      setting. Third-party aggregator support is claimed but unverified.
+      STILL OPEN: whether UniversalRouter executes a swap against a
+      non-allowlisted hooked pool at all. That is the load-bearing question
+      for our own front end and it is testable on the fork.
+  [ ] Whether our curve can feed Doppler's migrator, if that is ever worth
+      revisiting.
+  [ ] BUSL Additional Use Grant - resolve the ENS records or take advice.

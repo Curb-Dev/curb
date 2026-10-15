@@ -1,0 +1,192 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CURB - wallet setup for the real-wallet run</title>
+<!--
+  SETUP SCAFFOLDING FOR web/REAL_WALLET_TEST.txt. NOT PART OF THE PRODUCT.
+
+  The run needs the wallet on two local networks, and adding them by hand is a
+  form with five fields that has to be filled twice - which is where the first
+  attempt stopped. wallet_addEthereumChain asks the wallet to do it, so the
+  person presses Approve instead of typing.
+
+  NOTHING HERE SENDS A TRANSACTION. It adds networks, switches between them,
+  and reports what the wallet and the endpoints say. The switching is useful
+  for the wrong-network step too, where the wallet has to be moved to the
+  scratch chain and back.
+
+  THE CHAIN IDS ARE READ FROM THE ENDPOINTS, never typed in here. A page that
+  told the wallet an id the node does not serve would be setting up the exact
+  confusion this file exists to remove - and the wallet would reject it anyway.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0 auto; padding: 24px; max-width: 648px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; opacity: .7; }
+  section { border: 1px solid rgba(128,128,128,.35); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  h2 { font-size: 14px; margin: 0 0 10px; }
+  button { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid rgba(128,128,128,.5);
+           background: transparent; color: inherit; cursor: pointer; margin: 0 6px 6px 0; }
+  button:disabled { opacity: .45; cursor: default; }
+  code { font-family: ui-monospace, monospace; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: 3px 10px 3px 0; vertical-align: top; }
+  td:first-child { opacity: .7; white-space: nowrap; }
+  /* A WHOLE ADDRESS BREAKS INSIDE ITS CELL on a phone rather than pushing the
+     page sideways. */
+  td + td, #msg { overflow-wrap: anywhere; }
+  .ok { color: #1a7f37; } .bad { color: #b3261e; }
+  #msg { margin-top: 10px; white-space: pre-wrap; }
+</style>
+
+<h1>Wallet setup</h1>
+<p class="sub">For <code>web/REAL_WALLET_TEST.txt</code>. Adds the two local networks and switches between
+them. It never sends a transaction.</p>
+
+<section>
+  <h2>What is out there</h2>
+  <table>
+    <tr><td>fork endpoint</td><td><code id="forkRpc"></code> &mdash; <span id="forkChain">reading…</span></td></tr>
+    <tr><td>scratch endpoint</td><td><code id="scratchRpc"></code> &mdash; <span id="scratchChain">reading…</span></td></tr>
+    <tr><td>wallet</td><td><span id="walletState">not connected</span></td></tr>
+  </table>
+  <div style="margin-top:10px"><button id="connect">Connect wallet</button>
+  <button id="recheck">Re-read</button></div>
+</section>
+
+<section>
+  <h2>Add the networks</h2>
+  <p style="margin:0 0 10px">The wallet will ask you to approve each one. The chain id comes from the
+  endpoint itself, so what is added is what the node actually serves.</p>
+  <button id="addFork" disabled>Add CURB local fork</button>
+  <button id="addScratch" disabled>Add CURB scratch</button>
+</section>
+
+<section>
+  <h2>Switch</h2>
+  <p style="margin:0 0 10px">Step 6 of the runbook needs the wallet on the scratch chain while the page
+  reads the fork, and then back again.</p>
+  <button id="toFork" disabled>Switch to CURB local fork</button>
+  <button id="toScratch" disabled>Switch to CURB scratch</button>
+</section>
+
+<div id="msg"></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  const FORK = params.get("rpc") || "http://127.0.0.1:8546";
+  const SCRATCH = params.get("scratch") || "http://127.0.0.1:8547";
+  const NAMES = { fork: "CURB local fork", scratch: "CURB scratch" };
+
+  const eth = () => window.ethereum;
+  const say = (text, bad) => { $("msg").textContent = text; $("msg").className = bad ? "bad" : "ok"; };
+  // EVERYTHING WRITTEN HERE IS TEXT, NEVER MARKUP. The endpoints come from the
+  // link (?rpc=, ?scratch=) and so do the errors they answer with: written as
+  // HTML, a link to an endpoint of somebody's choosing ran their script on this
+  // origin. A coloured piece is a <span> whose text is set, nothing more.
+  const span = (cls, text) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; return s; };
+  const put = (id, ...parts) => $(id).replaceChildren(...parts.map((p) => (typeof p === "string" ? document.createTextNode(p) : p)));
+
+  let chains = { fork: null, scratch: null };
+
+  async function chainIdOf(rpc) {
+    const r = await fetch(rpc, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
+    });
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message);
+    return j.result;               // kept as the hex string the wallet wants
+  }
+
+  async function readEndpoints() {
+    $("forkRpc").textContent = FORK;
+    $("scratchRpc").textContent = SCRATCH;
+    for (const [key, rpc, cell] of [["fork", FORK, "forkChain"], ["scratch", SCRATCH, "scratchChain"]]) {
+      try {
+        chains[key] = await chainIdOf(rpc);
+        put(cell, span("ok", "chain " + parseInt(chains[key], 16)));
+      } catch (e) {
+        chains[key] = null;
+        put(cell, span("bad", "not answering (" + String((e && e.message) || e) + ")"));
+      }
+    }
+    // THE TWO MUST DIFFER. Equal ids are the whole reason the wrong-network
+    // step cannot be run, and a setup page that let it pass would be hiding it.
+    if (chains.fork && chains.fork === chains.scratch) {
+      say("Both endpoints serve chain " + parseInt(chains.fork, 16) +
+          ". The wrong-network step needs them to differ.", true);
+    }
+    await readWallet();
+    for (const id of ["addFork", "addScratch", "toFork", "toScratch"]) {
+      $(id).disabled = !eth() || !chains[id.toLowerCase().includes("scratch") ? "scratch" : "fork"];
+    }
+  }
+
+  async function readWallet() {
+    if (!eth()) { put("walletState", span("bad", "no wallet in this browser")); return; }
+    const accounts = await eth().request({ method: "eth_accounts" });
+    const chain = await eth().request({ method: "eth_chainId" });
+    const where = chains.fork && chain === chains.fork ? "on the fork"
+      : chains.scratch && chain === chains.scratch ? "on the scratch chain"
+      : "on neither of these";
+    const who = accounts && accounts[0] ? String(accounts[0]) : "not connected";
+    put("walletState", who + " — chain " + parseInt(chain, 16) + ", ",
+      span(where === "on neither of these" ? "bad" : "ok", where));
+  }
+
+  async function addChain(key, rpc) {
+    if (!chains[key]) { say("That endpoint is not answering, so there is nothing to add.", true); return; }
+    try {
+      await eth().request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: chains[key],
+          chainName: NAMES[key],
+          rpcUrls: [rpc],
+          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+        }],
+      });
+      say(NAMES[key] + " added. The wallet may have switched to it.");
+    } catch (e) {
+      // A DECLINE IS NOT A FAILURE, and 4001 is the only thing that says so.
+      say(e && e.code === 4001
+        ? "You declined adding " + NAMES[key] + ". Nothing changed."
+        : "The wallet refused to add " + NAMES[key] + ": " + (e && e.message || e), true);
+    }
+    await readWallet();
+  }
+
+  async function switchTo(key) {
+    if (!chains[key]) { say("That endpoint is not answering.", true); return; }
+    try {
+      await eth().request({ method: "wallet_switchEthereumChain", params: [{ chainId: chains[key] }] });
+      say("Switched to " + NAMES[key] + ".");
+    } catch (e) {
+      say(e && e.code === 4902
+        ? NAMES[key] + " is not in the wallet yet - add it first."
+        : "Could not switch: " + (e && e.message || e), true);
+    }
+    await readWallet();
+  }
+
+  $("connect").onclick = async () => {
+    try { await eth().request({ method: "eth_requestAccounts" }); } catch (e) { say(String(e.message || e), true); }
+    await readWallet();
+  };
+  $("recheck").onclick = readEndpoints;
+  $("addFork").onclick = () => addChain("fork", FORK);
+  $("addScratch").onclick = () => addChain("scratch", SCRATCH);
+  $("toFork").onclick = () => switchTo("fork");
+  $("toScratch").onclick = () => switchTo("scratch");
+
+  if (eth()) {
+    eth().on && eth().on("chainChanged", readWallet);
+    eth().on && eth().on("accountsChanged", readWallet);
+  }
+  readEndpoints();
+})();
+</script>

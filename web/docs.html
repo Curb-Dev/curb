@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Curb Docs</title>
+<meta name="description" content="How Curb works: launching, the curve, graduation, fees and holder sharing." />
+<meta property="og:site_name" content="Curb" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Curb Docs" />
+<meta property="og:description" content="How Curb works: launching, the curve, graduation, fees and holder sharing." />
+<meta property="og:image" content="https://curb.fun/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Curb: launch coins paired with ETH, stocks and more" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@curbfun" />
+<!-- THE DEPLOYMENT AND THE INCIDENT SWITCHES, before any script reads them. -->
+<script src="config.js"></script>
+<link rel="icon" href="curb-mark.svg" />
+<link rel="stylesheet" href="topbar.css" />
+<style>
+  /* THE SAME PALETTE AS EVERY OTHER PAGE, copied rather than shared so this
+     page reads the same with or without the bar's stylesheet. */
+  :root {
+    color-scheme: dark;
+    --bg: #080b11; --panel: #0e131b; --panel2: #131a24; --line: #1d2633;
+    --ink: #eef2f7; --dim: #94a0b0; --dimmer: #5f6b7c;
+    --paint: #0052ff; --paint-hi: #2a6dff; --good: #3ddc97; --bad: #ff6b6b;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); }
+  main { max-width: calc(45% + 540px); margin: 0 auto; padding: 0 clamp(24px, 3vw, 40px) 96px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  /* TWO COLUMNS: WHERE YOU ARE, AND WHAT YOU ARE READING. The contents column
+     is fixed so the article does not shift sideways when a long heading is
+     added, and the article stops at a reading measure however wide the window. */
+  .docs { display: grid; grid-template-columns: 216px minmax(0, 1fr); gap: clamp(32px, 4.5vw, 64px);
+    align-items: start; padding-top: 8px; }
+  .docs.noToc { grid-template-columns: minmax(0, 1fr); }
+
+  /* THE CONTENTS. One <details> in both layouts: on a wide screen the script
+     keeps it open and the summary is hidden, so it reads as a plain sticky
+     list; on a narrow one it is the collapsible box above the article. */
+  /* THE BAR IS STICKY TOO (topbar.css, height --cb-bar-h), so the contents
+     stick below it rather than sliding under it; without the bar's stylesheet
+     the variable is missing and the fallback of 0 applies. */
+  .tocBox { position: sticky; top: calc(var(--cb-bar-h, 0px) + 20px);
+    max-height: calc(100vh - var(--cb-bar-h, 0px) - 40px); overflow-y: auto;
+    padding: 6px 4px 12px 0; }
+  .tocBox[hidden] { display: none; }
+  .tocBox > summary { display: none; }
+  .tocLabel { font-size: 11px; font-weight: 600; color: var(--dimmer); text-transform: uppercase;
+    letter-spacing: 0.07em; margin: 0 0 12px; }
+  .toc { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--line); }
+  .toc li { margin: 0; }
+  /* 4px, NOT 5: holder sharing's two entries would otherwise push "Paired-asset
+     addresses" under a 900px window's fold again (site.spec.js). */
+  .toc a { display: block; margin-left: -1px; padding: 4px 0 4px 13px; border-left: 2px solid transparent;
+    font-size: 13px; line-height: 1.45; color: var(--dim); text-decoration: none; }
+  .toc a:hover { color: var(--ink); }
+  /* THE SUB-ENTRIES SIT CLOSER than the sections they belong to, so the whole
+     list fits a 900px window again: the CURB router entry pushed "Paired-asset
+     addresses" below the column's fold. */
+  .toc li.lvl3 a { padding-left: 26px; padding-top: 2px; padding-bottom: 2px; font-size: 12.5px; line-height: 1.4;
+    color: var(--dimmer); }
+  .toc li.lvl3 a:hover { color: var(--ink); }
+  .toc a.on, .toc li.lvl3 a.on { color: var(--ink); border-left-color: var(--paint); }
+
+  /* THE ARTICLE. 15px at 1.7 is the size long prose on this site reads at, and
+     72ch is where a line stops being easy to come back from. */
+  .prose { max-width: 72ch; min-width: 0; font-size: 15px; line-height: 1.7; color: #d4dbe5; }
+  /* A small margin only: topbar.css already pads every anchor jump by the
+     bar's height (html { scroll-padding-top }), and the two add up. */
+  .prose [id] { scroll-margin-top: 12px; }
+  .prose h1 { font-size: 30px; line-height: 1.18; letter-spacing: -0.03em; color: var(--ink);
+    margin: 0 0 18px; }
+  .prose h2 { font-size: 21px; line-height: 1.3; letter-spacing: -0.02em; color: var(--ink);
+    margin: 46px 0 12px; }
+  .prose h3 { font-size: 16.5px; line-height: 1.4; letter-spacing: -0.01em; color: var(--ink);
+    margin: 30px 0 8px; }
+  .prose h1 + h2, .prose h2 + h3 { margin-top: 18px; }
+  .prose p { margin: 0 0 16px; }
+  .prose strong { color: var(--ink); font-weight: 650; }
+  .prose a { color: var(--paint-hi); text-decoration: underline; text-decoration-color: rgba(42, 109, 255, .45);
+    text-underline-offset: 3px; }
+  .prose a:hover { text-decoration-color: currentColor; }
+  /* A LINK THAT LEAVES THE SITE SAYS SO before it is clicked. */
+  .prose a[target="_blank"]::after { content: "\2197"; font-size: .8em; margin-left: 2px; }
+  .prose ul, .prose ol { margin: 0 0 16px; padding-left: 22px; }
+  .prose li { margin: 0 0 6px; padding-left: 3px; }
+  .prose li::marker { color: var(--dimmer); }
+  .prose li > p { margin: 0 0 8px; }
+  .prose li > p:last-child { margin-bottom: 0; }
+  .prose code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86em;
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: .08em .36em;
+    color: var(--ink); overflow-wrap: anywhere; }
+  .prose pre { margin: 0 0 18px; padding: 15px 18px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+  .prose pre code { display: block; background: none; border: 0; padding: 0; font-size: inherit;
+    white-space: pre; overflow-wrap: normal; }
+  .prose hr { border: 0; border-top: 1px solid var(--line); margin: 36px 0; }
+
+  /* TABLES scroll inside their own box on a phone rather than taking the
+     whole page sideways with them. */
+  .tableWrap { margin: 0 0 18px; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+  .prose table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.55; }
+  .prose th, .prose td { padding: 9px 13px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line);
+    text-align: left; vertical-align: top; }
+  .prose th:last-child, .prose td:last-child { border-right: 0; }
+  .prose tbody tr:last-child td { border-bottom: 0; }
+  .prose th { background: var(--panel); font-size: 11px; font-weight: 600; color: var(--dim);
+    text-transform: uppercase; letter-spacing: 0.07em; white-space: nowrap; }
+
+  /* CALLOUTS. The accent on the left carries the tone, and the label keeps it
+     in the text too, so the tone is not carried by colour alone. */
+  .callout { margin: 0 0 18px; padding: 13px 18px; background: var(--panel); border: 1px solid var(--line);
+    border-left: 3px solid var(--dimmer); border-radius: 10px; font-size: 14.5px; }
+  .callout > :first-child { margin-top: 0; }
+  .callout > :last-child { margin-bottom: 0; }
+  .callout.tone-note { border-left-color: var(--paint-hi); }
+  .callout.tone-note > p:first-child > strong:first-child { color: var(--paint-hi); }
+  .callout.tone-tip { border-left-color: var(--good); }
+  .callout.tone-tip > p:first-child > strong:first-child { color: var(--good); }
+  .callout.tone-warning { border-left-color: var(--bad); background: linear-gradient(90deg, rgba(255,107,107,.06), var(--panel) 60%); }
+  .callout.tone-warning > p:first-child > strong:first-child { color: var(--bad); }
+
+  /* LOADING AND FAILING are both said in words, never left as an empty page. */
+  .docStatus { font-size: 14px; color: var(--dim); margin: 6px 0 0; }
+  .docError { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--bad);
+    border-radius: 12px; padding: 20px 22px; font-size: 14px; line-height: 1.65; color: var(--dim); }
+  .docError h1 { font-size: 18px; margin: 0 0 8px; color: var(--ink); letter-spacing: -0.01em; }
+  .docError p { margin: 0 0 10px; }
+  .docError p:last-child { margin-bottom: 0; }
+  .docError .why { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    color: var(--ink); background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 11px; overflow-wrap: anywhere; }
+
+  /* BELOW 980 THE CONTENTS GO ABOVE THE ARTICLE, folded, because a sticky
+     column beside a phone-width article leaves room for neither. */
+  @media (max-width: 979.98px) {
+    .docs { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+    .tocBox { position: static; max-height: none; overflow: visible; padding: 0;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+    .tocBox > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer;
+      padding: 12px 16px; font-size: 13px; font-weight: 600; color: var(--ink); list-style: none; }
+    .tocBox > summary::-webkit-details-marker { display: none; }
+    .tocBox > summary::after { content: "+"; color: var(--dim); font-weight: 400; font-size: 16px; line-height: 1; }
+    .tocBox[open] > summary::after { content: "\2212"; }
+    .tocBox[open] > summary { border-bottom: 1px solid var(--line); }
+    .tocInner { padding: 12px 16px 14px; }
+    .tocBox .tocLabel { display: none; }
+    /* A FINGER'S TARGET on a phone, where the folded list has no height limit. */
+    .toc li.lvl3 a { padding-top: 5px; padding-bottom: 5px; }
+    .prose { max-width: none; }
+  }
+  @media (max-width: 620px) {
+    .prose { font-size: 15px; }
+    .prose h1 { font-size: 25px; }
+    .prose h2 { font-size: 19px; margin-top: 38px; }
+    .prose pre { font-size: 12.5px; padding: 13px 14px; }
+  }
+</style>
+</head>
+<body>
+<header id="siteBar" data-page="docs"></header>
+<script src="topbar.js"></script>
+<main>
+  <div class="docs" id="docLayout">
+    <details class="tocBox" id="docToc" hidden>
+      <summary>On this page</summary>
+      <nav class="tocInner" aria-label="On this page">
+        <p class="tocLabel">On this page</p>
+        <ul class="toc" id="docTocList"></ul>
+      </nav>
+    </details>
+    <article class="prose" id="docArticle" aria-busy="true">
+      <p class="docStatus" id="docStatus" role="status">Loading the docs&hellip;</p>
+      <noscript>
+        <p class="docStatus">The docs are drawn by a script on this page. Turn JavaScript on, or read
+          <a href="docs.md">docs.md</a> as plain text.</p>
+      </noscript>
+    </article>
+  </div>
+</main>
+<script src="docs.js"></script>
+</body>
+</html>

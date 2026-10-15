@@ -1,0 +1,320 @@
+{
+  "name": "v05-no-epoch-cases",
+  "description": "Attempt 1: only excluded accounts hold the token and nothing was received: the weight check comes first, so the reason is no-weight. Attempt 2: holders exist but nothing was received: no epoch. Attempt 3: income so small that every share floors to 0 and the keeper fee is 0: no epoch. Attempt 4: enough income: epoch 1, covering the whole range from sharingSince, because the attempts that yielded nothing did not consume it.",
+  "covers": [
+    "W = 0",
+    "no income",
+    "nothing allocated",
+    "range not consumed by a no-epoch attempt"
+  ],
+  "setup": {
+    "chainId": "8453",
+    "distributor": "0xd157000000000000000000000000000000000001",
+    "factory": "0xfac7000000000000000000000000000000000001",
+    "launchToken": "0x70ce000000000000000000000000000000000001",
+    "quoteToken": "0x4200000000000000000000000000000000000006",
+    "quoteIsWeth": true,
+    "quoteDecimals": "18",
+    "rules": {
+      "version": "1",
+      "exclusions": [
+        {
+          "address": "0xc0be000000000000000000000000000000000001",
+          "reason": "the launch curve"
+        },
+        {
+          "address": "0x400c000000000000000000000000000000000001",
+          "reason": "the launch hook"
+        },
+        {
+          "address": "0xe5c0000000000000000000000000000000000001",
+          "reason": "the launcher FeeEscrow"
+        },
+        {
+          "address": "0x96ad000000000000000000000000000000000001",
+          "reason": "the Graduator"
+        },
+        {
+          "address": "0x0b4a000000000000000000000000000000000001",
+          "reason": "the v4 PoolManager"
+        },
+        {
+          "address": "0x0b4b000000000000000000000000000000000001",
+          "reason": "the v4 PositionManager"
+        },
+        {
+          "address": "0x7e91000000000000000000000000000000000001",
+          "reason": "the LaunchRegistry"
+        },
+        {
+          "address": "0x10c0000000000000000000000000000000000001",
+          "reason": "the launch PositionLock"
+        },
+        {
+          "address": "0xea20c3266229a01cd0f45d9c7921a45d5b359561",
+          "reason": "CurbRouter"
+        }
+      ],
+      "keeperKeys": [
+        "0xcee9000000000000000000000000000000000001",
+        "0xcee9000000000000000000000000000000000002"
+      ],
+      "ammFactories": [
+        {
+          "address": "0xa33f000000000000000000000000000000000002",
+          "reason": "listed v2-style factory"
+        },
+        {
+          "address": "0xa33f000000000000000000000000000000000003",
+          "reason": "listed v3-style factory"
+        }
+      ]
+    },
+    "contracts": {},
+    "keeperTxs": [],
+    "sharingSince": "10",
+    "opening": {
+      "block": "9",
+      "balances": {}
+    },
+    "timestamps": {
+      "9": "100",
+      "10": "102",
+      "11": "104",
+      "12": "106",
+      "13": "108",
+      "14": "110",
+      "15": "112",
+      "16": "114",
+      "17": "116",
+      "18": "118",
+      "19": "120",
+      "20": "122",
+      "21": "124",
+      "22": "126",
+      "23": "128",
+      "24": "130",
+      "25": "132",
+      "26": "134",
+      "27": "136",
+      "28": "138",
+      "29": "140",
+      "30": "142",
+      "31": "144",
+      "32": "146",
+      "33": "148",
+      "34": "150",
+      "35": "152",
+      "36": "154",
+      "37": "156",
+      "38": "158",
+      "39": "160",
+      "40": "162"
+    },
+    "transfers": [
+      {
+        "block": "10",
+        "logIndex": "0",
+        "from": "0x0000000000000000000000000000000000000000",
+        "to": "0xc0be000000000000000000000000000000000001",
+        "value": "1000"
+      },
+      {
+        "block": "21",
+        "logIndex": "0",
+        "from": "0xc0be000000000000000000000000000000000001",
+        "to": "0xa100000000000000000000000000000000000001",
+        "value": "10"
+      },
+      {
+        "block": "21",
+        "logIndex": "1",
+        "from": "0xc0be000000000000000000000000000000000001",
+        "to": "0xb000000000000000000000000000000000000002",
+        "value": "10"
+      },
+      {
+        "block": "21",
+        "logIndex": "2",
+        "from": "0xc0be000000000000000000000000000000000001",
+        "to": "0xca00000000000000000000000000000000000003",
+        "value": "10"
+      }
+    ]
+  },
+  "epochs": [
+    {
+      "input": {
+        "toBlock": "20",
+        "harvestTx": "0x0000000000000000000000000000000000000000000000000000000000000020",
+        "uri": "",
+        "received0": "0",
+        "received1": "0",
+        "price": null
+      },
+      "expected": {
+        "result": "none",
+        "reason": "no-weight",
+        "epoch": "1",
+        "fromBlock": "10",
+        "toBlock": "20",
+        "supply": "1000",
+        "floor": "0",
+        "W": "0",
+        "I0": "0",
+        "I1": "0"
+      }
+    },
+    {
+      "input": {
+        "toBlock": "25",
+        "harvestTx": "0x0000000000000000000000000000000000000000000000000000000000000025",
+        "uri": "",
+        "received0": "0",
+        "received1": "0",
+        "price": null
+      },
+      "expected": {
+        "result": "none",
+        "reason": "no-income",
+        "epoch": "1",
+        "fromBlock": "10",
+        "toBlock": "25",
+        "supply": "1000",
+        "floor": "0",
+        "W": "300",
+        "I0": "0",
+        "I1": "0"
+      }
+    },
+    {
+      "input": {
+        "toBlock": "30",
+        "harvestTx": "0x0000000000000000000000000000000000000000000000000000000000000030",
+        "uri": "",
+        "received0": "2",
+        "received1": "0",
+        "price": null
+      },
+      "expected": {
+        "result": "none",
+        "reason": "nothing-allocated",
+        "epoch": "1",
+        "fromBlock": "10",
+        "toBlock": "30",
+        "supply": "1000",
+        "floor": "0",
+        "W": "600",
+        "I0": "2",
+        "I1": "0"
+      }
+    },
+    {
+      "input": {
+        "toBlock": "40",
+        "harvestTx": "0x0000000000000000000000000000000000000000000000000000000000000040",
+        "uri": "ipfs://v05-epoch-1",
+        "received0": "300",
+        "received1": "0",
+        "price": null
+      },
+      "expected": {
+        "result": "epoch",
+        "epoch": "1",
+        "fromBlock": "10",
+        "toBlock": "40",
+        "supply": "1000",
+        "floor": "0",
+        "W": "1200",
+        "I0": "300",
+        "I1": "0",
+        "supersedes": [],
+        "keeperCostWei": "0",
+        "priceValue": "1000000000000000000",
+        "C": "0",
+        "K": "0",
+        "recapped": false,
+        "H": "300",
+        "dH0": "300",
+        "dH1": "0",
+        "unallocated0": "0",
+        "unallocated1": "0",
+        "cumHolders0": "300",
+        "cumHolders1": "0",
+        "cumKeeper0": "0",
+        "excluded": [
+          "0x000000000000000000000000000000000000dead",
+          "0x0b4a000000000000000000000000000000000001",
+          "0x0b4b000000000000000000000000000000000001",
+          "0x10c0000000000000000000000000000000000001",
+          "0x400c000000000000000000000000000000000001",
+          "0x4200000000000000000000000000000000000006",
+          "0x70ce000000000000000000000000000000000001",
+          "0x7e91000000000000000000000000000000000001",
+          "0x96ad000000000000000000000000000000000001",
+          "0xc0be000000000000000000000000000000000001",
+          "0xd157000000000000000000000000000000000001",
+          "0xe5c0000000000000000000000000000000000001",
+          "0xea20c3266229a01cd0f45d9c7921a45d5b359561",
+          "0xfac7000000000000000000000000000000000001"
+        ],
+        "accounts": [
+          {
+            "a": "0xa100000000000000000000000000000000000001",
+            "w": "400",
+            "s0": "100",
+            "s1": "0",
+            "cum0": "100",
+            "cum1": "0"
+          },
+          {
+            "a": "0xb000000000000000000000000000000000000002",
+            "w": "400",
+            "s0": "100",
+            "s1": "0",
+            "cum0": "100",
+            "cum1": "0"
+          },
+          {
+            "a": "0xca00000000000000000000000000000000000003",
+            "w": "400",
+            "s0": "100",
+            "s1": "0",
+            "cum0": "100",
+            "cum1": "0"
+          }
+        ],
+        "leaves": [
+          [
+            "0xd157000000000000000000000000000000000001",
+            "0xa100000000000000000000000000000000000001",
+            "100",
+            "0"
+          ],
+          [
+            "0xd157000000000000000000000000000000000001",
+            "0xb000000000000000000000000000000000000002",
+            "100",
+            "0"
+          ],
+          [
+            "0xd157000000000000000000000000000000000001",
+            "0xca00000000000000000000000000000000000003",
+            "100",
+            "0"
+          ]
+        ],
+        "leafHashes": [
+          "0xf8ec6bdb46ae3029ac0ede4cef7d4d4f78ddca739b6651fb590f0b29888a4955",
+          "0x9dcc3fa141be3b7d29b18cfbadb5e52bc127693cae86d2588064806588d04c8c",
+          "0xc7d16d884a01024b9c3ff40646edb573c38f7efce2e1053e25ec37a6c387c993"
+        ],
+        "merkleRoot": "0xc6a0a44a640380e61b28b60761fe6359a42d0b44afe2d8a0ef3773c38e3ec05c",
+        "contentHash": "0xc60f565bfd7ced0b05d7c6d76252139de8ad631d385bebd31965c17233d9f4e4",
+        "chunks": [],
+        "file": "files/v05-no-epoch-cases/1.json",
+        "chunkFiles": []
+      }
+    }
+  ]
+}

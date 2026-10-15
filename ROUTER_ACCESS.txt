@@ -1,0 +1,199 @@
+================================================================================
+ROUTER ACCESS - CAN ANYONE ACTUALLY TRADE OUR POOL
+Open item from VENUE_DECISION.txt section 5
+================================================================================
+Date  : 11 September 2026, status updated 20 September 2026
+Status: Q1 ANSWERED YES, AND MEASURED - not just from our own front end but
+        through the deployed UniversalRouter, on the fork
+        [test/fork/B20UniversalRouter.t.sol, 5 tests] and from a real browser
+        driving the page ["a pool swap through UniversalRouter delivers exactly
+        the quoted amount" and "a pool swap reports the swap, the hook's fee
+        and the total as three things", web/e2e/app.spec.js].
+        Q2 answered from primary sources and STILL OPEN as a product risk -
+        it is PRE_MAINNET C7, which is deliberately not closed.
+
+
+================================================================================
+THE TWO QUESTIONS ARE DIFFERENT AND SO ARE THE ANSWERS
+================================================================================
+
+  Q1  Can we send a swap to a pool we choose, from our own front end?
+  Q2  Will external aggregators discover our hooked pool and route through it?
+
+Conflating them is how "we own the venue" turns into "nobody can reach it".
+A no on Q2 does not sink the hook - our own interface can still work - but it
+does undercut any assumption of volume arriving from outside.
+
+
+================================================================================
+Q2 - NOT AUTOMATIC. THIS IS THE CONFIRMED RISK.
+================================================================================
+
+From Uniswap's own hook-routing documentation:
+
+  INCLUSION IN INTERFACE ROUTING REQUIRES ALLOWLISTING.
+    "If you have built a hook that you would like to have allowlisted, fill
+     out the hook allowlisting form."
+  Allowlisted hooks are published and reviewable. So a freshly deployed hook
+  is NOT in Uniswap's routing by default - it is an application, with whatever
+  review and delay that implies.
+
+  THERE IS A SECOND PATH, BUT IT IS NOT VERIFIED FOR BASE.
+    The guide describes hook builders running "a UniswapX filler for their
+    hooked pools" and bidding in the RFQ system. It scopes that step to
+    "On Mainnet".
+    So it is NOT established as available on Base, and must not be counted as
+    our fallback until checked.
+    [ ] Verify which filler flow, if any, UniswapX supports on Base.
+  Either way it is operational work, not a configuration flag: filler
+  infrastructure has to stay up, quote competitively and settle.
+
+  WHAT THE DOC DOES NOT SAY
+    It does not address whether a direct swap through UniversalRouter against
+    a non-allowlisted hooked pool works. It covers the routing pathway only.
+    That silence is exactly Q1, and it is why Q1 has to be tested rather than
+    inferred.
+
+THIRD-PARTY AGGREGATORS - NOT ESTABLISHED
+  Search results claim several aggregators index v4 pools including hooked
+  ones, and that Odos announced support. Treat that as unverified: the Odos
+  statement was a "will soon be supported" post, and the rest came from a
+  search summary rather than from each aggregator's own documentation.
+  [ ] Check each aggregator we care about against its own docs before
+      counting on it. Do not plan volume on this.
+
+
+================================================================================
+Q1 - ANSWERED. YES, THROUGH THE OFFICIAL ROUTER.
+================================================================================
+
+test/fork/B20UniversalRouter.t.sol, 5 passing against the pinned fork.
+
+  A user holding real NVDAc swaps through the official UniversalRouter using
+  the real permission flow - token approves Permit2, Permit2 approves the
+  router, the router pulls through Permit2. Nothing is impersonated and no
+  payment step is shortcut.
+
+    NVDAc -> MEME    1000000 raw in, 987158 raw out
+    MEME  -> NVDAc   1000000 raw in, 987158 raw out
+    router holds nothing of the user's afterwards, either token
+
+  A minimum-output bound that cannot be met reverts with
+  V4TooLittleReceived(min, actual) specifically - not just "reverts" - and the
+  user's balances are unchanged.
+
+THE FINDING THAT MATTERS MOST HERE
+  The live router REJECTS the calldata layout in our vendored v4-periphery
+  1.0.4. That version's ExactInputSingleParams carries a minHopPriceX36 field
+  the deployed contract does not expect, which shifts every field after
+  poolKey and reverts inside the router's own unlockCallback.
+
+    periphery 1.0.4 layout (minHopPriceX36):  rejected
+    legacy layout (no minHopPriceX36):        ACCEPTED
+
+  A front end built against the vendored ABI would have failed every swap. The
+  test determines this by trying both and records which the live contract
+  takes, rather than hardcoding an assumption.
+  [ ] Pin the periphery version that matches the deployed router, or keep the
+      layout our own and verified by this test.
+
+  This also shows why the minimum-output test needed a specific error. While
+  the layout was wrong every swap reverted on decoding, and a bare
+  vm.expectRevert() passed throughout - green, and proving nothing.
+
+
+================================================================================
+Q1 - HOW IT WAS TESTED
+================================================================================
+
+What we have proven is narrower than Q1: test/fork/B20UniswapV4.t.sol swaps
+against a B20 pool by calling PoolManager directly through our own
+unlock/unlockCallback harness. That establishes the pool works and that we can
+reach it with code we control.
+
+It does NOT establish that UniversalRouter - the path a real front end
+normally uses - will execute a swap against a pool with a hook we deployed.
+
+  [x] Swap through UniversalRouter against the hookless B20 pool - DONE.
+  [x] The same against a SEPARATE pool created with a hook - DONE.
+      test/fork/B20HookedPool.t.sol, 4 passing.
+
+      Three things had to hold together, and having HookMiner in the repo
+      proved none of them:
+        1. the mined address really carries the permission bits claimed
+        2. the hook actually deploys there
+        3. the callbacks actually fire on a real swap
+      All three are asserted. The second caught a real mistake: the address
+      was first mined against the shared CREATE2 factory while the test
+      deploys with `new X{salt:}`, which is CREATE2 with the CALLING CONTRACT
+      as deployer - an address we could never have reached.
+
+      A user's swap through the official router fires both beforeSwap and
+      afterSwap, and the hook records its caller as
+      0x6fF5693b99212Da76ad316178A184AB56D299b43 - the UniversalRouter itself,
+      so the swap demonstrably arrived through the router rather than directly.
+        hooked NVDAc->MEME  1000000 raw in, 987158 raw out
+        hooked MEME->NVDAc  1000000 raw in, 1006838 raw out
+
+      WHAT THIS DOES AND DOES NOT SETTLE. Our hook is not allowlisted, and the
+      router executed against it anyway. So a caller who NAMES the pool can
+      trade it - which is what our own front end does. It says nothing about
+      Uniswap's interface CHOOSING that pool for a user who did not name it.
+      That is Q2, and Q2's answer is still the allowlist.
+
+      Not "the same pool with a hook attached" - an earlier draft said that
+      and it is wrong. The hook address is a field of PoolKey, so it is part
+      of the pool's identity. A hooked pool is a different pool, created as
+      such, and a hook cannot be added to one that already exists.
+
+  That answers Q1 with a transaction rather than an inference, and separates
+  "B20 is fine" from "our hook is reachable".
+
+
+================================================================================
+WHAT THIS MEANS FOR THE HOOK DESIGN
+================================================================================
+
+Narrow it to what these requirements actually demand:
+
+  - Our own interface must be able to reach our pool without anyone's
+    permission. That is the load-bearing path.
+    NOTE UniversalRouter is a CHOICE, not a requirement. It is the
+    conventional integration and therefore worth testing, but our interface
+    could call PoolManager through our own contract instead - which the
+    existing fork test already shows works. So a UniversalRouter failure
+    would narrow our options, not prove we cannot transact.
+  - Allowlisting is an application we can file, not a dependency we can
+    schedule. Nothing in the plan should assume it lands.
+  - Running a UniswapX filler is real infrastructure. If external flow matters
+    before allowlisting, that cost belongs in the plan now, not later.
+  - The simpler the hook, the better its odds in any review, and the less
+    surface an aggregator has to be willing to simulate.
+
+STILL OPEN, UNCHANGED BY THIS DOCUMENT
+  [x] PositionManager and Permit2 path - test/fork/B20PositionManager.t.sol,
+      3 passing. A position mints on a B20 pool through the real two-step
+      Permit2 flow, hookless and with the real fee hook, charging exactly what
+      the range and price imply.
+      NOTE ON THE ABI MISMATCH ABOVE: MINT_POSITION, SETTLE_PAIR,
+      DECREASE_LIQUIDITY and TAKE_PAIR all go through unchanged from vendored
+      1.0.4.
+      WHAT THAT DOES AND DOES NOT SAY. It says those four layouts match the
+      deployed contracts. It does NOT say the mismatch is "specific to
+      ExactInputSingleParams" - an earlier draft claimed that and it was a
+      generalisation from four samples. Every other action and every other
+      periphery interface is still unverified. The pinning item below stays
+      open, and stays the real fix.
+  [x] Locking the LP position NFT - src/curb/PositionLock.sol,
+      test/fork/B20PositionLock.t.sol, 7 passing. Mostly negative assertions,
+      because that is what the claim consists of. See the commit for what is
+      and is not established.
+  [x] Our own hook with fee collection - test/fork/B20FeeHook.t.sol, 7 passing.
+      The MECHANISM only. The fee leaves the pool and lands in the recipient's
+      real balance; the trader's minimum-output bound is enforced on the NET,
+      with V4TooLittleReceived(min, net) matched exactly rather than a bare
+      revert; a failed swap leaves no fee behind; exact-output swaps are
+      REFUSED, because our interface sending only exact-input constrains our
+      interface and not the pool.
+      Nothing here is evidence about revenue. See ROADMAP.txt section 11 for
+      the open question of which token the fee should be denominated in.

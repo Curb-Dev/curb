@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Curb · Holder fees</title>
+<!-- FROM THE SITE'S ROOT: this page is also served at /sharing (web/_redirects,
+     web/vercel.json, web/e2e/serve.js). -->
+<link rel="icon" href="/curb-mark.svg" />
+<link rel="stylesheet" href="/topbar.css" />
+<link rel="stylesheet" href="/sharing.css" />
+<meta name="description" content="The fees your Curb tokens earned you from holding them, token by token, and what you can claim." />
+<meta property="og:site_name" content="Curb" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Holder fees · Curb" />
+<meta property="og:description" content="The fees your Curb tokens earned you from holding them, token by token, and what you can claim." />
+<meta property="og:image" content="https://curb.fun/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Curb: launch coins paired with ETH, stocks and more" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@curbfun" />
+<!-- THE DEPLOYMENT AND THE INCIDENT SWITCHES, before any script reads them. -->
+<script src="/config.js"></script>
+<style>
+  /* THE SAME PALETTE AS EVERY OTHER PAGE. */
+  :root {
+    color-scheme: dark;
+    --bg: #080b11; --panel: #0e131b; --panel2: #131a24; --line: #1d2633;
+    --ink: #eef2f7; --dim: #94a0b0; --dimmer: #5f6b7c;
+    --paint: #0052ff; --paint-hi: #2a6dff; --good: #3ddc97; --bad: #ff6b6b;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 16px 96px; }
+  a { color: var(--paint-hi); }
+  #msg { font-size: 13px; color: var(--dim); margin: 0 0 16px; }
+</style>
+</head>
+<body>
+<header id="siteBar" data-page="sharing"></header>
+<script src="/topbar.js"></script>
+<!-- HOLDER FEES: what the connected wallet earned from holding tokens whose
+     fees go to their holders, token by token, and the total. How it works is
+     in docs.md (#holder-sharing); each payout's check is on its token's page. -->
+<main class="shPage">
+  <h1>Holder fees</h1>
+  <p class="lede">The fees your tokens earned you, by token.</p>
+  <p id="msg" hidden></p>
+  <div id="shMine"><p class="shNote">Reading…</p></div>
+</main>
+<script src="/keccak.js"></script>
+<script src="/abi.js"></script>
+<script src="/token-meta.js"></script>
+<script src="/prices.js"></script>
+<script src="/sharing.js"></script>
+<script src="/sharing-page.js"></script>
+</body>
+</html>

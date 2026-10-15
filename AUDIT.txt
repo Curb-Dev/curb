@@ -1,0 +1,1314 @@
+================================================================================
+CURB - SECURITY REVIEW AGAINST ROADMAP 6.3
+================================================================================
+Date        20 September 2026
+Commit      the working tree at 9a4c6ad9, plus the fixes recorded below
+Fork        Base at block 51171034, base-forge 1.6.0-v1.1.0, solc 0.8.30
+Suites      61 non-fork / 255 fork / 54 browser - all green ON THE DAY (a
+            record of 20 September, not today's count)
+Fixed       A-1, A-2 on the day of review; A-4, A-5, A-7 and C-1 the day
+            after, once it was pointed out that all of them become permanent
+            at A1
+
+WHAT THIS IS, SAID BEFORE ANYTHING ELSE
+  THIS IS A SELF-REVIEW. It was performed by the same agent that wrote most of
+  the code under review. That is a real limitation and not a formality:
+
+    - a reviewer who wrote a line reads it as they MEANT it, which is the exact
+      blind spot an external reviewer is hired to cover
+    - the tests were written by the same author, so a property nobody thought
+      of is missing from the code and from the suite together, and neither one
+      reveals the gap
+    - nothing here was found by somebody whose job was to find it
+
+  SO IT DOES NOT CLOSE A3, and A3 is not marked closed. An external review is a
+  different thing and this is not a cheaper version of it. What this IS: the
+  work that makes an external review worth its fee - a stack read end to end
+  once, with the cheap defects already out of it.
+
+SCOPE
+  IN, and read line by line:
+    src/curb/LaunchRegistry.sol       src/curb/Graduator.sol
+    src/curb/CurbLaunchFactory.sol    src/curb/FeeHook.sol
+    src/curb/FeeEscrow.sol            src/curb/PositionLock.sol
+    src/curb/CurbLaunchToken.sol
+    web/app.js  web/browse.js  - as the surface a user's wallet is exposed to
+
+  IN, and read line by line on 2026-09-21 - it was the largest gap in the first
+  pass and is the one that produced the worst finding:
+    src/vendor/PonsV2BondingCurve.sol      796 lines, all of it. See C-1.
+
+  AND THE LAST THREE, read line by line on 2026-09-21. Nothing vendored is
+  unread now:
+    src/vendor/PonsV2BondingCurveMath.sol  106 lines. See C-2.
+    src/vendor/PonsV2LauncherToken.sol     125 lines. See C-3.
+    src/vendor/PonsV2BuybackVault.sol      376 lines. See C-4.
+
+  OUT: Uniswap v4, Permit2, OpenZeppelin and the B20 precompiles. Their
+  behaviour is MEASURED where we depend on it (test/fork) and not reviewed.
+
+================================================================================
+FINDINGS
+================================================================================
+
+A-1  HIGH - A TICKER CHOSEN BY A LINK REACHED innerHTML.   FIXED.
+--------------------------------------------------------------------------
+  WHAT. app.html reads `factory` and `lens` off the query string, so a link
+  decides which contracts the page talks to. The quote asset's symbol() is read
+  from whatever factory that is, and it reached innerHTML UNESCAPED in fifteen
+  places - every fee row, the reserve line, the balance line, both receipts.
+
+  WHY IT IS THE WORST ONE HERE. This is not a defaced page. app.html is where
+  the wallet connects and where transactions are built, so script running there
+  can compose a transaction and put it in front of somebody already expecting
+  to sign one. Delivery is a link; it needs no compromise of anything we run.
+
+  IT WAS PARTLY SELF-INFLICTED. Some of the fifteen were older; four were added
+  hours earlier while making the page multi-asset. That is how a sink count
+  grows without anybody deciding to grow it.
+
+  FIX. Not fifteen escapes - the sixteenth is whatever somebody adds next. The
+  symbol is checked ONCE where it is read [web/app.js symbolOf]: a ticker has a
+  small known alphabet and a bounded length, and a string outside it falls back
+  to the truncated address, which is already this function's answer for an
+  asset that will not respond. A thing that is not a symbol is not shown as one.
+
+  WHAT THE FIX COSTS, because it is not free. The alphabet is
+  [A-Za-z0-9 ._+-], capped at 16. A LEGITIMATE asset whose ticker uses anything
+  else - non-ASCII letters, a currency sign - will be displayed as its address
+  rather than its name. Every B20 equity measured is plain ASCII so nothing
+  enabled today is affected, and the failure is visible rather than silent. It
+  is still a real restriction on what this page can display, and widening the
+  alphabet later means re-checking it against the sinks.
+
+  PROVEN, NOT ASSERTED. Two browser tests: one makes the chain answer with a
+  DIFFERENT valid ticker and requires the receipt to carry it (mutation-checked
+  - putting one hardcoded name back fails that test and nothing else), and one
+  makes it answer with an <img onerror> payload and requires that no dialog
+  fires, no element enters the DOM, and the page falls back to the address.
+
+  NOT CLAIMED: that no other chain-derived string reaches a sink unescaped. The
+  ones found were fixed. The review was a read, not a proof.
+
+A-2  LOW - UNBOUNDED LAUNCH METADATA ON A SHARED LIST.   FIXED.
+--------------------------------------------------------------------------
+  WHAT. launch() takes name, symbol and tokenUri as free strings and ANYONE may
+  launch [CurbLaunchFactory.sol:322], so both are attacker-chosen. browse.html
+  writes them with textContent - so there is no injection, and that is not luck,
+  the page uses no innerHTML at all - but nothing bounded their LENGTH. One
+  launch with a hundred-kilobyte name pushes every other row off a list that
+  strangers share.
+
+  FIX. Capped where they are decoded [web/browse.js labelFor], with an ellipsis
+  so a reader can tell a cut from a short name.
+
+A-3  INFORMATIONAL - approve() WITHOUT A RESET, NOW MEASURED ON EVERY ENABLED
+     ASSET.   NO CODE CHANGE; A TEST ADDED.
+--------------------------------------------------------------------------
+  WHAT. Graduator._mint approves Permit2 without zeroing first, and the
+  allowance it sets is a CEILING the mint usually does not spend to the last
+  unit. A stale non-zero allowance therefore survives every graduation, and the
+  next graduation on the same quote asset writes non-zero over non-zero. In the
+  USDT family that reverts, and every graduation after the first would fail -
+  discovered with a curve already full.
+
+  IT WAS MEASURED, FOR ONE ASSET. test_forceApproveOverwritesANonZeroAllowance-
+  Directly proved it for NVDAc. This deployment enables three. That all thirteen
+  equities report one policy and one admin is an ARGUMENT that they share an
+  implementation, not a measurement that they do.
+
+  MEASURED FOR ALL THREE, 2026-09-20: non-zero over non-zero succeeds and
+  returns true on NVDAc, SPCXc and GOOGLc
+  [test_nonZeroOverNonZeroApproveWorksOnEveryEnabledAsset].
+
+  STANDING REQUIREMENT: the measurement is per asset, not per standard. A
+  fourth asset needs the same line before it is enabled, and the test is
+  written so that adding one is a one-line change.
+
+A-4  LOW - THE REMAINDER PATHS SWEPT A BALANCE RATHER THAN AN AMOUNT.
+     FIXED 2026-09-21.
+--------------------------------------------------------------------------
+  WHAT IT WAS. Graduator._refund and _burnRemainder acted on
+  `IERC20(token).balanceOf(address(this))` - everything the contract held -
+  rather than on the remainder that graduation had computed.
+
+  WHAT IT IS NOT. The POOL is seeded correctly regardless: held0/held1 come
+  from a measured balance delta across curve.graduate(), which already excludes
+  anything sitting there beforehand. That part is careful and stays careful.
+
+  WHAT IT WAS. Anyone may send the quote asset to the Graduator, and the next
+  graduation forwarded it to THAT launch's refundTo. Nothing of ours was lost;
+  somebody else's stray transfer was delivered to an address they did not pick.
+  The same shape let a donated launch token be burned.
+
+  AND WHY IT IS NOT MERELY COSMETIC: one Graduator now serves seven factories.
+  The sweep is correct only while two graduations cannot overlap, which today
+  rests on no token in the path handing control back - true of B20 and of our
+  own token, and an assumption rather than a bound.
+
+  FIXED, AND THE REASON THE FIRST ANSWER WAS WRONG. This originally said "not
+  changed here - changing a stack immediately after reading it is the wrong
+  order", and recommended it for a future revision. There is no future revision:
+  nothing in this system is upgradeable, the registry is write-once, and a
+  Graduator deployed at A1 is the Graduator every launch under it will ever
+  have. "Next time" and "never" are the same sentence here.
+
+  WHAT IT DOES NOW. Both paths take what this contract held when the graduation
+  STARTED and act only on what arrived since. `quoteBefore` and `launchBefore`
+  were already being measured for the pool's own sizing, so the fix reuses them
+  and adds no new read. _burnRemainder's final check became "nothing of THIS
+  graduation's is left" rather than "nothing at all".
+
+  AND WHAT A DONATION NOW DOES: it stays in the Graduator, unreachable, because
+  there is no rescue path. That is not a new condition - it was unreachable the
+  moment it arrived and the donor loses it either way. What changes is that it
+  is no longer attributed to a launch it was never part of, in that launch's
+  supply change and its RemainderBurned event.
+
+  PROVEN: test_aDonationToTheGraduatorIsNotSweptIntoALaunch sends 5 NVDAc to the
+  Graduator before a launch fills, then graduates it. With the old behaviour the
+  test fails naming the exact amount - "the donation was forwarded to this
+  launch's refund address: 500000000 != 0".
+
+A-5  LOW - CONSTRUCTORS TOOK ADDRESSES WITHOUT REJECTING ZERO.
+     FIXED 2026-09-21.
+--------------------------------------------------------------------------
+  Graduator's constructor checked none of its four arguments; FeeHook's checked
+  none of its four. CurbLaunchFactory, by contrast, checks all seven of its own
+  and says why - the inconsistency was as much the finding as the gap.
+
+  WHAT IS ALREADY CAUGHT, and it is most of it: LaunchRegistry.wire() proves the
+  loop closes, so a zero graduator, a zero registry behind it and a zero
+  poolOpener on the hook are all refused before any launch exists.
+
+  WHAT IS NOT. platformRecipient is checked nowhere on chain. Zero there makes
+  every pool trade revert inside poolManager.take - loud, not silent, and found
+  on the first trade rather than lost quietly. The deploy script does guard it,
+  and more thoroughly than a constructor could: it refuses a code-less address
+  unless explicitly told otherwise and prints getThreshold/getOwners when there
+  is code [script/DeployCurb.s.sol platformRecipient]. The defence exists; it is
+  in the script rather than in the contract.
+
+  A SECOND ONE: wire() proves hook and graduator AGREE on a PoolManager, and two
+  zeroes agree. Graduation would then fail after the sale - which is the one
+  failure this codebase is written to avoid, since the money is already in.
+
+  FIXED. Both constructors now reject a zero in any of their four arguments,
+  each with its own ZeroAddress error. The script's guard stays: it checks
+  things a constructor cannot, like whether the recipient has code and what it
+  answers. Having both is the point - a constructor argument is the last place
+  a contract can refuse, and after A1 there is no other place at all.
+
+  PROVEN: test_theGraduatorRefusesAZeroAddressArgument and
+  test_theHookRefusesAZeroAddressArgument, each passing a zero in ONE position
+  at a time - four calls each, not one call with four zeroes, because a single
+  check in the wrong place would satisfy that and leave three unguarded. Both
+  go red with the guards removed.
+
+A-6  RESOLVED ON READING - THE ECONOMIC TERMS ARE VALIDATED, ONE LAYER LATER.
+--------------------------------------------------------------------------
+  The factory constructor validates supply, pool fee, tick spacing (and, until
+  4 October 2026, a lock duration - there is none now), the tax band and the quote's decimals, but NOT phantomQuote or
+  graduationThreshold - which looked like a hole in a constructor whose stated
+  purpose is that "a factory that cannot produce a single launch" cannot be
+  deployed at all.
+
+  IT IS NOT A SAFETY GAP. PonsV2BondingCurve.initialize computes
+  reserved = supply * phantom / (phantom + threshold) and refuses
+  `reserved == 0 || reserved >= supply` with InvalidLaunchEconomics. A zero
+  threshold gives reserved == supply; a zero phantom gives reserved == 0. Both
+  are refused inside launch(), on the first attempt, before any money is in a
+  curve.
+
+  WHAT REMAINS is a consistency gap: every other unusable term is refused at
+  deployment and these two are refused at the first launch. Worth one line
+  whenever that constructor is next touched; worth nothing today.
+
+  RECORDED BECAUSE THE FIRST READING WAS WRONG. It was written up as an
+  unvalidated immutable and the code says otherwise. A review that records only
+  what survived reading hides how much of it was pattern-matching.
+
+A-7  INFORMATIONAL - launchSlice PANICKED ON A LARGE COUNT. FIXED 2026-09-21.
+--------------------------------------------------------------------------
+  `uint256 end = start + count` overflowed and panicked for a caller asking for
+  "everything from here" with type(uint256).max - against a comment in the same
+  function promising a short read rather than a revert. A view function: no
+  state, no loss, but the promise held for every count except the natural way
+  to say "the rest".
+
+  FIXED by counting from the room left instead of adding to `start`, which
+  cannot overflow.
+
+  PROVEN: test_browsingTheRestOfTheListDoesNotOverflow asks for the rest from
+  the middle, from the very end, and from zero. With the old arithmetic it fails
+  with panic 0x11 - the overflow itself, not an incidental assertion.
+
+A-8  INFORMATIONAL - PositionLockFactory SHIPPED AND WAS NEVER DEPLOYED.
+     FIXED 2026-09-21.
+--------------------------------------------------------------------------
+  It lived in src/curb/PositionLock.sol and was used only by two fork tests;
+  the Graduator creates its lock itself and transfers the NFT in the same call.
+  So it compiled into the production source set and would have appeared in a
+  verified-source bundle on an explorer, where a reader cannot tell deployed
+  code from code that is not.
+
+  MOVED, NOT DELETED, to test/harness/PositionLockFactory.sol. It is still
+  worth having: the two tests that use it exercise PositionLock's deposit path
+  on its own rather than through a whole graduation, and a lock whose failures
+  can only be seen through a graduation is a lock whose failures are hard to
+  see.
+
+  MEASURED: src/'s import closure is 66 files and PositionLockFactory is not
+  among them. This was the ONLY one of the three dead-code findings that was
+  ours to fix - C-3's launcher token and A4's Position.sol are vendored, and
+  editing them would cost the provenance those files exist to keep.
+
+A-9  INFORMATIONAL - TWO SURFACES THAT LOOK LIVE AND ARE NOT, AND ONE OWNER
+     KEY THAT IS REAL.
+--------------------------------------------------------------------------
+  FeeHook.collected is a public counter no payout path reads; the fees go
+  straight out through poolManager.take. It is accounting, not a balance, and
+  nothing can be claimed from it.
+
+  PonsV2BuybackVault is constructed and passed to every curve, and buyback is
+  off by construction [CurbLaunchFactory.sol:357] with no path to turn it on -
+  PRE_MAINNET E1. That is 376 lines of deployed, unreachable code.
+
+  AND IT IS OWNED. FOUND ON THE SECOND PASS, after the first one wrote "no
+  owner anywhere in src/curb" - which is true as scoped and would let a reader
+  conclude the deployment has no owner at all. It does:
+
+    PonsV2BuybackVault is Ownable2Step [src/vendor/PonsV2BuybackVault.sol:55],
+    constructed with `vaultOwner` [script/DeployCurb.s.sol:832], and the script
+    passes the DEPLOYER for it [DeployCurb.s.sol:672]. One vault per asset, and
+    the deployment lists fourteen assets since 2026-10-15 (eleven when this was
+    written) [DeployCurb.quoteAssets], so the deployer address is the permanent
+    owner of fourteen contracts.
+
+  WHAT THAT OWNER CAN DO, bounded precisely rather than waved away:
+    - setFactory(address), and ONLY that. It is write-once - a second call
+      reverts AlreadyInitialized [:118].
+    - nothing else. There is no withdraw, no sweep and no rescue in the
+      contract; the single value-in path is a safeTransferFrom that requires
+      the factory role, and `factory` is the zero address.
+    - it cannot give the role up: renounceOwnership() is overridden to revert
+      OwnershipCannotBeRenounced [:129]. Ownership is permanent by design.
+
+  AND setFactory IS NEVER CALLED - not by the deploy script, not by any test,
+  nowhere in the repository. So each vault ships unwired, which is what makes
+  its lock path unreachable in the first place.
+
+  NET: no value is at risk and nothing here is exploitable. What exists is a
+  permanent, non-renounceable owner role held by the deployer over seven
+  contracts that hold nothing and are wired to nothing. Worth writing down
+  because "this protocol has no owner" is a claim somebody will want to make,
+  and it would be false as stated.
+
+A-10 CHANGE, 4 OCTOBER 2026 - THE LP LOCK IS FOREVER, AND LAUNCHING IS FREE.
+--------------------------------------------------------------------------
+  The owner's decision. PositionLock lost withdraw(), withdrawLiquidity(),
+  unlockTime and every error and event that served them; its only call to the
+  PositionManager is the fee collection, a DECREASE_LIQUIDITY of a literal
+  zero taken to the lock itself. Nothing transfers or approves the NFT. The
+  Graduator no longer computes an unlock time, the factory terms no longer
+  carry a lock duration, and the registry record keeps the old word as
+  reservedZero - layout unchanged for every reader - and refuses a non-zero
+  one. DeployCurb sets launchFee 0 on every factory. The platform's share of
+  the trading tax is untouched.
+
+  BACKED BY: test/HolderSharing.t.sol (every caller, every old and current
+  selector, sharing off and on, up to 100 years; a fuzz over arbitrary
+  calldata; fees to the right party across twenty years), test/fork/
+  B20PositionLock.t.sol (the same on the real PositionManager, ten years on),
+  B20LockedPoolLifecycle and HolderSharing on the fork (an invariant that the
+  locked liquidity never changes under random sequences), and
+  B20Graduation's test_aRecordWithALockDurationIsRefused. Mutations in the
+  commit message.
+
+================================================================================
+6.3'S LIST, ITEM BY ITEM, WITH WHAT ACTUALLY BACKS EACH ONE
+================================================================================
+  CURVE ACCOUNTING: ROUNDING, PRECISION, RAW UNITS
+      REVIEWED against the arithmetic, not line by line. Both fee legs floor
+      independently and never over-charge; the clamp path grosses back up with
+      a ceiling division and is bounded by the tax band, which cannot reach the
+      denominator's zero. The fee-rounds-to-zero floor that MIN_QUOTE_DECIMALS
+      exists for sits at 200 raw units on an 8-decimal asset - fractions of a
+      cent. Backed by 61 non-fork tests including the curve invariants.
+
+  GRADUATION, AND FAILED GRADUATION
+      The best-covered item here. ROADMAP 6.4 is measured at three depths in
+      test/fork/B20Graduation.t.sol, including an injected failure AFTER the
+      reserves have left the curve, and the same launch graduates afterwards.
+
+  THE VENUE INTEGRATION: FEE LOGIC, LP LOCK, UPGRADE AND AUTHORITY SURFACE
+      REVIEWED, and the authority surface is the item that needed a second pass.
+      NO UPGRADE SURFACE ANYWHERE: no proxy, no delegatecall, no selfdestruct,
+      in src/curb or in the vendored code.
+      CHANGED 2026-09-21, AFTER THIS REVIEW WAS WRITTEN. The founder decided
+      to follow PONS's fee-policy shape, so the platform's own leg - its rate
+      and its recipient - is now owner-settable on the hook, with each launch
+      freezing what was current. That is a NEW TRUST SURFACE where this review
+      found none, and it is listed below rather than left for a reader to
+      discover. What it cannot touch: a creator's share, a registry record, a
+      locked position, or anybody's balance. See PRE_MAINNET D2.
+
+      THE AUTHORITY THAT EXISTS, all of it, named:
+        - the registry's `deployer` may wire once and add launchers. It decides
+          what CAN be registered and can never touch a record or a balance.
+          Liveness, not custody. [LaunchRegistry's own header says so too.]
+        - PonsV2BuybackVault is Ownable2Step and the deployer holds it,
+          permanently and non-renounceably, on seven deployed vaults - see A-9.
+          One write-once setter, never called, on contracts that hold nothing.
+        - the FeeHook's owner (2026-09-21) may move the platform's rate and
+          recipient, and ONLY behind thestonks.exchange's arrangement: announce
+          on chain, wait 24 hours, then execute inside a seven-day window, with
+          a cap that always leaves a launch's creator a fifth of their own tax.
+          It can be cancelled before it lands and the announcement is readable
+          by anybody. Ownable2Step, and renouncing WORKS - giving the key up
+          freezes both values and returns the product to the immutable
+          arrangement it had before the setters existed. Set by
+          CURB_POLICY_OWNER, separate from the deployer and from the recipient.
+        - nothing else. No pause and no rescue exists on any deployed contract.
+      A FIRST PASS HERE SAID "no owner" AND SCOPED IT TO src/curb, which was
+      true and would have been read as more. The correction is A-9.
+
+  FEE DISTRIBUTION
+      REVIEWED, and FeeEscrow is the most carefully written contract here: it
+      bounds a claim on BOTH sides, because a token that overpays the claimant
+      takes the difference out of what backs everybody else.
+
+  QUOTEROUTER AND ITS DEPTH GUARD
+      DOES NOT EXIST IN THIS BUILD. B1/B2 decided there is no reference and no
+      deviation guard, so there is nothing here to review. Named as absent
+      rather than quietly dropped from the list.
+
+  MASS SELL / BANK RUN
+      MEASURED on both sides - PRE_MAINNET C2.
+
+  B20 TRANSFER RESTRICTIONS, against 6.3's own honest requirement
+      (a) A FAILED TRANSFER MUST NOT CORRUPT ACCOUNTING. The curve moves the
+          quote through SafeERC20, and a B20 refusal REVERTS with the token's
+          own error rather than returning false [B20SafeERC20 fork tests], so
+          the whole call unwinds and no partial state survives.
+      (b) RETRYABLE STATES. Graduation is permissionless and retryable, and the
+          record is never rewritten.
+      (c) SURFACED TO THE USER. policyStanding() asks the registry BEFORE a
+          trade [web/app.js:623], and one blocklist entry is measured stopping
+          two different assets [PRE_MAINNET F3].
+      AND THE PROMISE 6.3 REFUSES TO MAKE STILL STANDS: if the issuer blocks the
+      pool's transfers, no contract of ours routes around it.
+
+================================================================================
+THE BONDING CURVE, READ LINE BY LINE - 2026-09-21
+================================================================================
+  796 lines of vendored PONS code holding every launch's reserves. The first
+  pass read it only against 6.3's arithmetic items and said so; this is the
+  full read, and it found the worst thing in this file.
+
+C-1  HIGH - A BLOCKLISTED ESCROW STRANDED EVERY LAUNCH, WITH THE ONE EXIT
+     SEALED BY OUR OWN WIRING.   FIXED 2026-09-21.
+--------------------------------------------------------------------------
+  HOW IT WAS FOUND. The curve ships a function called rescueFees(), and its own
+  comment says what it is for - a permissioned quote asset that "can stop
+  delivering to that one address while still permitting transfers between
+  traders and this curve", after which "the launch would be stuck on its curve
+  forever". PONS wrote that for a hypothetical. OUR QUOTE ASSET IS A
+  PERMISSIONED ASSET, and "that one address" is our FeeEscrow.
+
+  WHY THE FEES BLOCK A GRADUATION AT ALL, which is the part that makes it
+  serious rather than annoying: graduate() SWEEPS BEFORE it hands over the
+  reserves, the sweep credits the escrow, and fees accrue from the very first
+  trade - so by the time a launch is full the sweep is never a no-op. A payment
+  the escrow cannot receive therefore takes the whole graduation down.
+
+  PROVOKED FOR REAL, not argued. The issuer's own policy admin adds ONE entry
+  to the PolicyRegistry precompile against ONE address - the escrow - and:
+    trading carries on normally, which is the shape of it: nothing looks wrong
+      until the launch tries to finish
+    the crossing buy succeeds and its automatic graduation fails into the
+      curve's own try/catch, leaving the launch full and ready
+    graduate() reverts with PolicyForbids
+    buy() reverts, the allocation is exhausted
+    sell() reverts, the curve is ready
+    every door at once, permanently
+
+  AND THE SCOPE THAT FIRES IS THE EXECUTOR'S, which had to be read off the
+  chain rather than guessed. The first version of the test named the RECEIVER
+  scope - the escrow is being paid, after all - and the chain answered with the
+  executor's instead: FeeEscrow.creditToken PULLS, so it is the executor of its
+  own payment and is refused there before the receiver check is reached.
+
+  WHY THE HATCH WAS SEALED. rescueFees() is onlyFactory. In our deployment the
+  curve's "factory" role is held by the GRADUATOR - deliberately, because that
+  role also gates graduate() and graduate() is what moves value. The Graduator
+  exposed initializeCurve and graduate and nothing else. So the mitigation
+  existed, we held the only key to it, and there was no lock to put the key in.
+
+  FIX. Graduator.rescueCurveFees(launchToken) forwards to the curve's own
+  rescueFees. The curve's creator-fee recipient (its deployer(), read live, so
+  the distributor once holder sharing is on) and the record's platform
+  recipient may call it AT ONCE. ANYONE ELSE ONE HOUR (RESCUE_DELAY) AFTER
+  Graduator.noteReady(launchToken), and only while the curve is still full
+  and ungraduated: noteReady is permissionless, records readySince once, and
+  only for a registered launch whose own curve is ready and has not
+  graduated. Open to strangers, for the same reason graduate() is: a caller
+  chooses nothing - the curve pays its own immutable protocolFeeRecipient and
+  its own creator (the launch's holder distributor, once its holder sharing
+  is on: core v2) - and the only argument must already have a registry
+  record whose curve names its token (CurveIsAnotherLaunchs otherwise), so
+  this cannot be aimed at an arbitrary contract. A full curve is the only one
+  whose pending fees block anything - graduation - and closing the rescue to
+  everyone but its two payees would put a stranded launch's recovery behind
+  them, which is the mistake graduate() records having already made once.
+  NOT THE MOMENT THE CURVE IS FULL (RescueNotOpenYet(caller, opensAt); the
+  internal audit of 9 October 2026, finding 12): the rescue pays the
+  creator's tax as raw quote where the escrow pays a WETH credit as ETH, and
+  a buyer who fills the curve can starve its automatic graduation (the 63/64
+  rule) and rescue in the same transaction - forcing a creator's fees out as
+  WETH to a contract that takes only ETH. The hour closes that: graduate()
+  stays open to everybody for all of it, and the keeper completes the move
+  of any launch that is not truly stranded (and, when graduate() would
+  revert, sends noteReady itself, so the hour starts without a person).
+
+  PROVEN END TO END: after the blocklist, on the full curve, a passer-by is
+  refused (RescueNotOpenYet), notes the launch ready, and an hour later calls
+  rescueCurveFees; the protocol is paid directly, and the launch then
+  graduates with the escrow never touched
+  [test_blocklistingTheEscrowBlocksGraduationUntilRescueCurveFees, which was
+  named ...StrandsALaunchWithNoWayOut before the hatch existed - the old name
+  is spelled without its prefix so the name check does not look for a test
+  that was renamed on purpose].
+
+  WHAT IT STILL DOES NOT FIX, and this is 6.3's own honest requirement rather
+  than a gap: if the issuer blocks the PROTOCOL'S recipient instead of the
+  escrow, the rescue pays it directly and reverts for the same reason. The
+  hatch routes around the escrow, not around the issuer. Nothing can route
+  around the issuer, and 6.3 says so.
+
+C-2  THE CURVE MATH IS CLEAN, AND IT IS THE BEST-COVERED FILE HERE.
+--------------------------------------------------------------------------
+  106 lines, a faithful Uniswap v2 constant product. getAmountIn's trailing
+  "+1" rounds in the POOL's favour, which is the correct direction, and the
+  guards are in the right places.
+
+  OVERFLOW IS NOT CLOSE. The widest product our parameters can reach is a sell
+  of the whole supply: amountIn 1e27, scaled by 1e4, against a quote reserve
+  around 1e10 - about 1e41, against a uint256 ceiling near 1.15e77. Solidity
+  0.8 would revert rather than wrap in any case.
+
+  ONE INCONSISTENCY, and it is unreachable for us. A fee at or above 100% is a
+  named revert in getAmountIn, a zero return in quoteAmountOut, and an unnamed
+  PANIC in getAmountOut, where BASIS_POINTS - feeBps underflows. Three answers
+  to one question.
+
+  AND THE PARAMETER IS DEAD IN THIS DEPLOYMENT, which is the thing worth
+  writing down. All four of the curve's call sites pass feeBps = 0, because the
+  curve computes its fee and tax and deducts them BEFORE calling the library.
+  An edit that ever passed a real fee here would charge it TWICE - once in the
+  curve and once in the formula - and nothing in the library would object.
+
+  NOTHING TO ADD IN TESTS. This file already carries 14 of them, including that
+  a round trip cannot profit, that fee reduces output monotonically, that a fee
+  is equivalent to shrinking the input, and the decimals invariant fuzzed - plus
+  six invariants on the curve around it. The read confirmed what they assert
+  rather than finding anything they miss.
+
+C-3  A VENDORED TOKEN WE DO NOT DEPLOY IS COMPILED INTO OUR SOURCE SET.
+--------------------------------------------------------------------------
+  PonsV2LauncherToken is 125 lines, and we deploy CurbLaunchToken instead. The
+  curve IMPORTS it [PonsV2BondingCurve.sol:29] and never uses it - the import
+  is the only occurrence in the file.
+
+  So it is in the compiled set and would appear in a verified-source bundle on
+  an explorer, deployed by nothing and used by nothing. The same shape as A-8
+  and as A4's Position.sol, and the third instance of it.
+
+  NOT FIXABLE WITHOUT EDITING VENDORED CODE, which that file's own header
+  forbids in order to keep its provenance exact. Recorded rather than removed.
+
+  ONE DIFFERENCE WORTH NAMING even though it is not ours: it inherits
+  ERC20Burnable, which brings burnFrom - an allowance-based burn of somebody
+  else's balance. CurbLaunchToken deliberately has no burnFrom, no allowance
+  path and no privileged burner. If that file were ever deployed by mistake,
+  that is the difference that would matter.
+
+C-4  THE BUYBACK VAULT IS DEPLOYED THREE TIMES AND CANNOT BE REACHED AT ALL.
+     NOW TESTED.
+--------------------------------------------------------------------------
+  376 lines, one per asset, each with a permanent owner. A-9 said it was
+  unreachable; this is the read that establishes it rather than asserting it.
+
+  EVERY VALUE-TOUCHING ENTRY IS GATED ON factory != address(0):
+    lock()                   reverts NotFactory
+    release()                reverts NotFactory
+    updateCreatorRecipient() requires msg.sender == factory, which is zero
+  and setFactory - its ONLY owner-only function - is called NOWHERE in this
+  repository. There is no receive and no fallback, so it cannot be sent ETH,
+  and lock() is the only path a token could arrive by.
+
+  AND THE ONE SHORT-CIRCUIT THAT LOOKS LIKE A WAY IN IS NOT ONE.
+  _isAuthorizedLocker returns TRUE for the feePolicy address BEFORE it checks
+  the factory - but lock() checks the factory first, so that branch cannot be
+  reached while factory is zero. Reading the authoriser on its own would
+  suggest otherwise, which is why it is written down.
+
+  NOW A TEST, not an argument spread over two files
+  [test_theBuybackVaultCannotBeReachedAtAll]: locking refused for three
+  different callers including the fee policy itself, both exit paths refused,
+  the books empty, and ETH refused. The day somebody wires one, it goes red.
+
+  A CHANGE CONSIDERED AND NOT MADE: deploying ONE shared vault instead of three.
+  The tests already share one, so it is the exercised arrangement, and it would
+  cut two dead 376-line deployments. It was rejected because it buys less than
+  it looks like: the owner is the SAME KEY in all three cases, so "three
+  permanent roles" is one key either way - and a shared vault constructed with
+  one asset's fee policy and escrow, then handed to the other two assets'
+  curves, is a less coherent object than three that each match their own stack.
+  Three dead-but-coherent beats one dead-and-odd. Recorded because "we thought
+  about it and left it" is worth more than silence.
+
+WHAT ELSE THE READ FOUND, AND DID NOT TURN INTO FINDINGS
+--------------------------------------------------------------------------
+  THE CURVE ALREADY DOES WHAT A-4 HAD TO FIX IN OURS. graduate() hands over
+  `trackedQuote` and `trackedTokens` - its own accounting - and its comment
+  says why: "Any quote asset or launch token force-sent to this curve is
+  deliberately left stranded here rather than folded into the graduated pool's
+  seed, so a donation cannot move the price the pool opens at." Our Graduator
+  swept its whole balance. The vendored code had the discipline and ours did
+  not, which is worth recording as an argument for reading what you vendor.
+
+  TRACKED BALANCES, NOT LIVE ONES, on both sides and for the stated reason: a
+  forced transfer in can neither move the price nor push a launch past its
+  threshold. The token side gets the same treatment as the quote side.
+
+  THE FEE BUCKETS CANNOT EXCEED WHAT BACKS THEM. quoteFeeBalance and
+  creatorTaxBalance accrue as a bounded fraction of amounts already added to
+  trackedQuote, and MAX_TOTAL_TRADE_FEE_BPS caps the pair at 20% - which the
+  constructor enforces for itself rather than trusting the factory to have. So
+  getReserves()'s subtraction and _sweepFees's `trackedQuote -= ...` cannot
+  underflow at our parameters, where the total is at most 5%.
+
+  THE BUYBACK EARMARK IS BUCKETED AT ACCRUAL, so toggling the flag decides how
+  the NEXT trade's fee splits and never re-routes one already charged. Dead
+  code for us - buyback is off by construction - but it is the kind of thing
+  that is wrong far more often than it is right.
+
+  THE ROLES WE HOLD, AND THE ONE USE OF ONE OF THEM, confirmed by reading
+  rather than assumed: setCreatorFeeRecipient and setBuybackEnabled are both
+  onlyFactory, and the Graduator holds that role. The Graduator never calls
+  setBuybackEnabled; that is what makes PRE_MAINNET E1 true. Since core v2
+  (2026-10-02) it calls setCreatorFeeRecipient in exactly one place - step 7
+  of _enable, at most once per launch, one way, and only to that launch's
+  catalog-approved holder distributor, which pays the launch's holders. This
+  entry used to say the Graduator calls neither; that was true of the code it
+  read and is not of core v2. What makes PRE_MAINNET C3 true as restated there
+  is that no address can point a launch's income at an address of its own
+  choosing or move a balance already earned. Both are checked at the source
+  rather than inferred from our own side.
+
+  ONE THING THE CURVE IS HONEST ABOUT AND WE INHERIT: _tryAutoGraduate catches
+  every failure of the automatic graduation, including being starved of gas
+  under the 63/64 rule by the crossing buyer, and emits AutoGraduationFailed
+  rather than swallowing it. The event is what lets anybody notice a launch
+  sitting ready. Nothing watches for it today.
+
+================================================================================
+D. THE CODE THIS REVIEW CAUSED, REVIEWED - 2026-09-21
+================================================================================
+  Everything in section A was fixed after the review, and the fee policy - the
+  settable rate and recipient, the 24-hour announcement, the cap - was written
+  after it too and has never been looked at. This is that look.
+
+  IT IS THE WEAKEST REVIEW IN THIS FILE and is labelled so. Reading your own
+  work from an hour ago is the blind spot the top of this file names, with less
+  distance rather than more. It found one dead check, one edge worth pinning,
+  and nothing else - which is either good news or exactly what this kind of
+  review is bad at telling apart.
+
+D-1  A GUARD I ADDED YESTERDAY WAS MADE UNREACHABLE BY A CAP I ADDED TODAY.
+--------------------------------------------------------------------------
+  CurbLaunchFactory.launch() refuses a launch whose whole tax is below the
+  platform's current cut - written when the hook's fee could be raised to
+  MIN_TOTAL_TAX_BPS itself, the point where the creator's leg underflows.
+
+  The cap adopted from thestonks is tighter: four fifths of that floor. So
+  totalTaxBps >= 100 > 80 >= platformBps, always, and the check cannot fire.
+
+  KEPT, AND LABELLED IN THE CODE so it reads as neither load-bearing nor dead.
+  The two bounds live in different contracts - one is the factory's immutable
+  copy of the registry's floor, the other the hook's live computation from it -
+  and one comparison is the cheapest guard against them ever drifting. What
+  would be wrong is leaving a reader to work out which it is.
+
+  THE GENERAL SHAPE IS WORTH MORE THAN THE INSTANCE: a check written against
+  one bound goes quietly dead when a tighter bound arrives, and nothing fails.
+  Both were mine, one day apart.
+
+D-2  AN ANNOUNCED CHANGE SURVIVES AN OWNERSHIP HANDOVER.   PINNED, NOT CHANGED.
+--------------------------------------------------------------------------
+  An announcement is stored on the contract, not against the owner who made it,
+  so transferring the key carries any pending change along with it.
+
+  MEASURED RATHER THAN REASONED ABOUT, because three things could be true and
+  only one arrangement is safe:
+    the OLD owner cannot finish what they started once they have handed over -
+      otherwise the handover would not be one;
+    the NEW owner can, but only by calling execute deliberately - it cannot
+      land on them;
+    and they can call it off instead, which is what makes inheriting one
+      survivable.
+  All three hold [test_anAnnouncedChangeSurvivesAHandoverAndOnlyTheNewOwner-
+  FinishesIt].
+
+  NOT CLEARED ON TRANSFER, deliberately. The announcement was made in public
+  and the delay exists to give other people time to act on it; wiping it
+  silently at handover would take that back.
+
+D-3  WHAT ELSE WAS CHECKED AND FOUND SOUND, listed so the absence of findings
+     is not mistaken for the absence of looking.
+--------------------------------------------------------------------------
+  THE CAP IS CHECKED AT ANNOUNCEMENT AND NOT AGAIN AT EXECUTION. Sound because
+  it derives from MIN_TOTAL_TAX_BPS, a constant, on a registry that is
+  immutable on the hook - so it cannot move in the 24 hours between. Nothing
+  can ever be pending that could not be applied, which the test asserts by
+  checking the pending slot is empty after a refused announcement.
+
+  RE-ANNOUNCING RESETS THE CLOCK rather than shortening it, so the delay cannot
+  be walked down by repetition.
+
+  THE TWO PENDING SLOTS ARE INDEPENDENT. A rate change and a recipient change
+  do not interfere, and executing one leaves the other pending.
+
+  ZERO IS A LEGAL RATE and is not confused with "nothing pending" - readyAt is
+  the marker, not the value.
+
+  A SWAP CANNOT SEE TWO DIFFERENT RATES. beforeSwap and afterSwap run in one
+  transaction and read the same storage, so the partial-fill check in afterSwap
+  recomputes the same legs beforeSwap charged.
+
+  uint64 TIMESTAMPS do not overflow in any horizon that matters - the ceiling
+  is around 584 billion years.
+
+  AND RENOUNCING WITH SOMETHING PENDING leaves it pending and unexecutable,
+  because execute is owner-gated and there is no owner. Stuck, not dangerous,
+  and the policy is frozen either way - which is what renouncing means here.
+
+================================================================================
+E. ECONOMIC ATTACKS - MEASURED, 2026-09-21
+================================================================================
+  Twelve attacks, each written with its criterion BEFORE it measured anything,
+  because a test whose standard arrives after the number is a test that agrees
+  with whatever happened. All twelve are in test/fork/B20Graduation.t.sol
+  against a pinned mainnet fork with the real B20 assets and the real
+  PoolManager - not a mock of either.
+
+  ONE OF THEM SUCCEEDS. E-3 is a profitable attack against this system and it
+  is recorded as one.
+
+E-1  BUY, GRADUATE, DUMP - IN ONE SEQUENCE, BY ONE ACTOR.        NO PROFIT.
+--------------------------------------------------------------------------
+  The attacker buys the curve out, triggers graduation themselves so nobody
+  else's timing is involved, and sells into the pool they just created.
+  MEASURED: they end 2,306,213,896 raw NVDAc DOWN - about 23 NVDAc, the fee
+  legs plus the price they moved against themselves.
+  [test_attack_buyGraduateAndDumpCannotProfit]
+
+  NEARLY A FALSE HIGH. The first version of this test reported a 4.29e9 PROFIT
+  and it was the fixture: the helper funded the trader a second time, and the
+  "profit" was that transfer. A balance comparison is a measurement only if
+  nothing else moves the balance. The error ran in the direction that produces
+  alarm, which is the direction to distrust most.
+
+E-2  THE GAP E-1 WOULD HAVE EXPLOITED, MEASURED DIRECTLY.        NONE.
+--------------------------------------------------------------------------
+  The pool is seeded with what the curve could physically transfer, which is
+  SHORT of what it priced against by the phantom reserve. Opened at the ratio
+  of what arrived, it would open below the curve's last price and the first
+  seller would sell into a gap the holders paid for.
+  MEASURED: opened at sqrtPrice 388137142868843132408; at the held ratio it
+  would have been 274454405775801996156. Those are square roots, so the size
+  of the gap depends on which quantity you name it in, and the first version
+  of this line named it wrong - "41% lower", which is neither: 41.42% is how
+  far the correct price sits ABOVE the other one, the opposite direction.
+  Stated in all three, since only the last one is the trader's money:
+    the sqrtPrice would be 29.29% lower,
+    the correct one is 41.42% higher than it,
+    and the PRICE - the square - would be exactly half.
+  Exactly half is not a coincidence: this launch's phantom reserve equals its
+  graduation threshold, so the quote the curve physically holds is half what
+  it priced against. The pool would have opened at a 50% discount to the last
+  price the curve sold at, to be taken by whoever sold into it first.
+  [test_attack_theOpeningPriceLeavesNoGapToArbitrage]
+
+E-3  SANDWICHING AN UNBOUNDED CURVE BUY.          THIS ONE WORKS. +3.01 NVDAc.
+--------------------------------------------------------------------------
+  Front-run a victim's buy, let it fill, sell into the price it made.
+  MEASURED: the attacker nets 300,987,389 raw NVDAc - 3.01 NVDAc - against a
+  victim who passed minTokensOut = 0. With a bound set at the quote the victim
+  would have got alone, the same attack reverts SlippageExceeded, and the test
+  pins the FULL revert data: the victim's fill drops from 118569417719643804-
+  619268222 to 72661516229194359258815607, 38.7% worse.
+  [test_attack_aSandwichWorksWithoutABoundAndFailsWithOne]
+
+  THIS IS NOT A CONTRACT BUG AND IT IS NOT FIXED. It is the ordinary MEV of
+  any constant-product AMM, and the curve cannot know what the trader intended.
+  What it changes is the STATUS OF THE FRONT END'S SLIPPAGE BOUND: it is not a
+  nicety, it is the thing standing between a trader and this, and it is now
+  load-bearing rather than cosmetic.
+
+  WHAT THE TEST PROVES AND WHAT IT DOES NOT. It proves the SEQUENCE is
+  profitable when the three transactions land in that order - front-run, the
+  victim, back-run. It says nothing about how an attacker would get that
+  ordering, and the test simply imposes it. Stating it the other way round
+  would be the overstatement: an unbounded trade is EXPOSED to this, not
+  doomed to it.
+
+  AND ORDERING IS WHERE BASE DIFFERS FROM THE ASSUMPTION. Base runs a single
+  sequencer with a private mempool - pending transactions are not gossiped -
+  so the classic watch-the-mempool-and-wrap-it attack is not available to an
+  outsider the way it is on Ethereum L1. That is a real mitigation and it is
+  worth the whole difference between "will happen" and "can happen".
+
+  IT IS ALSO NOT OURS. It is Base's operational policy, not a property of our
+  contracts: it changes if the sequencer decentralises, if a public mempool is
+  added, or for anyone who gets privileged ordering - the sequencer included.
+  We should not spend a mitigation we do not control. The bound is the part we
+  own, which is why it is the part written down as load-bearing.
+
+  WHAT THE PAGE ACTUALLY DOES, read rather than assumed: the slippage field
+  defaults to 1, is required - blank is refused - and the resulting minimum is
+  passed as the second argument to both buy() and sell(), computed as
+  out * (10000 - bps) / 10000 [web/app.js:921, web/app.js:1128, web/app.html:260].
+  So the default path is bounded.
+
+  IT ALSO ACCEPTS 100, which makes the minimum exactly zero and reproduces the
+  unbounded victim above - and when this was first written, nothing on the page
+  said so.
+
+  CLOSED 2026-09-21. The quote panel now warns, on all three of them - curve
+  buy, curve sell and the pool swap [web/app.js:1675]. It does NOT block the
+  trade: the bound is the trader's to set and there are reasons to widen it.
+  Saying nothing was the problem.
+
+  KEYED ON THE MINIMUM BEING ZERO, NOT ON THE FIELD READING 100, because zero
+  is the state that removes the protection and it is also reachable from below
+  - a small enough amount at a wide enough bound floors to zero too. A second,
+  quieter line appears at 10% and above, since a 99% bound is nearly as bad and
+  would otherwise have passed in silence.
+
+  AND THE TEST READS THE FLOOR THE BUTTON WOULD SEND rather than the percentage
+  on screen, which would only be checking the screen against itself. It also
+  asserts the warning is ABSENT at the default - a warning that is always on
+  screen is not a warning, and every other assertion would pass against one
+  [the page says so when a trade has no floor under it]. Turning the warning
+  off takes it red.
+
+  THE TEST COVERS ONE OF THE THREE PANELS. It drives the curve BUY panel. The
+  curve sell and the pool swap call the same helper on the same line of
+  reasoning, and neither is exercised - so what is measured is the helper and
+  one call site, not three. Said here rather than left to be assumed from the
+  word "all".
+
+E-4  STARVING A LAUNCH TO TIME ITS GRADUATION.                   NO EFFECT.
+--------------------------------------------------------------------------
+  Delaying graduation cannot move the price the pool opens at: the price comes
+  from the curve's reserves at the boundary, and the boundary is fixed by the
+  reserved allocation, not by when somebody calls.
+  [test_attack_delayingGraduationCannotMoveTheOpeningPrice]
+
+E-5  SPLITTING A TRADE TO ROUND THE FEE AWAY.                    NO LEAK.
+--------------------------------------------------------------------------
+  MEASURED: 60000000 raw in one trade, 60000000 raw across twenty. Identical,
+  not merely close.
+  [test_attack_splittingATradeCannotRoundTheFeeAway]
+
+E-6  A ROUND TRIP THROUGH THE CURVE.                             NO PROFIT.
+--------------------------------------------------------------------------
+  MEASURED: costs 88,649,999 raw NVDAc. The math library already proves this
+  of the formula; this proves it of the curve, with both fee legs and its
+  tracked reserves - the thing anybody would actually trade against.
+  [test_attack_aRoundTripThroughTheCurveCannotProfit]
+
+E-7  DONATING TO THE CURVE TO MOVE ITS PRICE.                    NO EFFECT.
+--------------------------------------------------------------------------
+  The oldest AMM attack there is: force-send tokens, move the book, calling
+  nothing. MEASURED with 500e8 NVDAc - over eight times this launch's entire
+  graduation threshold - plus launch tokens: both reserves unchanged, both
+  tracked balances unchanged, and the pool opened at the sqrtPrice computed
+  BEFORE the donation.
+  [test_attack_donatingToTheCurveCannotMoveThePrice]
+
+  THIS WAS A CLAIM THE CODE MADE ABOUT ITSELF. graduate() says in prose that a
+  donation "cannot move the price the pool opens at". It was true and it had
+  no test under it. The donation is STRANDED - not folded into the seed, no
+  rescue path - which is the deliberate cost of the immunity: whoever sends it
+  has burned it, and the test asserts that too.
+
+E-8  OVERSIZING THE LAST BUY TO LEAK QUOTE THROUGH THE REFUND.   NO LEAK.
+--------------------------------------------------------------------------
+  The clamped fill is the sharpest arithmetic in the contract - the only
+  branch that re-derives its own input, pricing from the token side and
+  grossing back up through the fee legs with a CEILING division. It is also
+  the one buy that happens in every launch, to somebody.
+  MEASURED: offered 200e8, charged 2,185,567,012 raw, filled to exactly the
+  sellable allocation, and the curve's balance rose by exactly what left the
+  buyer's wallet - the same number from both ends, so the refund can have
+  neither over- nor under-returned. The reserve was credited 2,120,000,002
+  against a fill priced at 2,120,000,001: covered, with the ceiling's one unit
+  on top.
+  [test_attack_oversizingTheLastBuyCannotLeakQuote]
+
+  THAT LAST PAIR OF NUMBERS WAS NOT IN THE FIRST VERSION and E-14 is why.
+
+E-9  TRADING INSIDE THE GRADUATION WINDOW.                       CLOSED, BOTH.
+--------------------------------------------------------------------------
+  Ready but not yet graduated is a REACHABLE state: the crossing buy swallows
+  a failed graduation so a problem at the pool cannot take an honest buyer's
+  trade down with it. A sell landing in that window puts tokens back on the
+  curve and takes quote off it, so the pool would open deeper and cheaper than
+  the reserved allocation fixes it at - E-2's guarantee undone from the other
+  side, by anyone, for the price of one transaction.
+  MEASURED in exactly that state: both the sell and the buy revert
+  CurveGraduated.
+  [test_attack_theGraduationWindowIsClosedOnBothSides]
+
+E-10 A LONG MIXED SEQUENCE, WATCHING THE BOOKS RATHER THAN THE PROFIT.  CLEAN.
+--------------------------------------------------------------------------
+  16 interleaved buys and sells at deliberately uneven sizes - equal trades
+  can hide a rounding error by letting it cancel against itself - with the
+  accounting checked after EVERY SINGLE ONE: the curve's real NVDAc balance
+  equals trackedQuote exactly, and the two fee buckets never exceed it.
+  Checked step by step because both failures are silent: no revert marks the
+  moment trackedQuote drifts above the balance, and by graduation it is too
+  late to tell when it happened.
+  [test_attack_noSequenceOfTradesCanBreakTheCurvesAccounting]
+
+E-11 BUYING PAST THE RESERVED ALLOCATION.                        EXACT.
+--------------------------------------------------------------------------
+  The reserved allocation is the pool's entire seed on the token side, and
+  E-2's guarantee is computed FROM it. A buy eating into it would seed the
+  pool thin; one leaving some behind would strand it on a dead curve forever.
+  MEASURED after every buy across four rounds to the boundary, the last of
+  which necessarily overshoots and hits the clamp: never below reserved, and
+  EQUAL to it at the end - 500000000000000000000000000 raw, with the tokens
+  released accounting for the remainder exactly.
+  [test_attack_theReservedAllocationCannotBeBreached]
+
+E-12 GRADUATING SOMEBODY ELSE'S LAUNCH.                          GAINS NOTHING.
+--------------------------------------------------------------------------
+  Graduation must be permissionless or a launch dies whenever its creator
+  walks away - which makes "whoever calls it" an attacker-controlled input to
+  the one function that mints the LP position and moves every reserve the
+  launch holds. MEASURED: the attacker triggers it and the lock's beneficiary
+  is the CREATOR, the position sits in the lock, and the caller's quote and
+  token balances are unchanged to the wei.
+  [test_attack_graduatingSomeoneElsesLaunchGainsNothing]
+
+E-13 AND WHAT E-12 FOUND ON ITS WAY - 24 TESTS WITH THE WRONG LAUNCHER.
+--------------------------------------------------------------------------
+  E-12 went red on its first run for a reason that had nothing to do with the
+  attack: the lock's beneficiary was neither the creator nor the attacker but
+  0x7FA9385b..., the Foundry TEST CONTRACT.
+
+  THE CAUSE. Twenty-four sites in the fork suite were written as
+
+      vm.prank(creator);
+      factory.launch(_config(true));
+
+  and Solidity evaluates the argument first. _config reaches _saltForSideOf,
+  which calls fac.supply() - a genuine external call, and a genuine external
+  call CONSUMES A PRANK where a cheatcode does not. So launch() ran as the
+  test contract and every one of those launches was created by it.
+
+  NOTHING IN THE PRODUCTION CODE WAS WRONG. The factory takes the creator from
+  msg.sender exactly as documented; it was handed a different msg.sender than
+  the tests claimed. Two of the twenty-four actually asserted something about
+  the launcher - E-12, and test_aStrangersLaunchUsesTheFactorysTerms, whose
+  whole subject is a STRANGER launching and where no stranger ever did. Those
+  two were void. The other twenty-two do not depend on who launched, so they
+  were true for a reason they did not state.
+
+  FIXED AT ALL 24 CALL SITES by hoisting the config to its own line, and the
+  trap is now documented in _saltForSideOf itself - the call-site shape is
+  what stays correct when a helper grows another external call later, which is
+  exactly how this one broke. The full suite is green after the change, which
+  is the evidence that the other twenty-two were indeed indifferent.
+
+  WORTH KEEPING IN MIND: this was found because ONE test asked a question no
+  other test asked. Twenty-four tests had been passing for weeks on a premise
+  none of them checked.
+
+E-14 DO THESE TESTS HAVE TEETH. FIVE MUTATIONS, FOUR CAUGHT, ONE CORRECTLY NOT.
+--------------------------------------------------------------------------
+  A test that cannot go red proves nothing, and twelve green tests are exactly
+  the shape of a suite that has stopped checking. So each load-bearing new
+  assertion was put against a mutation of the code it is about.
+
+    CAUGHT  reserves read balanceOf instead of trackedTokens      -> E-7 red
+    CAUGHT  sell() no longer closes the graduation window         -> E-9 red
+    CAUGHT  buys may eat into the reserved allocation             -> E-11 red
+    CAUGHT  the lock goes to whoever triggered graduation         -> E-12 red
+    NOT     the clamped gross-up rounds Floor instead of Ceil     -> E-8 green
+
+  THE FIFTH IS THE INTERESTING ONE. E-8 stayed green, and the first reading -
+  that the test was weak where its own prose claimed a "CEILING division" -
+  was wrong. Both sides were measured rather than reasoned about:
+
+              charged        credited to reserve    the fill was priced at
+    Ceil      2185567012     2120000002             2120000001
+    Floor     2185567011     2120000001             2120000001
+
+  FLOOR STILL COVERS THE FILL EXACTLY. The gross-up rounds down by one unit
+  and the two fee legs, each floored, hand that unit straight back. So the
+  ceiling is not what keeps the curve solvent on its last buy; it is a margin
+  of ONE RAW UNIT - 0.00000001 NVDAc - taken in the protocol's favour.
+
+  SO THE TEST IS RIGHT TO ALLOW BOTH. It asserts the reserve is credited with
+  at least what the fill was priced at and at most one unit more, which is the
+  property. A test that went red here would be pinning which rounding mode the
+  vendored code happens to use - an implementation choice, not a promise - and
+  would go red on a refactor that changed nothing anyone holds.
+
+  WHAT THE ASSERTION WAS BEFORE, and why this was worth doing at all: it
+  checked only that the curve's balance rose by what left the buyer's wallet.
+  That is true under EITHER rounding, because a consistent undercharge is
+  still consistent. The mutation is what exposed that, and E-8 now checks the
+  direction as well as the consistency.
+
+  AND THE LIMIT OF ALL FIVE: one mutation per test, chosen by the person who
+  wrote the test, at one fixture's numbers. It shows these assertions are
+  connected to the code. It does not show they are complete.
+
+================================================================================
+F. CROSS-LAUNCH - MEASURED, 2026-09-21
+================================================================================
+  Section E measures one launch at a time, and its own closing note said so.
+  In production there will be many launches and they do not get their own
+  copies of anything:
+
+    ONE FeeEscrow, keyed by (recipient, token) and NOT by launch;
+    ONE Graduator, which every graduation moves every reserve through;
+    ONE FeeHook, holding a frozen config per pool and a fee total per TOKEN;
+    ONE quote asset underneath all of it.
+
+  Those are the seams. Six tests, same discipline as section E.
+
+F-1  ONE ESCROW, TWO LAUNCHES, AND THE SHARES DO NOT MIX.        CLEAN.
+--------------------------------------------------------------------------
+  Two launches at opposite ends of the legal tax band, two creators, both
+  graduated. MEASURED: creator A credited 30,303,030 raw at 100 bps and
+  creator B 284,210,526 at 500; B's graduation moved A's credit by nothing;
+  the platform's credit grew by B's leg; the escrow's actual NVDAc balance
+  equals the sum of all three credits exactly; and A claiming took exactly A's
+  share and left B's untouched.
+  [test_cross_twoLaunchesShareTheEscrowButNotTheirFees]
+
+F-2  PARKED TOKENS, THROUGH THEIR OWN GRADUATION AND THE NEXT.   UNTOUCHED.
+--------------------------------------------------------------------------
+  This is the half of A-4 that had never run. _burnRemainder takes a
+  heldBefore and burns only what arrived above it, and every test of it until
+  now passed heldBefore == 0 - the existing donation test says as much in its
+  own closing comment. MEASURED with tokens parked before their OWN launch's
+  graduation: the supply falls by the curve's remainder alone and the parked
+  balance is still there afterwards, and still there after a second launch
+  graduates too.
+  [test_cross_parkedTokensSurviveTheirOwnLaunchAndTheNextOne]
+
+  THE FIRST VERSION OF THIS TEST COULD NOT HAVE FAILED, and that is worth
+  recording. It parked launch A's tokens and then graduated launch B -
+  but _burnRemainder only ever reads the ONE token it is handed, so A's ERC-20
+  was never in reach of B's graduation under any version of the code,
+  including the pre-A-4 one. It asserted something nothing could break. The
+  mutation run below is what caught it.
+
+F-3  NO GRADUATION LEAVES QUOTE BEHIND FOR THE NEXT ONE.         AND IT IS
+                                                                 EMPTY BY
+                                                                 CONSTRUCTION.
+--------------------------------------------------------------------------
+  MEASURED: after each of two graduations the Graduator holds exactly what it
+  held before, and neither refund address received anything - including from
+  the other launch.
+  [test_cross_neitherGraduationLeavesResidueForTheNext]
+
+  WHAT THIS DOES AND DOES NOT GUARD, stated because the mutation run made the
+  difference visible. Disabling _refund entirely leaves this test GREEN, and
+  correctly: the Graduator's own comment says the quote side binds and the
+  remainder "is measured to be zero, but it is not guaranteed to be". Nothing
+  flows through that path, so nothing can be guarded by watching it. What the
+  test now pins is the CLAIM - the refund address receiving exactly nothing is
+  asserted rather than merely permitted - so the day the quote stops binding
+  exactly, a launch starts leaving dust for the next one and this goes red.
+
+F-4  TWO LAUNCHES, TWO TAXES, AN IDENTICAL POOL EITHER WAY.      BY DESIGN.
+--------------------------------------------------------------------------
+  MEASURED, and this test was wrong twice before it was right:
+
+      tax        opening sqrtPrice           liquidity              paid in
+      100 bps    388137142868843132408       1224744871711329658    6060606062
+      500 bps    identical                   identical              6315789475
+
+  IT FIRST ASSERTED THE PRICES WOULD DIFFER - red, identical. Then that the
+  5% launch would be seeded thinner - red, identical to the wei. Neither was a
+  bug; both were the assumption that the tax reaches the pool.
+
+  IT DOES NOT. The graduation threshold is measured on realQuoteReserve(),
+  which already excludes both fee buckets, so the curve fills until the quote
+  NET OF TAX reaches the threshold whatever the tax was, and hands the pool
+  that same number every time against the same reserved allocation.
+
+  SO: EVERY LAUNCH FROM ONE FACTORY OPENS THE SAME POOL, at the same price
+  and the same depth, and the tax is paid by the buyers on the way up and by
+  nobody else. A 5% launch costs its buyers 4.21% more to fill than a 1% one
+  and opens exactly the pool the 1% launch opens. That is a product statement,
+  it had never been written down anywhere, and it is now three assertions.
+
+  "FROM ONE FACTORY" IS NOT A HEDGE, IT IS THE SCOPE. phantomQuote,
+  graduationThreshold, the supply and quoteToken are all IMMUTABLE on the
+  factory [src/curb/CurbLaunchFactory.sol:188, :195, :196], so there is one
+  factory per quote asset and its terms are fixed at deployment. Every launch
+  it makes opens identically; a second factory for a second B20 asset opens
+  identically to ITSELF, and matches this one only if it is deployed with the
+  same terms. Nothing here measures two factories - this was measured at two
+  taxes on one - and stating it as "every CURB launch" would have been a
+  universal drawn from a single deployment.
+  [test_cross_eachPoolOpensAtItsOwnCurvesPrice]
+
+  AND SINCE PRICE AND DEPTH CAN NO LONGER TELL THE TWO LAUNCHES APART, what
+  proves the records stayed separate is that each locked position belongs to
+  its own launch's creator.
+
+F-5  ONE HOOK, TWO TAXES.                                        EACH ITS OWN.
+--------------------------------------------------------------------------
+  The sharpest seam in the system: one FeeHook serves every pool, keeping a
+  frozen config per pool id and a fee total per TOKEN - one separated on
+  purpose, one shared on purpose. A swap reading the wrong pool's config would
+  pay the wrong creator at the wrong rate and every number involved would
+  still look plausible.
+  MEASURED with an identical 0.1 NVDAc swap into each pool: 50,000 raw to the
+  100 bps launch's creator, 450,000 to the 500 bps launch's, neither creator
+  paid by the other's pool, the platform paid both legs, and the hook's
+  token-wide counter ending at exactly the two pools added together.
+  [test_cross_oneHookChargesEachPoolItsOwnTax]
+
+F-6  THE SAME CONFIGURATION LAUNCHED TWICE.                      TWO LAUNCHES.
+--------------------------------------------------------------------------
+  Identical calldata, two different callers, and no collision: the token's
+  CREATE2 address folds in the curve address, and the curve is made with
+  CREATE at the factory's CURRENT NONCE, so the second launch derives a
+  different address from the same salt. Both registry records are intact and
+  each names its own launcher.
+  [test_cross_relaunchingTheSameConfigCannotOverwriteTheFirst]
+
+  PINNED BECAUSE IT IS NOT OBVIOUS. A reader who sees a caller-supplied salt
+  reasonably expects reusing it to collide, and a future change that made the
+  token address depend on the salt alone would turn that expectation into a
+  way to grief a launch.
+
+F-8  TWO GRADUATIONS IN ONE TRANSACTION.        INDISTINGUISHABLE FROM TWO.
+--------------------------------------------------------------------------
+  F's own closing note said every graduation above lands in a transaction of
+  its own, so nothing that lives for the length of a TRANSACTION rather than a
+  call had ever had a second graduation land on top of it. Uniswap v4 keeps
+  its currency deltas and its unlock flag in transient storage, which is
+  exactly that, and both graduations here settle the same currency.
+
+  THE ASSERTION IS A COMPARISON, not a list of properties. A reference launch
+  is graduated alone, in its own transaction, and the two sharing a
+  transaction must come out identical to it. MEASURED: same opening price,
+  same liquidity, each lock to its own creator, two distinct locks, nothing
+  left on the Graduator and nothing paid to the caller for triggering it.
+  [test_cross_twoGraduationsInOneTransactionMatchTwoSeparateOnes]
+
+F-9  THE SAME THING WITHOUT ANYONE MEANING IT.  ALSO INDISTINGUISHABLE.
+--------------------------------------------------------------------------
+  Nobody sets out to graduate two launches at once. One transaction buys the
+  last slice of two curves and each crossing buy graduates its own launch on
+  the way out - an aggregator, a batcher or a bot filling two pending buys
+  does this without intending to.
+
+  AND THE GRADUATION IS NESTED HERE, which F-8's is not: it runs from inside
+  buy()'s own reentrancy-guarded scope through _tryAutoGraduate, which is why
+  graduate() is deliberately not nonReentrant. MEASURED against the same
+  reference: both launches graduated, both pools at the reference price and
+  depth, and the batching contract kept no quote and no launch token.
+  [test_cross_twoCrossingBuysInOneTransactionGraduateBothCleanly]
+
+  WHAT MAKES THESE TWO WORTH HAVING SEPARATELY: _tryAutoGraduate SWALLOWS a
+  failed graduation so a problem at the pool cannot take an honest buyer's
+  trade down with it. So F-8 catches a broken second graduation loudly, by
+  reverting, and F-9 catches it SILENTLY - the launch simply does not
+  graduate and the buy stands. The mutation below produced exactly that split.
+
+  WHAT THEY CANNOT DO, said plainly. They verify an ABSENCE: that nothing
+  couples two graduations inside one transaction. The only state the Graduator
+  keeps between calls is `hasGraduated`, a mapping keyed by launch token, and
+  every other value in graduate() is a local - so our own code has no
+  transaction-scoped state for a mutation to break. These are therefore a
+  TRIPWIRE rather than a proof: they go red the day someone adds caching to
+  the Graduator or the hook, or the day v4's transient handling changes under
+  us. They do not demonstrate that such a coupling would be caught in general.
+
+F-10 THREE LAUNCHES, THREE CREATORS, ONE ESCROW.                 APART.
+--------------------------------------------------------------------------
+  WHY THREE RATHER THAN TWO. With two launches, "A was not disturbed by B" is
+  also what you would see if credits were landing in the wrong slot in a way
+  that happened to hit B's. Three gives the mistake somewhere else to land,
+  and the platform - which is SUPPOSED to accumulate from all of them - is the
+  fourth party that tells accumulation apart from leakage.
+
+  MEASURED at three different taxes, so no assertion can be passing because
+  two numbers coincide: 30,303,030 raw at 100 bps, 154,639,175 at 300 and
+  284,210,526 at 500. Each creator's credit checked after EACH of the other
+  two graduations rather than once at the end; the escrow's balance equal to
+  all four credits summed; and a claim by the MIDDLE creator reaching neither
+  neighbour nor the platform.
+  [test_cross_threeLaunchesKeepTheirCreditsApart]
+
+F-11 THREE GRADUATIONS, ONE TRANSACTION, OUT OF REGISTRATION ORDER.  CLEAN.
+--------------------------------------------------------------------------
+  Launched A, B, C and graduated C, A, B, all in one transaction, against a
+  reference launch graduated alone. MEASURED: every pool opened at its own
+  price and matched the reference in price and depth, every lock went to its
+  own creator, all three locks distinct, and nothing left on the Graduator.
+  [test_cross_threeGraduationsOutOfOrderInOneTransaction]
+
+  WHY THE ORDER IS THE WHOLE POINT. F-8 already put two graduations in one
+  transaction, but two can only be done in one order or its reverse, so
+  nothing there separates "handled independently" from "handled in the order
+  they were registered". Three out of order is the case a lookup keyed on
+  POSITION rather than on identity gets wrong - and the registry does keep an
+  ordered _all array beside its mapping, so that is a plausible thing for
+  someone to write later.
+
+  SAME LIMIT AS F-8 AND F-9, and for the same reason: nothing in our code is
+  keyed on position today, so this is a tripwire for a change that would
+  introduce it rather than a demonstration that one would be caught. What it
+  does establish is that graduation order is not load-bearing now.
+
+  NOT RETESTED HERE: launchSlice, the one place that genuinely does read by
+  position. It already has paging, type(uint256).max and out-of-range covered,
+  and a third launch would have been repetition rather than coverage.
+
+F-7  DO THESE HAVE TEETH. FOUR MUTATIONS, THREE CAUGHT, ONE CORRECTLY NOT.
+--------------------------------------------------------------------------
+    CAUGHT  the escrow overwrites a credit instead of adding to it  -> F-1 red
+    CAUGHT  the burn takes the whole balance again (pre-A-4)        -> F-2 red
+    CAUGHT  the hook charges one fixed tax, not the pool's own      -> F-5 red
+    NOT     the quote refund never happens                          -> F-3 green
+
+  The fourth is explained in F-3 and is the right outcome. The mutation run
+  also caught a test rather than a bug: F-2's first version, which could not
+  have gone red under any mutation at all, and was rewritten rather than kept.
+
+  AND ONE MORE FOR F-8 AND F-9: the graduation flag keyed on a constant
+  instead of on the launch token - the "state not keyed per launch" mistake -
+  takes both of them red, in the two different ways the design makes possible.
+  F-8 reverts AlreadyGraduated. F-9 reports that curve A simply did not
+  graduate, because _tryAutoGraduate swallowed it, which is the failure that
+  would be missed in production and is the reason F-9 exists as well as F-8.
+
+  IT IS NOT A MUTATION ABOUT TRANSACTIONS, though, and should not be read as
+  one: it breaks the two-transaction case just as thoroughly. See the last
+  paragraph of F-9 for what these two tests do and do not establish.
+
+================================================================================
+G. CROSS-LAUNCH FUZZING - 2026-09-21
+================================================================================
+  Section F's closing note said what it left: "the orders tested are the ones
+  I chose rather than any the machine found". This is the machine looking.
+
+  THREE LAUNCHES, THREE CREATORS, THREE TAXES, ONE REAL ESCROW. Not the mock
+  the single-curve invariants use - the whole question is whether several
+  launches paying into one (recipient, token) ledger can reach each other's
+  balances, and a mock that records what it is told cannot answer it.
+  [test/CrossLaunchInvariants.t.sol]
+
+  FOUR INVARIANTS, each 256 runs and 128,000 calls, all green:
+
+    the escrow holds exactly what it owes - its balance equals the sum of
+      every credit, so a mistake that credits the wrong recipient keeps the
+      sum right but one that credits the wrong AMOUNT cannot;
+    a credit only ever comes from the creator's own launch - checked against a
+      flag the HANDLER sets, not against anything derived from the escrow;
+    every curve's books balance, all three at once, including curves the
+      fuzzer left untouched for a hundred calls while it worked on another;
+    no curve breaches its reserved allocation, under any interleaving.
+
+  NOTHING FAILED. Which is worth less than it sounds, and G-1 is why.
+
+G-1  THE FUZZER HAD NEVER GRADUATED ANYTHING. IN EITHER SUITE.
+--------------------------------------------------------------------------
+  The new suite's coverage guard asked for one graduation and got ZERO out of
+  128,000 calls. The same question put to the EXISTING single-curve suite - in
+  place since before this review - returned zero as well, across all six of
+  its campaigns.
+
+  SO invariant_afterGraduationOnlyDonationsRemain HAS BEEN VACUOUS SINCE IT
+  WAS WRITTEN. It asserts an identity about a state its campaign never
+  reaches, and it has been reporting PASS for that reason.
+
+  THE POST-GRADUATION REGIME IS NOT UNTESTED, and this would be a much worse
+  finding if it were: test_postGraduationRegimeIsReachedAndHolds drives there
+  deterministically and holds. What was missing is the FUZZED version - random
+  sequences arriving at graduation - which is the only one that could find an
+  ordering nobody thought of.
+
+  WHY IT HAPPENED, and it is not a careless bound. buy() is capped at 1e7
+  against a 10e8 threshold, so roughly a hundred NET buys are needed, and
+  sell() gives the walk somewhere to go back to; a balanced random walk does
+  not drift a hundred steps up. The cap is deliberate - the handler's own
+  comment records that an earlier 5e8 version exhausted the allocation in two
+  or three calls and left the sell path almost unreachable.
+
+  THE FIX IS A SEPARATE ACTION, NOT A WIDER BOUND. fill() can finish a launch;
+  buy() stays small; both are in the selector set. And fill() WAITS - it does
+  nothing until the campaign has made three sells and one fee-paying sweep,
+  because graduation closes both of those paths for good:
+    gating on nothing        -> zero sells in every campaign;
+    gating on sells alone    -> one campaign in six with zero sweeps;
+    gating on both           -> every path exercised, and graduation reached.
+  Each of those three lines was measured, in that order.
+
+  AND BOTH SUITES NOW GUARD IT. A campaign that graduates nothing fails
+  afterInvariant rather than passing quietly.
+
+G-2  WHAT THIS DOES NOT COVER.
+--------------------------------------------------------------------------
+  The fuzzed launches are CURVES, not full launches: no Graduator, no pool, no
+  hook, no lock. It runs without a fork, which is what lets it do 128,000
+  calls, and the price is that F-4's pool identities and F-8's shared
+  transaction are out of its reach. The escrow, the books and the allocation
+  are what it can see, and they are what it checks.
+
+  THREE LAUNCHES IS STILL NOT MANY. Tens of launches are untested, and so is
+  any launch count that changes as a campaign runs - every curve here exists
+  before the first call.
+
+================================================================================
+WHAT THIS REVIEW DID NOT DO
+================================================================================
+  - NOTHING VENDORED IS UNREAD NOW. PonsV2BondingCurve, its Math library, the
+    BuybackVault and PonsV2LauncherToken have all been read line by line - see
+    C-1 through C-4. What remains unread is the DEPENDENCIES: Uniswap v4,
+    Permit2 and OpenZeppelin, which are out of scope and measured where we
+    depend on them rather than reviewed.
+  - IT RAN NO SYMBOLIC EXECUTION. Fuzzing is section G now - three launches
+    over one shared escrow, which is where the cross-launch properties live -
+    but it fuzzes CURVES, not whole launches: no Graduator, no pool, no hook,
+    no lock, because it runs without a fork in order to afford the calls.
+  - SECTION E CLOSED THE ECONOMIC-ATTACK BULLET THAT USED TO SIT HERE, but not
+    the whole of it. Twelve attacks are measured; they are the ones I thought
+    of. There is no fuzzing over trade sequences and no search over sizes, so
+    what is covered is twelve specific stories, not the space they came from.
+    Cross-launch effects are section F now, but only the seams I could name:
+    the escrow, the Graduator, the hook and the registry. Two launches, then
+    three; the same transaction, including the nested case a batched buy
+    produces; and one order that is not the registration order. SEARCH is section G:
+    three launches over 128,000 random calls, which is where the orders stop
+    being the ones I chose. SCALE is still unmeasured - nothing runs tens of
+    launches, and no launch is ever created while a campaign is running.
+  - It reviewed no deployment procedure beyond reading the script.
+  - It is not independent. See the top of this file - and section D is the
+    sharpest case of that: code reviewed by its own author an hour after
+    writing it.

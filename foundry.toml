@@ -1,0 +1,35 @@
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.30"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+# PONS V2 contracts do not compile without the IR pipeline: the legacy
+# codegen hits "stack too deep" in PonsV2BondingCurve. Slower builds are the
+# price of compiling the reference implementation at all.
+via_ir = true
+# The holder sharing parity test reads the CURB-SHARE v1 golden vectors.
+fs_permissions = [{ access = "read", path = "./reference" }, { access = "read", path = "./services/sharer/spec/vectors" }]
+# CURBROUTER IS COMPILED WITHOUT THE METADATA HASH, and so is SharerProbe;
+# nothing else is. The router is deployed
+# with CREATE2, so its address is a hash of its bytecode, and the metadata hash
+# at the end of that bytecode covers every source path, every comment and
+# forge's auto-detected remappings: a checkout at another path, a lib/ that is
+# a symlink, or a comment tidied in a file it imports moved the address. With
+# "None" only the compiler version stays in the trailer. The restriction puts
+# the router in the "router" profile and nothing else imports it (the tests and
+# DeployRouter read its artifact), so no other file can reach its bytecode.
+# script/DeployRouter.s.sol pins the address and refuses to deploy elsewhere.
+# SharerProbe is never deployed: services/sharer sends its creation code in
+# every probe eth_call and pins its keccak256, so the same rule keeps that
+# number a function of the code alone (test/sharing/SharerProbe.t.sol reads
+# its artifact and checks the pin; nothing imports it).
+additional_compiler_profiles = [{ name = "router", bytecode_hash = "None" }]
+compilation_restrictions = [{ paths = "src/curb/CurbRouter.sol", bytecode_hash = "None" }, { paths = "src/curb/sharing/SharerProbe.sol", bytecode_hash = "None" }]
+
+[profile.fork]
+# Live B20 precompile testing. See ROADMAP.txt section 10, Phase 0 A.
+# Requires base-forge (base-anvil) or a node running base-anvil --base.

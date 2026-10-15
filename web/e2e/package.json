@@ -1,0 +1,11 @@
+{
+  "name": "curb-e2e",
+  "private": true,
+  "description": "Browser checks for web/launch.html, as a command that exits non-zero.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0"
+  }
+}

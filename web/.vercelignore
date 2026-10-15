@@ -1,0 +1,18 @@
+# WHAT VERCEL NEVER UPLOADS from web/ (the project's root directory).
+#
+# The test pages take ?rpc= and talk to a wallet, and on the production origin a
+# crafted link to one would run with that origin's storage and wallet. They sit
+# in web/ only because the browser tests serve web/ whole. web/_redirects answers
+# the same paths with a 404 on Netlify, which has no ignore file.
+#
+# ONE LITERAL PATH PER LINE, from web/, with a leading slash - no wildcards:
+# script/b20/check-publish-set.sh evaluates this file and refuses a line it
+# cannot read exactly as Vercel does.
+/tests.html
+/wallet-setup.html
+/wallet-stub.js
+/REAL_WALLET_TEST.txt
+/README.txt
+/assets/README.txt
+/e2e
+/test-results

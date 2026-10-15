@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 500" width="1500" height="500" role="img"
+     aria-label="CURB — stock-paired launches on Base. curbfun.xyz">
+  <!--
+    CURB — X header, 1500x500.
+
+    THE LAYOUT IS DICTATED BY THE CROP AND BY THE NAME.
+
+    X drops the profile picture onto the lower left and cuts the top and bottom
+    on narrow screens. A first version put the wordmark there and the avatar sat
+    on top of it. So the left of this header is the ROAD - deliberately empty,
+    which is where the avatar lands - and everything that has to be read stands
+    on the raised side to the right.
+
+    That is not a workaround, it is the name: the Curb Exchange was the traders
+    who could not get inside the NYSE, dealing on the kerb outside. The wordmark
+    stands on the kerb.
+
+    Safe strip: y 140..345. Nothing that must survive lives outside it.
+  -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#181D25"/>
+      <stop offset="0.6" stop-color="#0E1116"/>
+      <stop offset="1" stop-color="#090B0E"/>
+    </linearGradient>
+    <!-- userSpaceOnUse, NOT the default. A perfectly horizontal path has a
+         zero-height bounding box, which makes an objectBoundingBox gradient
+         degenerate - renderers are entitled to draw nothing, and Chrome does.
+         The painted line simply vanished from the exported PNG. -->
+    <linearGradient id="paint" gradientUnits="userSpaceOnUse" x1="506" y1="0" x2="1500" y2="0">
+      <stop offset="0" stop-color="#F5A524" stop-opacity="0"/>
+      <stop offset="0.14" stop-color="#F5A524" stop-opacity="1"/>
+      <stop offset="1" stop-color="#F5A524" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1500" height="500" fill="url(#sky)"/>
+
+  <!-- The road, on the left: dashes only, thinning out. The avatar sits here. -->
+  <g stroke="#232830" stroke-width="10" stroke-linecap="butt">
+    <path d="M 30 415 H 120"/><path d="M 175 415 H 265"/><path d="M 320 415 H 410"/>
+    <path d="M 465 415 H 555"/><path d="M 610 415 H 700"/>
+  </g>
+
+  <!-- The kerb: road level, one riser, and the raised side running off the
+       right edge. A line that is cropped still reads as a line. -->
+  <g fill="none" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M -20 345 H 520 V 243 H 1520" stroke="#E9ECF0" stroke-width="28"/>
+    <!-- Paint ON the kerb, not instead of it. Filling the whole raised side
+         amber read as a solid bar a thousand pixels long; a stripe along the
+         edge is what a painted kerb actually looks like, and it lets the
+         concrete stay concrete. -->
+    <path d="M 506 234 H 1520" stroke="url(#paint)" stroke-width="9"/>
+  </g>
+
+  <!-- Standing on the kerb. -->
+  <text x="560" y="178" font-family="Georgia, 'Times New Roman', 'Liberation Serif', serif"
+        font-size="132" font-weight="700" letter-spacing="10" fill="#F4F6F9">CURB</text>
+  <!-- SHORT ON PURPOSE. The first draft ran off the right edge and sat on the
+       kerb line. A banner is read at a glance and cropped without warning; the
+       argument belongs in the bio, not here. -->
+  <text x="566" y="220" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="30" letter-spacing="1.4" fill="#AEB6C2">Stock-paired launches on Base.</text>
+
+  <text x="1466" y="432" text-anchor="end"
+        font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="25" letter-spacing="2" fill="#707A88">curbfun.xyz</text>
+</svg>

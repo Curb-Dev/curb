@@ -1,0 +1,21 @@
+# The domain's root is the launches page: there is no index.html, and / is the
+# address people type and the one in the X bio.
+/  /browse.html  200
+# A token's own address, /token/0x..., is app.html in its token view.
+# Netlify and Cloudflare Pages read this file; web/vercel.json says the same for Vercel.
+/token/*  /app.html  200
+# Every distributor, its roles and its changes.
+/sharing  /sharing.html  200
+# THE TEST PAGES ARE NEVER SERVED. They take ?rpc= and talk to a wallet, and they
+# sit in web/ beside the site because the browser tests serve web/ whole. Vercel
+# never uploads them (web/.vercelignore); Netlify uploads the folder as it is, so
+# each is answered here with the site's 404 - the ! makes a rule win over a file
+# that exists. script/b20/check-publish-set.sh fails if one of these is missing.
+/tests.html  /404.html  404!
+/wallet-setup.html  /404.html  404!
+/wallet-stub.js  /404.html  404!
+/REAL_WALLET_TEST.txt  /404.html  404!
+/README.txt  /404.html  404!
+/assets/README.txt  /404.html  404!
+/e2e/*  /404.html  404!
+/test-results/*  /404.html  404!

@@ -1,0 +1,11 @@
+node_modules
+test
+scripts
+browser
+spec
+*.md
+docker-compose*.yml
+deploy
+secrets
+data
+.git

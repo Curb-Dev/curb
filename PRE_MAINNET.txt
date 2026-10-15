@@ -1,0 +1,2400 @@
+================================================================================
+CURB - WHAT IS STILL OPEN BEFORE MAINNET
+================================================================================
+
+WHAT THIS FILE IS
+  The open items, derived from the code as it stands and from ROADMAP.txt, with
+  three things said about each: what evidence is missing, whether it blocks the
+  launch, and what would close it.
+
+WHAT IT IS NOT
+  It does not reopen finished work. Items already closed with evidence live
+  where they were closed - web/README.txt, ROUTER_ACCESS.txt, ROADMAP.txt's own
+  checkboxes - and are not restated here as if they were open.
+
+WHAT WAS READ FOR THIS, AND WHAT WAS NOT
+  Every claim marked [code] was read out of this repository while writing this
+  file, and the line is named. Everything else is carried from ROADMAP.txt and
+  the other planning documents, which have their own provenance.
+  NOTHING HERE WAS MEASURED ON MAINNET. No contract of ours is deployed there.
+
+CORRECTIONS THAT SHAPED THIS FILE
+  A first version of this list was wrong in five ways, and the corrections are
+  worth keeping because they are the kind of error that repeats:
+    - it omitted who may create a launch, which is a product decision with a
+      live answer in the code already
+    - it said no trade is bounded, which is false: the execution guard exists
+      and is tested. What is missing is the SEPARATE reference-deviation guard
+    - it put the escrow implementation before the fee decision, which is
+      backwards
+    - it proposed closure criteria that cannot be met: a testnet without B20,
+      and a toolchain comparison that assumes stock Foundry can talk to B20
+    - it merged version pinning with aggregator discovery. Different work,
+      different owners, neither closes the other
+
+HOW TO READ AN ENTRY
+  EVIDENCE   what is missing, stated as evidence rather than as opinion
+  BLOCKS     yes / no, and for what
+  CLOSES     the thing that would end the item, written so it can be checked
+
+WHAT IS LEFT
+  Rewritten 2026-10-08. The version of 2026-09-20 said one item was left (A1)
+  and that it carried four decisions; core v2 added holder sharing, DEPLOY.txt
+  grew to six decisions, and a sweep of the whole path to mainnet in early
+  October found fifty gaps between "the code is done" and "the deployment is
+  safe to sign" - five of them blockers. The code and runbook halves of
+  those are closed in the commits that name them, with their tests; they are
+  not repeated here. WHAT FOLLOWS IS WHAT NO COMMIT CAN DO: decisions only the
+  owner can give, accounts only the owner can open, and the day itself.
+
+  1. DECISIONS ONLY THE OWNER CAN GIVE - none of them reversible after A1
+     except where said
+     a. THE MAINNET ASSET LIST - CHOSEN 2026-10-15: FOURTEEN ASSETS, PRICED
+        THAT DAY. The owner kept the eleven - WETH, cbBTC, cbXRP, cbZEC,
+        NVDAc, GOOGLc, SPCXc, AMZNc, MSFTc, AAPLc, METAc - and added three:
+        USDC (Circle's FiatToken, six decimals, with a blacklist the router
+        asks), VIRTUAL and AERO (plain eighteen-decimal ERC-20s). All
+        fourteen were re-priced the same day at Chainlink's answer on live
+        Base (block 52,646,580), each cross-checked against its deepest
+        pool's own price within 1%, and written into quoteAssets() with every
+        fixture in one commit; every start lands within 0.5% of $4,000 and
+        every graduation within 0.5% of $55,000 at those prices, and the
+        preflight's section 6 passed for all fourteen in a read-only run
+        against live Base that day - the simulation's own depth check
+        pricing one threshold of every fillable asset at 4.43 to 4.69 WETH,
+        and about 0.0015 ETH of gas. That run, about 75 minutes after the
+        pricing, already had cbZEC starting at $4,194, +4.9% and the
+        nearest to the band's edge: ZEC had moved 4.75% in the hour. A
+        factory can never be removed; later assets can still be
+        admitted, one at a time, by the Safe (script/DeployAssetStack.s.sol;
+        DEPLOY.txt, ADDING A QUOTE ASSET AFTER LAUNCH).
+        THE FILLABLE FLAGS, from that day's deepest v3 pool against one
+        threshold: fillable - WETH (8,024 thresholds), USDC (5,448), cbBTC
+        (382), VIRTUAL (49.7), AERO (45.3), cbZEC (7.46), cbXRP (4.75),
+        GOOGLc (2.36); thin - AMZNc (0.97), NVDAc (0.65), SPCXc (0.53),
+        AAPLc (0.37), MSFTc (0.24), METAc (0.14). NVDAc LOST ITS FLAG that
+        day: its WETH pool held 284 NVDAc when the list was first sorted and
+        32.56 now. The owner lists the thin ones anyway ("liquidity comes and
+        goes"); the page warns at the moment of choosing, and sell() stays
+        open while a launch waits.
+        LEFT OUT, ONE LINE EACH TO ADD LATER: TSLAc, COINc, MSTRc, CRCLc,
+        INTCc - Chainlink feeds on Base, no Uniswap pool at all, so no ETH
+        route.
+        STILL TO DO ON THE DAY, AND NOT OPTIONAL: these are one day's prices.
+        PREP 1 measures again days ahead and the preflight's section 6 prices
+        every asset again when STEP 2 runs; past 5% it stops, and the cure is
+        a re-priced commit, not a wider band. (On 2026-10-08, before this
+        re-pricing, 9 of the then 11 were outside the band.) The flags are
+        checked by the run itself: requireDepthMatchesClaim refuses a list
+        that calls an asset fillable when live Base cannot price a threshold
+        of it.
+     b. $CURB'S LAUNCH SETTINGS: name, symbol, image and links, tax, creator
+        wallet (a treasury Safe - never zero, never the deployer), dev buy,
+        holder sharing at launch (DEPLOY.txt decision 6). It is launched
+        inside the deployment, so it is the registry's first ETH launch.
+     c. THE SAFES: Safe A's and Safe B's signers, devices and thresholds, and
+        who covers the payout veto hour at night (SAFE_OPS.txt: addresses and
+        thresholds committed in it, the rest in its private copy).
+     d. THE PLATFORM RECIPIENT'S CUSTODY: keep the recorded EOA [A6] with its
+        custody written down, or move to a treasury Safe before signing
+        (SAFE_OPS.txt: the choice committed in it, the custody in its private
+        copy). Changeable later only for later launches.
+     e. THE GUARDIAN'S OPERATOR, a second person running the vetoing bot
+        (services/sharer/RUNBOOK.md part 10) - or, if there is nobody, a
+        fallback guardian on a separate server with its own key, RPC and
+        alerts, never on the keeper's machine.
+     f. THE SITE'S RPC ENDPOINT, which every visitor's browser reads
+        (web/config.js, DEPLOY.txt PREP 3).
+     g. THE SECURITY CONTACT, for docs.md and security.txt.
+     h. D6'S ONE OPEN QUESTION - ANSWERED 2026-10-15: stock-paired pools stay
+        open while the stock's market is closed, as thestonks.exchange's do.
+        The owner's reason: the tokenized stock itself keeps trading on Base
+        around the clock, so a CURB pool paired with it does too. Nothing is
+        built for it (D6).
+
+  2. ACCOUNTS AND SERVICES TO OPEN BEFORE THE DAY (DEPLOY.txt PREP 3)
+     - the public code repository on GitHub, main as its default branch (the
+       keeper's standby and verifier workflows act only on the default
+       branch), with branch protection;
+     - holder sharing's data repo, pinning accounts, four RPC providers and
+       alert sinks (services/sharer/RUNBOOK.md parts 2 to 6);
+     - the hosting project and the domain;
+     - hardware-key 2FA and a registrar lock on every one of them
+       (SAFE_OPS.txt, ACCOUNTS);
+     - the signing machine: WSL with base-forge, the hardware wallet reaching
+       it through usbipd, and the signer check printing the deployer
+       (DEPLOY.txt PREP 2).
+
+  3. THE FINAL INTERNAL AUDIT, on the commit to be deployed, which ends the
+     in-house reviews. There is no outside audit, by the owner's decision of
+     2 October 2026. It re-runs, on that commit, every suite (DEPLOY.txt
+     STEP 1) and the mutation harnesses - each breaks one guarded check at a
+     time and requires a named test to fail:
+       script/b20/mutate-escrow.sh          the escrow's checks (fork node)
+       script/b20/mutate-launch-policy.sh   the launch-policy checks (fork node)
+       script/b20/mutate-router.sh          CurbRouter (fork node): 62
+                                            mutants, each tied to a named
+                                            B20Router test.
+                                            RPC=http://127.0.0.1:8546 bash
+                                            script/b20/mutate-router.sh (the
+                                            node `bash script/b20/start-node.sh`
+                                            starts; RPC= names another), about
+                                            40 minutes; MUT_CHECK_ONLY=1 checks
+                                            its anchors in seconds
+       script/b20/mutate-integration.sh     the core v2 integration's guards
+                                            (fork node)
+       script/b20/mutate-sharing.sh         holder sharing's contract guards
+                                            (fork node)
+       script/b20/mutate-distributor-roles.sh  the distributor roles' delays
+                                            and the freeze
+       script/b20/mutate-sharer-probe.sh    SharerProbe
+       script/b20/mutate-cost-display.sh    the cost line's browser tests
+       script/b20/mutate-depth-lock.sh      measure-depth.sh's lock
+       script/b20/selftest-mutate-harness.sh  the harness itself
+     and, for the keeper, npm run mutate and npm run mutate:ops in
+     services/sharer. Each is run with bash (they are not executable files).
+
+  4. A1 ITSELF - DEPLOY TO BASE. DEPLOY.txt end to end: the run with $CURB in
+     it, the router, the Safe accepting the registry, the address book and
+     web/config.js, explorer verification, the host and a real-wallet check
+     of the live site, then holder sharing's keeper, workflows and guardian
+     before the site is announced. It is a DECISION that has not been given,
+     and nothing here will take it: a mainnet deployment is irreversible and
+     public, and it is the founder's to authorise.
+
+  AND ONE THING THAT MUST NOT BE DEFERRED PAST IT, LEARNED THE HARD WAY
+    Nothing in this system is upgradeable. That is a deliberate property and it
+    has a cost nobody states until it bites: every "we can fix that later" is
+    false after A1. The audit itself made that mistake - it deferred three
+    findings to a revision that cannot exist - and they were fixed on
+    2026-09-21 instead. Anything still on a "later" list should be re-read
+    against that before this item is taken.
+
+  AND WHAT A1 UNBLOCKS, WHICH CANNOT START BEFORE IT
+    C7's successor  file the Uniswap hook-allowlist application, which needs a
+                    deployed and explorer-verified hook, and then measure each
+                    venue's real quote endpoint against a live launch.
+
+  STANDING, not scheduled:
+    C3  a decision to record, not work to schedule.
+    C9  two findings of 9 October 2026 accepted and documented by the owner:
+        tax-free trading through one-sided range liquidity in a graduated
+        pool, and holders' dependence on a live publisher with no fallback.
+    C4  base-forge is the tool of record; the cause of the invariant
+        difference under stock Foundry is unexplained.
+    C6  re-vendor v4-periphery and openzeppelin from actual releases, so their
+        package.json names something that exists. Nothing depends on it.
+    A4  closed by decision, 2026-09-20.
+    B1/B2  out of scope by decision.
+
+
+================================================================================
+A. BLOCKS THE LAUNCH
+================================================================================
+
+A1  NOTHING IS DEPLOYED, AND THE MAINNET ADDRESSES DO NOT EXIST YET
+    WHAT THIS WAS. script/DeployCurb.s.sol imported MockFeeEscrow and
+    MockFeePolicy out of test/mocks, and its own header said it was for the
+    local fork and must not be used as a mainnet script. No deployment had
+    ever run without mocks, anywhere.
+    BLOCKS    Yes, still - but for a different and much shorter list.
+    THE MOCKS ARE GONE, AND THAT IS ONE PART OF THIS, NOT THE WHOLE.
+              src/curb/FeeEscrow.sol and src/curb/FeePolicy.sol are real
+              contracts and DeployCurb imports nothing from test/ any more. The
+              script also REFUSES to run without CURB_PLATFORM_RECIPIENT rather
+              than defaulting to the deployer - every launch created while it
+              is the hook's recipient freezes it into its record for good - and
+              it asserts before registering anything that the policy and the
+              factory publish the same recipient, share and impact ceiling at
+              deployment and that the policy points at that escrow. What makes
+              a launch's curve and pool pay the same recipient and rate is
+              launch() reading the hook once into the record both charge.
+              The terms a deployment does NOT choose - the protocol's share of
+              the base fee, the buyback burn, the unused hook rate and the
+              sweep operator - are constants on FeePolicy rather than arguments
+              it could be handed wrong. They were arguments, and two of them
+              were never compared at all; making them unsettable was the fix.
+              RUN MOCKLESS ON THE PINNED BASE FORK, and read back from chain:
+                hook platformRecipient  0xf39Fd6e5...b92266
+                factory protocolFeeRec  0xf39Fd6e5...b92266   (the same)
+                factory PLATFORM_FEE    50      hook platformFeeBps  50
+                policy feeSweepOperator 0x0000...0000
+                policy protocolFeeShare 10000   recipient  the same again
+                escrow quoteToken       NVDAc,  codesize 2282
+              Refusing without the variable was checked too: "environment
+              variable CURB_PLATFORM_RECIPIENT not found".
+    AND THEN IT WAS SIMULATED AGAINST LIVE BASE - 2026-09-21
+              Not the pinned fork: chain 8453, at head, read-only, no
+              broadcast and no key. All 16 contracts deploy without a revert -
+              LaunchRegistry, Graduator, LaunchLens, the mined FeeHook, and a
+              FeeEscrow, FeePolicy, BuybackVault and CurbLaunchFactory for each
+              of the three assets it had THAT DAY. It has fourteen now; the count
+              comes out of the run (see preflight section 5).
+                estimated gas    34,460,697
+                at 0.01025 gwei  0.00033 ETH
+              So the cost is known and it is nothing. A fork of Base is still
+              not Base, but this is a great deal closer than the last line of
+              this entry used to claim.
+
+              AND IT FOUND SOMETHING THE FORK COULD NOT, which is the whole
+              reason to do it: THE SCRIPT ALWAYS CREATED A DEMO LAUNCH, and
+              always printed "=== CURB, local fork ===" even on chain 8453.
+              On a fork that demo is exactly what you want - demo-app.sh,
+              demo-waiting.sh, wallet-session.sh and the browser suite are all
+              built on it. On mainnet it would be "Curb Demo / DEMO" written
+              into the registry as launch number one, PERMANENTLY: the record
+              is write-once and the list is append-only, so there is no
+              removing it, renaming it, or hiding it from anybody browsing.
+              FIXED: the demo is now an explicit opt-in, CURB_DEMO_LAUNCH, and
+              the direction is the point. Forgetting the flag on the fork
+              breaks the runners loudly, because they parse those lines by
+              name. Forgetting it on mainnet does nothing at all. A flag to
+              SKIP the demo would have failed the other way, towards the
+              outcome that cannot be undone.
+
+    WHAT IS STILL MISSING, AND WHY THIS STAYS OPEN
+              Nothing has been deployed to the real chain, no address book
+              exists and no contract is verified. The PLATFORM RECIPIENT is
+              nominated but its shape is still a live decision [A6] - a Safe
+              is cheapest before this item (afterwards it is a policy change
+              that reaches only later launches), and both kinds are measured
+              to work.
+              AND THE DEPLOYMENT ITSELF NEEDS A FUNDED KEY ON BASE. That is
+              not a task anybody can hand off: it is the signature, and it is
+              the founder's. DEPLOY.txt is the runbook written so that is the
+              only judgement left in it.
+    CLOSES    The rehearsal is DONE - mockless, and now against the live chain
+              rather than only the fork. What is left is the part no simulation
+              can stand in for:
+                - A6 settled, so the script has a recipient to be given
+                - the stack deployed to Base itself, signed by a funded key
+                - the address book filled in - ADDRESSES.txt is written and
+                  empty, with every blank named and a list of what to read back
+                  off chain before anybody launches
+                - the contracts verified on the explorer, which the Uniswap
+                  hook allowlist also requires [C7]
+              DEPLOY.txt carries the exact sequence, what each irreversible
+              decision costs, and what to do if a run dies half way - because
+              wire() is callable once and a blind re-run would deploy a second
+              everything.
+              A public testnet was never the gate and still is not: B20 and the
+              Uniswap deployments this depends on are not there, so a green run
+              on one would prove less than the fork does, not more.
+
+A2  FEES ACCRUE AND HAVE NOWHERE TO GO - CLOSED, ON THE FORK
+    src/curb/FeeEscrow.sol replaces the mock. Balances are kept per recipient
+    and per token; a claim pays the CALLER from the CALLER'S balance to the
+    CALLER'S address, and there is no claim-on-behalf, no administrator, no
+    owner, no pause and no recipient argument anywhere in the claim path. The
+    creator takes the creator's share and we take ours because those are the
+    only two things the code can do.
+    EVIDENCE  A real launch, real buys, the creator's own sweep, then both
+              parties claiming - asserted on their REAL NVDAc balances, not on
+              the escrow's ledger (B20Graduation, test_escrow_curveFees...).
+              Plus separate balances across two launches and two creators,
+              partial and full claims, a stranger reaching nothing, an
+              over-claim, a refused transfer leaving the balance intact, a
+              short delivery refused, and a reentrant RECIPIENT paid once.
+              Eight mutations behind those, in script/b20/mutate-escrow.sh.
+    THE WAY OUT WAS NOT MEASURED AT FIRST, and the asymmetry cost the claimant.
+              creditToken measured what ARRIVED from the start; claiming only
+              called safeTransfer, which catches a `false` return and cannot
+              see a token that returns true and pays less. MEASURED before the
+              fix, with an injected token: 4e18 owed, 3.96e18 paid, and the
+              balance still went to ZERO - the claimant lost the difference and
+              had nothing left to claim with. The recipient's balance is now
+              measured across the transfer and a shortfall reverts, which
+              unwinds the write and leaves the claim to be made again.
+              AND THE ESCROW'S OWN OUTFLOW IS BOUNDED TOO, because the
+              recipient check protects the wrong person on its own: a token
+              that pays the claimant their full 4 and takes 4.04 from the
+              escrow passes it, and the 0.04 comes out of what backs OTHER
+              people's balances. This is a shared vault; a claim is bounded on
+              both sides or one claimant is made whole out of another's money.
+              A surplus on the RECIPIENT'S side is not refused - their balance
+              can rise for reasons unrelated to this contract. The ceiling is
+              on the escrow's side.
+              WHAT THE RECIPIENT MEASUREMENT IS NOT. It is a NET GAIN, not a
+              delivery: a recipient that forwards the tokens onward from inside
+              a transfer callback ends up with less than arrived, and THIS
+              CHECK REFUSES THAT CLAIM TOO. The contract cannot tell that apart
+              from a short payment, so it pays out under neither. There is a
+              test for exactly that case, and what it shows is the REFUSAL -
+              not that the recipient could have avoided it. An account whose
+              forwarding is in immutable code cannot choose otherwise, and for
+              such an address this escrow is unusable rather than merely
+              strict. For a launch's creator that is the address they can no
+              longer change (C3).
+              THOSE ARE INJECTED TOKEN BEHAVIOURS, not observations about
+              NVDAc. NVDAc is a precompile and cannot be made to short-pay on
+              demand; nothing here says it ever would.
+    WHAT IT DOES NOT FIX, AND THE USER SAID SO FIRST
+              An escrow moves the delivery problem, it does not remove it. It
+              is why a creator who cannot receive NVDAc no longer blocks a
+              sweep - and so no longer blocks a graduation, since graduation
+              sweeps on its way through. It does NOTHING if NVDAc itself stops
+              moving to or from the escrow: the fees are then stuck in a shared
+              contract rather than in transit, which is not an improvement.
+              And a lost creator key is permanent - there is no administrator
+              who could reassign a balance, deliberately, because an address
+              that CAN move somebody else's fees is the larger risk. See C3.
+    STILL NOT A MAINNET DEPLOYMENT. This closes the escrow and nothing else -
+              see A1, which is still open for the policy and for the deployment
+              script itself.
+    THE PROBLEM AS IT WAS FIRST RECORDED - THE BEFORE STATE, NOT THE WIRING
+    NOW. Every graduation sweeps fees on its way through [code:
+    PonsV2BondingCurve.sol:543, inside graduate()], and a sweep pays the
+    escrow. When this entry was opened that escrow was MockFeeEscrow, whose
+    claim() and claimToken() returned 0 with no transfer out; no payout had
+    ever been executed, and on that wiring every fee would have been locked in
+    a contract with no exit. That is what the CLOSED above answers:
+    DeployCurb now deploys the real FeeEscrow, one per quote asset
+    [DeployCurb._deployAssetStack, `new FeeEscrow(asset.quote)`], and the mock
+    is in no deployment path. (This paragraph used to say, under the CLOSED
+    header, that the wired escrow was still the mock.)
+
+A3  THE REVIEW - DONE IN HOUSE, BY DECISION. 2026-09-20.
+    SCOPE NOTE, 2026-09-20: the surface grew. The registry admits multiple
+    launchers and there are fourteen factories and fourteen escrows (seven when
+    this was written) rather than one - a reason to fix the asset list (F1) BEFORE the audit, not after.
+    ROADMAP Phase 1 lists it in scope, at the scope of 6.3.
+    DECIDED BY THE FOUNDER: no external auditor is engaged for this release,
+    and the review is performed in house. Recorded as their decision because it
+    is theirs to take, and recorded PLAINLY because the word "audit" is read by
+    other people as meaning something this is not.
+
+    DONE - AUDIT.txt, a review against the whole of 6.3, item by item.
+      TWO DEFECTS FIXED. The serious one was in the PAGE, not the contracts:
+      app.html takes its factory and lens off the query string, so a LINK
+      chooses which contracts it reads - and the quote asset's symbol() reached
+      innerHTML unescaped in fifteen places. That is script execution on the
+      page where the wallet is connected and transactions are built. Fixed at
+      the single point the symbol is read, not at the fifteen sinks, because
+      the sixteenth is whatever somebody adds next. The second bounds
+      attacker-chosen launch names on the shared list page.
+      ONE MEASURED RATHER THAN ARGUED. The graduator approves Permit2 without
+      zeroing, which a USDT-family token refuses; measured to work on all three
+      enabled assets, with the requirement written down that a fourth needs the
+      same measurement.
+      THREE OF THE FOUR "REPORTED AND NOT CHANGED" WERE THEN CHANGED, 2026-09-21
+      - A-4, A-5 and A-7. The review had deferred them on the reasoning that
+      changing a stack immediately after reading it is the wrong order. That
+      reasoning had a hole: NOTHING HERE IS UPGRADEABLE. The registry is
+      write-once, the hook and the graduator are immutable, and a launch
+      registered against them keeps them for good - so "the next contract
+      revision" and "never" are the same sentence the moment A1 happens.
+        A-4  the graduator swept its whole balance when refunding and burning,
+             so a stranger's transfer would have been forwarded to whichever
+             launch graduated next and counted in its supply change. It now
+             acts only on what arrived during that graduation.
+        A-5  neither the graduator's nor the hook's constructor rejected a zero
+             address. wire() catches three of the eight positions; the hook's
+             platformRecipient was checked nowhere on chain.
+        A-7  launchSlice panicked on "everything from here".
+      EACH ONE HAS A TEST, AND EACH TEST WAS RUN AGAINST THE OLD BEHAVIOUR AND
+      WENT RED - the overflow panic itself for A-7, the donated 5 NVDAc named
+      in the failure for A-4, and both constructor tests for A-5.
+      ONE REPORTED AND STILL NOT CHANGED: A-8, PositionLockFactory ships and is
+      never deployed. Scope hygiene, and removing it is a source change with no
+      behaviour behind it.
+
+      AND THEN THE CURVE WAS READ LINE BY LINE, 2026-09-21 - the 796 vendored
+      lines the review had named as its own largest gap. It produced C-1, the
+      worst finding of the whole engagement, and it was found by reading a
+      COMMENT rather than the code:
+
+        PonsV2BondingCurve ships rescueFees() for one named situation - a
+        permissioned quote asset that stops delivering to ONE address, after
+        which in its own words "the launch would be stuck on its curve
+        forever". Our quote asset is a permissioned asset and that one address
+        is our escrow.
+
+        PROVOKED FOR REAL through the issuer's policy admin: one blocklist
+        entry on the ESCROW leaves a full, ready launch that cannot graduate
+        (the sweep inside graduate() reverts), cannot be bought from, and
+        cannot be sold to. Every door at once, permanently.
+
+        AND THE HATCH WAS SEALED BY OUR OWN WIRING. rescueFees is onlyFactory,
+        the Graduator holds that role because it also gates graduate(), and the
+        Graduator exposed nothing that reached it. The mitigation existed, we
+        held the only key, and there was no lock.
+
+        FIXED: Graduator.rescueCurveFees(launchToken). The curve's
+        creator-fee recipient and the record's platform recipient may call it
+        at once; anyone else one hour after Graduator.noteReady(launchToken)
+        noted the launch full and ungraduated, while it still is - for the
+        same reason graduate() is open: a caller chooses nothing and the
+        argument must already have a registry record whose curve names its
+        token. Not at the moment the curve is full (the internal audit of 9
+        October 2026, finding 12): open to anyone then, a buyer who filled the
+        curve could starve its graduation and rescue in the same transaction,
+        forcing a creator's fees out as WETH to a contract that takes only
+        ETH. The keeper sends noteReady itself when graduate() would revert.
+        Proven end to end: after the blocklist a passer-by notes the launch
+        ready, rescues the full curve's fees an hour later, the protocol is
+        paid directly, and the launch graduates with the escrow never
+        touched.
+
+        THIS IS ROADMAP 6.3(b) - "retryable states must be supported" - and it
+        was not, for the exact failure 6.3 names.
+      ONE WITHDRAWN ON READING - the economic terms looked unvalidated and are
+      refused a layer later, by the curve itself, before any money is in.
+
+    EVIDENCE  AUDIT.txt. 61 non-fork / 255 fork / 54 browser tests passed ON
+              THAT DAY - a record of the day, not a gate and not today's count;
+              see DEPLOY.txt STEP 1.
+              TEN of those tests are new. Six were checked against the old
+              behaviour one at a time - each went red on its own, and only it -
+              and C-1's was watched failing against the unfixed Graduator
+              before the hatch was added.
+    BLOCKS    No longer, by this decision. What it does NOT do is listed at the
+              end of AUDIT.txt, and the largest item there is real: 796 lines of
+              vendored bonding curve, holding every launch's reserves, were read
+              against 6.3's arithmetic items and not line by line.
+    THE LIMIT, IN ONE SENTENCE, so it is never quoted as more than it is: the
+              review was written by the same agent that wrote the code, which
+              is the blind spot an external reviewer is paid to cover. If the
+              product is ever described to users as "audited", that word will
+              be wrong until somebody independent has done it.
+    THE OLD REASON FOR LEAVING IT LAST HAS EXPIRED, and is written out here so
+    it does not get repeated. This item used to say an audit would hit the
+    wrong contracts because the fee routing and the launch authority were
+    still being decided. BOTH ARE SETTLED: the fee model is frozen (D2), and
+    anyone may launch with every priced term immutable on the factory (A5).
+    That argument no longer applies.
+    WHAT STILL MOVES is what B1 and B2 will add. There is no price adapter and
+    no reference-deviation guard yet, so a stack audited today would have to be
+    audited again when they land - which is a reason to time the EXECUTION, not
+    a reason to leave the whole item untouched.
+    CLOSED    A report against the whole of 6.3, with its findings fixed,
+              measured or reported. AUDIT.txt.
+    STILL TRUE, AND CHEAP TO ACT ON LATER: finding an external auditor is
+              lead-time work that needs no frozen stack. This decision does not
+              foreclose it - it defers it.
+
+A4  THE v4-core LICENCE - DECIDED 2026-09-20. NO LEGAL REVIEW.
+    lib/v4-core carries BUSL-1.1 on Pool.sol and Position.sol.
+    REUSE_ANALYSIS.txt records that the two ENS records carrying the terms
+    could not be read, and says to plan as if the restrictions apply.
+    MEASURED 2026-09-20 - THE DEPENDENCY QUESTION, WHICH IS THE HALF THAT IS
+    TECHNICAL. This entry offers a second closure path: "a file-by-file
+    demonstration that nothing we ship depends on the BUSL files". So the
+    import closure of src/ was walked and every v4-core file it reaches was
+    read for its SPDX line.
+
+      26 v4-core files are reached. 25 are MIT. ONE IS NOT:
+        lib/v4-core/src/libraries/Position.sol   BUSL-1.1
+
+      HOW IT IS REACHED: only through MIT StateLibrary.sol, which carries a
+      file-level `import {Position} from "./Position.sol"`. Graduator is the
+      only file of ours that uses StateLibrary, and the only function it calls
+      is getSlot0 [Graduator._initializeOrVerify] - which does not reference Position at
+      all. Position.calculatePositionKey is used by getPositionInfo and the
+      fee-growth helpers, and we call none of them.
+
+      SO THE ANSWER IS NOT "NOTHING". It is "one file, pulled in by somebody
+      else's import, whose code we do not call". That is a much smaller
+      question than the entry assumed, and it is still not zero.
+
+      NOT MEASURED: whether any of Position's code reaches our DEPLOYED
+      BYTECODE. Solidity emits internal library functions only where they are
+      reachable, and nothing we call reaches these - but that was reasoned,
+      not measured, and it is the form the question would take if it mattered.
+      What IS certain is that Position.sol is part of the compiled source set
+      and would appear in a verified-source bundle on an explorer.
+
+    EVIDENCE  The terms have not been read, and no advice has been taken. The
+              dependency is now measured (above) and is one file.
+    BLOCKS    Yes, for a commercial launchpad.
+    DECIDED BY THE FOUNDER, 2026-09-20: no legal review is commissioned and
+              the position is taken without advice. This entry said the closure
+              was a legal position rather than an engineering one and that it
+              was not mine to take. It has now been taken, by the person whose
+              it was.
+
+    WHAT THE DECISION RESTS ON, so it is not remembered as more than it is:
+              the dependency is measured and it is ONE FILE - Position.sol,
+              BUSL-1.1, reached only through MIT StateLibrary's own import, and
+              the only StateLibrary function we call is getSlot0
+              [Graduator._initializeOrVerify], which does not touch it. 25 of the 26
+              v4-core files reached are MIT.
+
+    WHAT IT DOES NOT REST ON, and this is the honest half:
+              - nobody has read the licence terms; the ENS records were never
+                resolved
+              - "we import it but never call it" is our reading of what counts
+                as use, and it is not a lawyer's
+              - Position.sol IS in the compiled source set and would appear in
+                a verified-source bundle on an explorer, so the dependency is
+                visible to anyone who looks
+              - v4-core's BUSL converts to GPL on its change date, which would
+                dissolve the question; that date was not looked up
+
+    CLOSED    By decision, not by resolution. The risk is unchanged; what
+              changed is that somebody with the authority to accept it has.
+              REOPENS if Uniswap or anyone else raises it, or before any
+              fundraise or acquisition where a licence diligence is run.
+
+A5  WHO MAY CREATE A LAUNCH - DECIDED AND BUILT. ANYONE CAN.
+    launch() has no owner check; the caller becomes the creator unless it
+    names another address in creatorWallet (see STILL OPEN below). The decision
+    also closed the parameters in the same change, because opening the door
+    changes what a parameter means: the fee policy used to be a calldata
+    argument, and a stranger could have named themselves the protocol's fee
+    recipient. Everything priced - the supply, the curve's shape, the lock, the
+    pool, the hook, and who is paid how much - became immutable on the factory.
+
+    NARROWED 2026-09-21 - THE PLATFORM'S OWN LEG IS SETTABLE AGAIN, BY AN OWNER.
+    This entry conflated two things that are not the same, and the distinction
+    is the whole of the change:
+      A CALLDATA ARGUMENT lets a STRANGER name themselves the recipient. That
+        stays closed and is what the sentence above was really about.
+      OWNER-SETTABLE STATE lets nobody but the owner name anything, and each
+        launch freezes what was current when it was created.
+    The second is PONS's shape - PonsV2MemeHook holds its policy behind
+    onlyOwner setters and their factory snapshots it per launch - and it is
+    what the founder chose to follow. See D2 for what a change reaches and what
+    it costs.
+    EVERYTHING ELSE PRICED IS STILL IMMUTABLE: the supply, the curve's shape,
+    the lock, the pool, the tax band, the creator's identity, and every term in
+    a registry record.
+    EVIDENCE  A stranger launches and is the creator; a stranger cannot
+              redirect the fee, change the share, or choose any term. Each
+              assertion has a mutation behind it - see FEE_POLICY section 6.
+    BLOCKS    No longer.
+    DELEGATION EXISTS NOW - THIS USED TO SAY IT DID NOT.
+              LaunchConfig carries creatorWallet: zero means the caller is the
+              creator, anything else names the creator outright
+              [CurbLaunchFactory.LaunchConfig, and launch()'s `creator` line].
+              So a launch CAN be made on someone else's behalf, with no rule
+              about who may use it: whoever names an address makes it the
+              launch's beneficiary for good - the curve's creator fee
+              recipient, the lock's beneficiary and the pool's creator. The
+              factory refuses only the deployment's own contracts there. The
+              entry said "the creator is msg.sender, not a field" after the
+              field was added.
+    RESTATED 2026-10-02 FOR CORE V2. The beneficiary never changes; its FUTURE
+              income can be switched once, one way, to the launch's own holder
+              distributor - by that beneficiary, or by the launcher inside the
+              launch transaction - and then the curve's creator fees, the
+              pool's creator leg and the locked position's fees go to the
+              holders. The locked principal stays in the lock forever, for
+              everyone (owner's decision, 4 October 2026).
+              Nobody can name the address the income goes to, and nothing
+              moves a balance already earned. C3 has the whole of it.
+
+
+A6  THE PLATFORM'S FEE RECIPIENT - DECIDED FOR NOW, 2026-09-20
+    (an EOA, with a Safe intended later - read the deadline below, because
+     "later" stops being free at A1)
+    Every trade pays this address: the curve's protocol leg through the escrow,
+    and the pool's platform leg directly. It is the hook's starting recipient,
+    settable by the policy owner behind a 24-hour announcement, and each launch
+    freezes the one in force when it is created - so a wrong one can be
+    corrected for future launches, and every launch created before the
+    correction keeps paying the old address forever. (This used to say it was
+    written into FeeHook as an immutable.)
+    DeployCurb refuses to run without it, and it also asks what kind of
+    address it was given - one key, a Safe, or some other contract - and
+    refuses the first and the last unless told (THE CHECK THIS ENTRY ASKED FOR
+    IS BUILT, below). This paragraph used to say it could not know, a day
+    after the check was built.
+
+    THE SAFE PATH IS MEASURED AND IT WORKS - 2026-09-21
+      This entry deferred to "a Safe later" for a day without anybody checking
+      that a Safe CAN be the recipient. Two things could have made it
+      impossible, and neither is visible except against the real chain:
+
+        RECEIVING. The quote asset is a B20 with a transfer policy, and a Safe
+        is a contract. Nothing had established that the issuer's policy admits
+        one.
+        CLAIMING. FeeEscrow pays msg.sender and takes no recipient argument -
+        deliberately, so there is nothing for a phishing flow to fill in. The
+        recipient therefore has to BE the caller, and this file already records
+        that an account whose behaviour is fixed in code can be refused by the
+        escrow's own delivery check [C3].
+
+      MEASURED, against Base's canonical Safe deployment at the pinned block -
+      SafeProxyFactory 0x4e1DCf7A... (3054 bytes) and the L2 singleton
+      0x29fcB43b... (24421 bytes), both asserted to have code so a wrong
+      constant cannot make the test pass while measuring nothing:
+
+        a real 2-of-3 Safe RECEIVES NVDAc - the policy admits it
+        it CLAIMS its escrow balance in full, executed by a NON-OWNER with two
+          of the three signatures, which is how a Safe is actually driven
+        one signature is refused with Error("GS020"), so the threshold is what
+          is being measured rather than a Safe that would run for anybody
+        [test_aSafeCanReceiveTheQuoteAssetAndClaimFromTheEscrow,
+         test_aSafeBelowItsThresholdCannotClaim]
+
+      SO THE DEFERRAL IS A REAL CHOICE, not a plan that might not work. What is
+      left is only who holds the keys, and that is not an engineering question.
+
+    THE PROPOSED SHAPE - PROPOSED, NOT SETTLED
+      - a Safe multisig rather than a personal MetaMask address
+      - suggested: three separate, securely held wallets, 2-of-3
+      - if it is one person for now, a Safe can still be set up, but a 1-of-1
+        Safe does not add much security over a plain account. Worth saying
+        rather than treating the Safe itself as the safeguard.
+      THE SIGNERS AND THE THRESHOLD ARE NOT CHOSEN. The above is the founder's
+      suggestion and this file should not read as though it were decided - who
+      holds the keys and how many are needed is the decision, and it has not
+      been made.
+
+    THE ADDRESS IS NOMINATED - 2026-09-20
+      0x52483b53c8C08Ece00932A65DaE70487dcCD21E0, given by the founder as the
+      treasury account. The checksum is valid.
+
+      WHAT BASE MAINNET SAYS ABOUT IT, read at block 51537916 and again at the
+      pinned fork block 51171034 on 2026-09-21 - unchanged both times:
+        code     0 bytes
+        balance  0
+        nonce    0
+      So it has never been used, and IT IS NOT A SAFE. An address with no code
+      is one key - whoever holds it can take every fee this protocol earns, and
+      losing it loses them all - and it is also indistinguishable from A
+      CONTRACT NOT YET DEPLOYED, which is a different mistake with the same
+      shape. If a Safe is to be deployed AT that address later, this entry
+      should be re-read then rather than assumed to have covered it.
+
+    THE DECISION, RECORDED AS ONE - 2026-09-20
+      THE EOA IS ACCEPTED FOR NOW, by the founder, with a Safe intended later.
+      This entry asked for a multisig and is not getting one yet; that is a
+      choice somebody made rather than an oversight, so it is written here
+      instead of left as an open item that quietly never closes.
+
+      WHAT IS BEING ACCEPTED, stated plainly so the choice is not made twice:
+      one key pays for everything. Whoever holds it can take every fee the
+      protocol earns, and losing it loses them all. There is no recovery path
+      and no second signature in the way.
+
+    AND "LATER" HAS A DEADLINE, WHICH IS A1 - NOT A DATE
+      Before the mainnet deployment this costs nothing to change: the recipient
+      is an environment variable and nothing is frozen anywhere.
+
+      AT the mainnet deployment it becomes the hook's starting recipient, and
+      every launch created while it is in force freezes it into its own record.
+      Moving to a Safe AFTERWARDS is a policy change - announce, wait 24 hours,
+      execute - and it reaches only launches created after it: every launch
+      created before the move KEEPS PAYING THE EOA FOREVER. The fee stream
+      splits in two and stays split. (This used to say the address went into
+      FeeHook as an immutable and that moving meant a new hook and factory;
+      the recipient has been settable since the announce/execute policy.)
+
+      SO "EOA NOW, SAFE LATER" MEANS: every launch made before the switch pays
+      the EOA forever, and only launches after it pay the Safe.
+      If the Safe is coming, it is cheapest by an order of magnitude to have it
+      before the deployment rather than after.
+
+    THE CHECK THIS ENTRY ASKED FOR IS BUILT - 2026-09-20
+      DeployCurb no longer takes the hex string on trust. It reads extcodesize
+      and REFUSES an address with no code unless CURB_ALLOW_EOA_RECIPIENT is
+      set, so accepting one is a deliberate act rather than a default nobody
+      read. An EOA carrying only an EIP-7702 delegation counts as one key too.
+      Where there IS code it asks getThreshold() and getOwners() and prints
+      them, because a deployer reading the output is the last check before
+      this becomes permanent - and a contract that cannot answer them is not a
+      Safe, so it is REFUSED unless CURB_ALLOW_NON_SAFE_RECIPIENT is set (it
+      used to be only a warning). The policy owner is put through the same
+      questions with its own two opt-ins [checkRecipientKind and
+      checkPolicyOwner in script/DeployCurb.s.sol;
+      test_theDeploymentsRecipientCheckKnowsAKeyFromASafe,
+      test_theDeploymentsRunAsksTheRecipientAndOwnerQuestionsFromTheEnvironment].
+      Both paths were exercised on the fork with the address above:
+      refused without the override, accepted with it and the warning printed.
+      The local runners set the override, because anvil's account 0 is what
+      they mean and that is test configuration written where it is read.
+
+    EVIDENCE  The address is named and measured (above). No Safe exists at it,
+              no signers are named, and no threshold is chosen.
+    BLOCKS    NOTHING NOW. It blocked the deployment while no address
+              existed; one does, and DeployCurb accepts it with
+              CURB_ALLOW_EOA_RECIPIENT=true. A1 can proceed on this address
+              whenever the rest is ready. (A superseded "BLOCKS THE MAINNET
+              DEPLOYMENT" line stood directly above this one, so the entry
+              gave both answers to whether it gates A1.)
+    CLOSES    Either a Safe deployed ON BASE before A1, with its signers and
+              threshold written down here - or this entry as it stands, which
+              is already the recorded decision. The verification half is DONE
+              (above). What is NOT done, and is the only thing left worth
+              tracking here, is deciding whether the Safe arrives before the
+              deployment or not at all for this generation of contracts.
+
+================================================================================
+B. IN PHASE 1 SCOPE, NOT WRITTEN
+================================================================================
+src/curb/ holds the factory, the token, the hook, the graduator, the lens, the
+registry, the lock, the fee escrow and fee policy, the router and the sharing
+catalog (with the router's and WETH's interfaces), and src/curb/sharing/ the
+holder distributor factory, the distributor, their interfaces and SharerProbe
+(never deployed: the keeper runs its creation code as an eth_call). Nothing
+else exists [code: src/curb/].
+
+B1  THE REFERENCE-DEVIATION GUARD - OUT OF SCOPE BY DECISION, 2026-09-19
+    7.1 defines TWO guards and they are not the same thing.
+      THE EXECUTION GUARD EXISTS AND IS TESTED, and is unaffected by this
+      decision. The curve's buy() bounds the PRICE rather than the quantity, so
+      a clamped partial fill still honours the caller's terms [code:
+      PonsV2BondingCurve.sol:429]; sell() bounds the quote out [code: :482];
+      pool swaps carry amountOutMinimum through the router; and the ETH route
+      applies its minimum to what finally ARRIVES rather than to the NVDAc in
+      the middle [code: web/app.js, the ETH route's two branches beside v4Leg: on a
+      buy the v4 leg carries v.min while the v3 leg's own minimum is 0; on a
+      sell the bound is on the unwrapped ETH and the v4 leg's minOut is 0]. A user is
+      still protected
+      against the price moving under their own transaction.
+      THE REFERENCE-DEVIATION GUARD WILL NOT BE BUILT. It needs an off-chain
+      reference; the decision below in B2 is that this system has none.
+
+    WHAT IS GIVEN UP, STATED PLAINLY RATHER THAN SOFTENED
+      Nothing refuses a trade that executes within its own slippage while NVDAc
+      itself has drifted from the equity it represents. On a Saturday, when the
+      equity market has been shut for two days, that drift is exactly the thing
+      nobody is measuring. A user can buy at a price that is honest about the
+      pool and wrong about NVDA, and no contract will stop them.
+      Phase 1C's halt condition is stated in bps of deviation. Without a
+      reference there is nothing to take those bps against, so that condition
+      cannot be implemented as written and D4 has to be settled knowing so.
+
+    WHY, AND IT IS NOT A TECHNICAL FINDING
+      Founder decision: do what the venues doing this already do. None of them
+      has a reference guard - see B2 for what each one does and how that was
+      established. This is a product call taken with the trade-off above in
+      front of it, not a conclusion from the measurements.
+
+    REVERSIBLE. test/fork/B20PriceFeed.t.sol keeps measuring the reference that
+    would have been used, so this can be reopened against numbers instead of
+    against memory. A PriceAdapter implementing the closed-at-the-weekend
+    version exists in the history at 8a1984d5.
+
+    EVIDENCE  The execution guard: tested, unchanged. The deviation guard: not
+              built, by decision.
+    BLOCKS    No longer - it is out of scope.
+
+B2  PRICE ADAPTER AND WEEKEND MODE - NOT BUILT, BY DECISION, 2026-09-19
+    THE DECISION. No price oracle anywhere in this system. No adapter, no
+    staleness rule, no weekend state, and nothing closed when the equity market
+    is shut. The system trades against NVDAc in raw units, the way it already
+    does, and never consults an off-chain price.
+
+    WHAT THE VENUES DOING THIS ALREADY DO - which is the reason given
+      PONS      "no price oracle anywhere in the system", its own README, and
+                the code agrees: two comments, no feed call. It quotes against
+                native ETH, which never closes, so it has no weekend problem to
+                solve. Its answer is therefore NOT transferable - it was never
+                asked the question.
+      vvveity   Base, against the same NVDAc, the nearest comparison there is:
+                "Prices in the UI are a snapshot; wire an oracle before relying
+                on them for anything but display."
+      StonkFun  Solana, against xStocks. Traded through the weekend of 5-6 Sep
+                2026 - its curves cleared over half a million trades a day -
+                with no separate weekend state.
+      HOW WELL THIS IS ESTABLISHED: their documentation and press, plus PONS's
+      source. Nobody's contracts were read except PONS's. It is a survey, not a
+      measurement.
+
+    WHAT THIS DEPARTS FROM. ROADMAP 7.2 says the opposite: "if a fresh
+    reference cannot be verified: CLOSE the router path. Do NOT widen the guard
+    and ask the user to confirm - consent is not a substitute for a technical
+    control." That guidance is not followed. 7.2 also asks for the basis to be
+    shown to the user - "Last close" against "Onchain now" - and that is not
+    built either.
+
+    WHAT WAS MEASURED BEFORE DECIDING, and it still stands as the description
+    of the thing not being handled. test/fork/B20PriceFeed.t.sol, pinned fork:
+      the feed exists    Chainlink "Coinbase NVDA" 0x04689a41...  8 decimals,
+                         heartbeat 86,400, confirmed on chain against
+                         description(). NVDAc exposes no price of its own.
+      market open        Friday 2026-09-11 12:54 UTC, 152 seconds old, $220.94.
+                         Median gap over the previous 140 rounds: 28.5 min.
+      market shut        overnight 13-18 h with no update; ordinary weekend
+                         53.2 h; holiday weekend 77.9 h. The 24 h heartbeat
+                         sits between a night and a weekend, so a check written
+                         against it calls a 20-hour-old price fresh and every
+                         weekend stale.
+      no DEX TWAP        the v3 pool holding NVDAc keeps ONE observation -
+                         cardinality 1, observe() reverts OLD. 7.2's second leg
+                         is not available without switching it on and waiting.
+      the basis          17 bps between the feed and the pool, converted
+                         through ETH/USD, with the market open. AT A WEEKEND IT
+                         WAS NOT MEASURED - the fork is pinned to a Friday, and
+                         that is the number this decision was taken without.
+
+    REVERSIBLE. The measurements above stay in the suite so reopening this is
+    an argument against numbers rather than against memory. A PriceAdapter -
+    USABLE/STALE/UNUSABLE, no owner, no setter, edge closes on stale, 12 tests
+    and five mutations - was written and removed in the same day; it is at
+    8a1984d5.
+
+    EVIDENCE  test/fork/B20PriceFeed.t.sol - five tests, all readings of
+              somebody else's contracts at one block.
+    BLOCKS    No longer - it is out of scope.
+
+B3  DISCOVERY - BUILT. CLOSED 2026-09-19.
+    web/browse.html lists every launch the registry holds, newest first, in the
+    four groups an interface has to tell apart:
+      WAITING AT THE THRESHOLD, first, with the button that ends it. In that
+        state both sides of the curve are shut and the pool does not exist, so
+        a holder can reach nothing until somebody graduates it - and anybody
+        may. Listing it anywhere else would bury the one launch that needs a
+        person.
+      NEAR THE THRESHOLD - 80% or more of the way there. A display grouping and
+        nothing else; no contract knows about it.
+      SELLING, and GRADUATED with its pool.
+    Every row hands off to app.html carrying the endpoint and lens it was read
+    with, so the page a user lands on is reading the chain they were just
+    shown.
+
+    WHAT HAD TO CHANGE UNDERNEATH, and why it could only be done now
+      The registry kept launches in a mapping, which cannot be walked. The
+      alternative is eth_getLogs over LaunchRegistered, and the upstream this
+      targets answers "eth_getLogs is limited to a 2,000 range" - about 67
+      minutes of Base at 2s blocks. A month after deployment that is ~650
+      requests to draw one page; a year, ~7,900, worse every day by
+      construction. So LaunchRegistry keeps an array - launchCount, launchAt,
+      launchSlice - and LaunchLens.launchPage returns a page WITH each launch's
+      state in one call. Nothing is deployed yet, so this cost nothing; after a
+      deployment it would have been impossible.
+      The venues were checked first: PONS keeps an array of launch TEMPLATES
+      but its launched tokens sit in a mapping like ours, and StonkFun's data
+      is served through Bitquery. They index off chain. We do not have an
+      indexer and this removes the need for one.
+
+    THE PROGRESS BAR IS THE REAL RESERVE, not the tradeable one. The tradeable
+    reserve includes the phantom quote, so an untouched launch would draw as
+    most of the way to its threshold. Asserted in the browser tests against
+    realQuoteReserve and graduationThreshold read straight off the lens.
+
+    WHAT IT IS NOT
+      No search, no sorting, no filter by quote asset. Paging is one button.
+      Each page costs 1 call for the page plus 2 per launch for symbol() and
+      name() - 51 requests for 25 launches. The page call was the expensive
+      part to fix and is fixed; the labels are not, and could move into the
+      lens if a page ever feels slow.
+      Nothing here sends a transaction. The one action offered - graduating -
+      hands to app.html, which already owns the sending path, its chain checks
+      and its receipt handling.
+
+    ONE PATH IS COVERED ONLY BY THE ORDER THE SPECS RUN IN, which is worth
+    knowing before trusting it. The page's accumulate-and-append path - the
+    second press of "show older" - needs a registry with more than one launch.
+    demo-app.sh deliberately creates none, so browse.spec.js alone SKIPS that
+    test; run as part of the whole suite it passes, because app.spec.js runs
+    first and leaves a second launch behind. Same code, two different answers
+    depending on what ran before it.
+      The first version of this page had it worse: the page size was fixed at
+      25, so that branch could not execute at all, and it was reported closed
+      on "46 tests pass" regardless. The size is settable now and the test
+      skips loudly rather than silently passing.
+      What is covered unconditionally is the paging underneath, at the contract
+      level: test_browsingPagesAndStopsAtTheEnd and
+      test_aPageCarriesEachLaunchesState walk two launches through launchSlice
+      and launchPage, including the short read at the end. Making the browser
+      test independent needs a fixture with several launches - a forge script,
+      not something a browser spec should drive.
+
+    EVIDENCE  web/e2e/browse.spec.js - nine tests, each checking the screen
+              against a direct chain read rather than against the same lens
+              call the page made. Plus three in B20Graduation for the registry
+              list and one for the lens page, with mutations behind each guard.
+              49 browser tests pass, statuses read from the JSON report.
+    BLOCKS    No longer.
+
+
+================================================================================
+C. EVIDENCE GAPS IN WHAT IS BUILT
+================================================================================
+
+C1  B20 ISSUER RESTRICTIONS - THE MECHANISM IS MEASURED. 2026-09-19.
+    SCOPE NOTE, 2026-09-20: measured on NVDAc. Seven assets are live now and
+    the other six are argued-identical rather than measured - see F3.
+    What was open: what a restricted address does, and whether an interface can
+    warn before a trade. Both are answered, on the pinned fork, against the real
+    token and the real registry. What is NOT answered is kept at the bottom.
+
+    THE REFUSAL IS A REVERT, WITH A NAMED ERROR AND ITS ARGUMENTS
+      error PolicyForbids(bytes32 policyScope, uint64 policyId)   0xa43fec12
+    Provoked, not injected: NVDAc names a policy per scope, that policy lives in
+    the PolicyRegistry precompile at 0x8453000000000000000000000000000000000002,
+    and on a fork its own admin can add an address to the blocklist. The token
+    then refuses a transfer to it with PolicyForbids carrying the scope and the
+    policy id. Asserted on the raw call rather than through a wrapper: it
+    REVERTS - it does not return false and it does not quietly do nothing, which
+    is what C1 needed to know. Nothing moves on the refusal.
+
+    AND AN INTERFACE CAN ASK BEFORE THE TRADE, which the first version of this
+    entry said was impossible:
+      NVDAc.policyId(NVDAc.TRANSFER_RECEIVER_POLICY())  -> 5 at this block
+      PolicyRegistry.isAuthorized(5, account)           -> true / false
+    Sender, receiver and executor scopes each name a policy; sender and receiver
+    both read 5 here. policyExists(5) is true, and its admin is
+    0xEC0F05C174e54FBf0Fe16ad930a8AFEbCe612812.
+
+    HOW THE EARLIER "THERE IS NO WAY TO ASK" HAPPENED, because the same mistake
+    is easy to repeat. Two of them compounded:
+      NVDAc answers an unknown selector by reverting with THE FOUR BYTES OF THE
+      CALL. cast prints that as `custom error 0x...`, which reads like the token
+      raising an error of its own. C5's "uiMultiplier() reverts" came from that
+      misreading too - 0xa60bf13d is keccak("uiMultiplier()")[0:4] - and is
+      corrected there.
+      Then the probe used camelCase names invented from the docs -
+      transferSenderPolicy(), policyRegistry() - while B20 declares
+      TRANSFER_SENDER_POLICY() and policyId(bytes32). Every guess came back as
+      its own selector, and thirteen absences were read as "nothing exists"
+      instead of "these names are wrong". The interfaces are published in
+      base/base-std; they were not consulted until after the claim was made.
+
+    WHAT IS STILL NOT KNOWN
+      NO ADDRESS RESTRICTED BY THE ISSUER WAS FOUND. Every address probed on
+      this fork reads as authorized under policy 5, so the refusal above was
+      provoked by impersonating the policy admin. That is the real mechanism and
+      the real error, but it is not an observation of Coinbase restricting
+      somebody in production - and whether they use this blocklist, a different
+      policy, or freeze-and-seize (burnBlocked) is unobserved.
+      THE INTERFACE NOW SURFACES IT - BUILT 2026-09-20, under F3. This entry
+      used to end by listing what was available to build with; that is what
+      policyStanding() does [web/app.js, policyStanding]. It reads the sender
+      and receiver scopes off the asset, resolves the policy id and asks the
+      registry, and a restricted account gets a row saying so BEFORE a trade
+      instead of the node's raw error text after one (the raw path is still
+      there for everything that is not a policy refusal).
+
+    EVIDENCE  test/fork/B20Restrictions.t.sol - eight tests. The selector echo
+              against arbitrary selectors; that surplus calldata does not change
+              an answer, which is what makes the probes valid; the absence of
+              thirteen non-B20 restriction views; that the functions NVDAc does
+              have still answer; an ordinary transfer going through; the token
+              being bound to a policy that exists; the blocked recipient refused
+              with PolicyForbids and its arguments; and that the refusal is a
+              revert rather than a false return. No silent skips: the blocklist
+              update is asserted to have taken, because a setup that quietly
+              failed would report success for having provoked nothing.
+    BLOCKS    No.
+    CLOSES    The surfacing built on the above, and - separately, and only if it
+              can be had - an address restricted in production rather than by
+              impersonation on a fork.
+
+C2  MASS SELL - MEASURED ON BOTH SIDES. CLOSED 2026-09-19.
+    ROADMAP 6.3 asked for a scenario against the curve and the graduated pool,
+    asserting the accounting does not corrupt and that what is left is
+    reachable. Eight tests in test/fork/B20Graduation.t.sol, at 60/60 and the
+    0.05% tier, at each end of the tax band and the middle.
+
+    CONSECUTIVE, WHICH IS THE WHOLE POINT. Every sale starts from the state the
+    one before it left. Five independent sales from the opening price would be
+    a different measurement wearing this one's name.
+
+    THE ACCOUNTING. On the curve, books kept OUTSIDE the contract: every amount
+    in, every amount out, and each leg's fee and tax worked out from the rates
+    BEFORE the call, so the books are a prediction the contract has to match.
+    The three totals are asserted separately - the curve's real NVDAc, the
+    protocol's bucket, the creator's - after every buy and every sale, so a fee
+    in the wrong bucket shows up instead of cancelling out. In the pool, each
+    fee leg against its own expectation off THIS pool's hook, plus that the
+    hook kept nothing. Nothing corrupted at any point.
+
+    WHAT IT COSTS TO LEAVE IN A QUEUE, execution cost against the mid each sale
+    started from, at a 1% tax:
+      on the curve   2133, 1424, 1034, 796, 639 bps
+      in the pool    2577, 2083, 1753, 1518, 1341 bps
+      the exit leg   3997, 6374, 3000, 1779, 1189 bps   (NVDAc -> WETH, v3)
+    At 5% every leg is worse. The first seller has the best outcome and pays
+    the MOST to trade: the largest position walks furthest down its own curve.
+    "What they got back for what they put in" is a different quantity - profit
+    and loss - and is not this.
+
+    THE EXIT LEG IS THE BINDING ONE. The v3 NVDAc/WETH pool held 0.818 WETH
+    against 154.42 NVDAc at the pinned block. The first routed seller takes
+    0.784 ETH of it; the next four take 0.000159, 0.0000271, 0.0000112 and
+    0.0000061. The v3 mid falls by a factor of 3583 across the first
+    conversion, and the later costs look smaller only because they are measured
+    against a price the first seller already moved. The fill was 10000 bps on
+    every conversion - measured from the swap deltas, not assumed.
+      SCOPE. That is the output and price impact of THIS sequence at THIS
+      block. It is not a statement about how much liquidity is reachable, and
+      a remaining balance is not one either.
+
+    THE WHOLE ROUTE, THROUGH THE DEPLOYED UniversalRouter, to native ETH:
+    MEME -> v4 -> NVDAc -> v3 -> WETH -> UNWRAP. Five sellers consecutively.
+    Two independent methods - a PoolHarness swap plus a direct v3 swap, and the
+    router doing all of it - land on the same wei, every seller.
+      THE BOUND IS A CHOICE AND IS NAMED. The queue asks for 1 wei: a user who
+      accepts the quote in front of them, the least demanding bound there is,
+      so it measures what the route can deliver rather than what a user would
+      tolerate. A sixth seller asking for what the FIRST one received is
+      refused with InsufficientETH() - UNWRAP_WETH's own check, so the refusal
+      comes from the leg the bound was put on. A lower bound would have gone
+      through.
+      AND IT UNWINDS WHOLE: both pools, both fee legs, and the seller's MEME
+      and ETH are exactly where they were, and they hold no NVDAc. A route that
+      reverted after the v4 leg would leave them holding NVDAc instead of MEME.
+
+    WHAT IS LEFT IS REACHABLE - asserted, not inferred from a balance existing.
+      the fees sweep out of the curve, and what is credited equals what was
+        owed
+      both parties then WITHDRAW, asserted on their real NVDAc balances rather
+        than on the escrow's ledger
+      a buyer arriving after the queue gets what the FIRST buyer got for the
+        same offer, to within 1% - the reserves are back where they started.
+        "More than nothing" was the first version of that check and would have
+        passed on any state at all, since the curve holds the whole supply again
+      the pool still fills one, and takes the tokens back again: 10 NVDAc in,
+        203525138e18 tokens out, and 9.79 NVDAc back at a 1% tax
+    After the five curve sales the tradeable reserve is NOT empty but holds a
+    remainder of 2 raw units at 1%, 1 at 3%, 3 at 5%; what the curve holds is
+    the fees owed plus that remainder. Where it comes from, and whether anybody
+    could take it on its own, were not measured.
+
+    EVIDENCE  test_massSell_onTheCurve_tax{100,300,500},
+              test_massSell_inThePool_tax{100,300,500},
+              test_massSell_routedToEth_tax{100,500}. Fork pinned at 51171034.
+    BLOCKS    No longer. It was to close before the audit, and it has.
+
+C3  NOBODY CAN POINT A CREATOR'S INCOME AT AN ADDRESS OF THEIR CHOOSING OR
+    MOVE AN EARNED BALANCE, AND THERE IS NO ADMIN RECOVERY
+    - DECIDED, AND KEPT AS IT IS. RESTATED 2026-10-02 FOR CORE V2'S HOLDER
+    SHARING, WHICH CAN MOVE THE RECIPIENT ONCE.
+    The curve's setCreatorFeeRecipient and rescueFees are onlyFactory [code:
+    PonsV2BondingCurve.sol:295, :774]; that role is held by the Graduator.
+    THE ONE CALL. The Graduator calls setCreatorFeeRecipient in exactly one
+    place, step 7 of _enable [Graduator._enable], and _enable runs at most once
+    per launch: the switch it writes is never cleared, and a second one is
+    refused (AlreadySharing). It is reached only through enableHolderSharing,
+    by the launch record's beneficiary, or enableHolderSharingAtLaunch, by the
+    launcher that initialized the launch's real curve and only inside that
+    transaction. The address it sets is never one a caller names: it is the
+    distributor a SharingCatalog-approved factory deploys for that launch
+    token, checked there to be a contract that names this token, this quote
+    asset and this Graduator, serves no other launch, and is none of the
+    launch's own or the deployment's contracts. That distributor pays the
+    launch's holders and nobody else, and nothing turns the switch off. After
+    graduation the curve has nothing left to pay, and the same switch moves the
+    hook's creator leg instead (FeeHook.syncCreator), with the locked
+    position's fees following it live (PositionLock.feeRecipient).
+    WHAT THIS ENTRY USED TO SAY. "The Graduator never calls
+    setCreatorFeeRecipient, so the creator's recipient is permanently fixed in
+    this stack." That is no longer true as written: a launch's creator
+    recipient can change once, one way, to that launch's holder distributor.
+    WHAT IS STILL TRUE, AND IS WHAT THIS ENTRY IS FOR. No address - not the
+    creator, not the platform, not a launcher for someone else's launch - can
+    point a launch's income at an address of its own choosing, and no address
+    can move a balance already earned.
+    A LAUNCHER, EVEN ONE THE REGISTRY'S OWNER ADMITS BY MISTAKE, because of
+    two checks added after the internal audit of 9 October 2026 (finding 1).
+    LaunchRegistry.register accepts a record only for a curve whose token()
+    is the record's launch token, whose pairToken() is its quote asset and
+    whose factory() is the registering launcher's own Graduator, and refuses
+    a curve already registered; and the Graduator's graduate,
+    enableHolderSharing and rescueCurveFees refuse a record whose curve does
+    not name its launch token. So a record and its curve belong to one
+    launch, and a launcher can reach only the launches it made itself.
+    WITHOUT THEM THIS LINE WAS FALSE: one addLauncher - a compromised or
+    misled policy Safe, or the deployer's key before STEP 4B - let a hostile
+    launcher register a live launch's curve under a token of its own, then
+    take that curve's whole quote reserve through graduate() (a scratch run
+    on the fork took 3.90 of 3.94 WETH and stranded the launch's holders), or
+    switch "its" launch's sharing on and point the real launch's creator
+    income at a distributor of its own. What an admitted launcher can still
+    do is make launches of its own, on its own terms - which is why the
+    admission itself stays a Safe decision (SAFE_OPS.txt, Safe A).
+    The switch cuts clean where it can [Graduator._enable step 5]: escrow
+    credits and the hook's owed stay keyed to the creator and stay the
+    creator's to claim. The two collections it makes first are BOTH BEST
+    EFFORT: before graduation the curve's pending fees are rescued to the
+    creator; after it, the locked position's fees accrued so far are collected
+    for the creator, or held in the lock for it. Either call may fail -
+    nothing pending, or an issuer blocking the creator or the lock - and the
+    switch goes ahead anyway: what it failed to settle stays where it was (in
+    the curve, or in the position) and is paid to the holders with what comes
+    after. A caller who starves those calls of gas can only hand the creator's
+    own unsettled fees to the holders, never to itself. The escrow still has
+    no administrator who could reassign a balance.
+    rescueFees IS REACHABLE - this entry used to say both were not. The
+    Graduator's rescueCurveFees(launchToken) calls it. The curve's
+    creator-fee recipient (its deployer(), read live) and the record's
+    platform recipient may call that at once; anybody else one hour after
+    Graduator.noteReady(launchToken) noted the curve full and ungraduated,
+    while it still is [Graduator.rescueCurveFees]. It moves no balance to
+    anyone new: it pays the curve's accrued fees straight to the curve's own
+    two recipients, the platform's and the creator's - the launch's holder
+    distributor once its sharing is on - bypassing the escrow: the exit AUDIT
+    C-1 added for an escrow the issuer has blocked.
+    THIS IS THE CHOSEN TRADE-OFF, not an unresolved consequence of the wiring.
+    An address that CAN move somebody else's fees is a larger risk than a
+    balance nobody claims, so no such address exists.
+    THE COST, STATED RATHER THAN SOFTENED. A creator who loses their key
+    strands every future payout on that launch - the curve's share and, after
+    graduation, the pool's creator leg and the locked position's fees. Nobody,
+    including us, can move any of it. An account whose forwarding is in
+    immutable code cannot claim from the escrow at all (A2). A launch switched
+    to its holders no longer depends on the creator's key for that income;
+    what the platform's sharing roles can and cannot do to those holders'
+    payouts is set out in HolderDistributorFactory's header.
+    NOT AN OPEN ITEM. It is here so the cost is written down where the rest of
+    the record is, not because a decision is outstanding.
+
+C4  THE TOOLCHAIN - CLOSED 2026-09-21. SAME INVARIANTS, DIFFERENT CAMPAIGNS
+    base-forge  1.6.0-v1.1.0, commit 6130ccf6af0b3399777aee3876486e2ba9ebb38f
+    stock forge 1.8.1,        commit 982849d3140c01fd3b72905759581a132df7aa98
+    both on solc 0.8.30, cancun, optimizer on, 200 runs [foundry.toml].
+    Every fork result comes from base-forge.
+
+    WHAT WAS COMPARED - the part that needs no B20, which is what this entry
+    said was comparable.
+      BOTH PASS. Neither reports a failure.
+      THE COUNTS DIFFER:  base-forge 57 tests, stock forge 52.
+      THE WHOLE DIFFERENCE IS ONE FILE: CurveInvariants.t.sol reports 7 under
+      base-forge and 2 under stock.
+
+    THE CAUSE, ESTABLISHED 2026-09-21. IT IS A COUNTING CHANGE, NOT A COVERAGE
+    ONE, AND THIS ENTRY HAD IT WRONG IN THE ALARMING DIRECTION.
+
+      The file holds SIX invariant functions and ONE ordinary test, so seven
+      test functions in total [test/CurveInvariants.t.sol: its invariant_
+      functions and test_postGraduationRegimeIsReachedAndHolds].
+
+      base-forge, on the 1.6 line, counts each invariant function as its own
+      test:  6 + 1 = 7.
+
+      Stock forge 1.8.1 groups a contract's invariants into ONE reported unit
+      and runs them together against a single campaign:
+
+          Ran 2 tests for test/CurveInvariants.t.sol:CurveInvariantsTest
+          CurveInvariantsTest invariants:
+          [PASS] invariant_accruedFeesAreBacked
+          [PASS] invariant_afterGraduationOnlyDonationsRemain
+          [PASS] invariant_quoteBalanceIsTrackedPlusDonations
+          [PASS] invariant_reserveExcludesFeesAndDonations
+          [PASS] invariant_reservedAllocationIsNeverSold
+          [PASS] invariant_tokenBalanceMatchesTracked
+           CurveInvariantsTest invariants (runs: 256, calls: 128000, reverts: 0)
+          [PASS] test_postGraduationRegimeIsReachedAndHolds()
+
+      So its two are the invariant GROUP and the ordinary test:  1 + 1 = 2.
+
+    WHAT THIS ENTRY CLAIMED, AND WHY BOTH HALVES WERE WRONG.
+      IT SAID five invariants "silently do not run" under stock. They all run.
+      All six are listed PASS above, out of one campaign of 256 runs and
+      128,000 calls with no reverts. Nothing is skipped and nothing is silent.
+
+      IT SAID the file "reports 7 under both" when run alone, and concluded
+      the difference therefore depends on what else is in the run. It does not.
+      Stock reports 2 ALONE and 2 IN A FULL RUN - measured both ways - so the
+      contents of the run are irrelevant and the reasoning built on that
+      observation was built on a bad reading.
+
+    BUT THE COVERAGE IS NOT IDENTICAL, AND THE FIRST VERSION OF THIS
+    CORRECTION SAID IT WAS. That sentence was written on the strength of two
+    near-equal wall-clock times and never checked. Forced single-threaded, so
+    parallelism cannot hide the work:
+
+        base-forge, ONE invariant          20.18s
+        base-forge, ALL SIX                133.22s        6.6x, not 1x
+
+    Six independent campaigns, not one campaign reported six times. So:
+
+        base-forge  6 campaigns x 128,000 calls  =  768,000 handler calls,
+                    each sequence checked against ONE invariant.
+        stock       1 campaign  x 128,000 calls  =  128,000 handler calls,
+                    each sequence checked against ALL SIX.
+
+    THE TRADE-OFF, NOT A DEFICIT ON EITHER SIDE. base-forge explores about six
+    times as many randomised sequences; stock checks six times as many
+    properties against each of the sequences it does explore. Neither is a
+    subset of the other, and the two arrive at the same 768,000 invariant
+    evaluations by opposite routes - which is why they take comparable time
+    when both are allowed their threads (34.93s against 40.49s).
+
+    WHICH IS WORTH MORE DEPENDS ON THE BUG. A violation that needs an unusual
+    SEQUENCE is likelier to be found by base-forge; one that needs an unusual
+    PROPERTY to be looked at on an ordinary sequence is likelier under stock.
+    Nothing here measures which kind this project is more exposed to.
+
+    SO C4's INSTINCT WAS RIGHT AND ITS REASON WAS WRONG. "A stock run is not a
+    substitute" holds - just not because anything is skipped. The entry was
+    wrong about the mechanism, and this correction's first version was wrong
+    about the consequence.
+
+    THE GENERAL LESSON, and it now has two instances rather than one: a test
+    COUNT is not a coverage measurement, and NEITHER IS AN EXPLANATION THAT
+    FITS THE COUNT. Taking the number as the finding produced a month of an
+    open item over a formatting difference. Taking the first explanation that
+    accounted for the number produced a confident claim of "identical
+    coverage" that one forced-serial run disproved. The same error in the same
+    direction as E-1's first version in AUDIT.txt, twice: the reading that
+    resolves things neatly is the one to check hardest.
+
+    EVIDENCE  Measured above, and re-measured on 2026-09-21 when the cause
+              was found. They build alike, they test alike, and they COUNT
+              differently.
+    BLOCKS    No.
+    DECIDED   BASE-FORGE IS THE TOOL OF RECORD for this project. The first
+              reason is unchanged and still decisive: stock Foundry cannot talk
+              to base-anvil at all, so it cannot run a single B20 test. The
+              second is the campaign structure measured above - six times the
+              sequence exploration on the invariants, which is the part of the
+              non-fork suite most worth having.
+              THE CAUSE IS NO LONGER OPEN. Record the versions with every
+              result either way, and compare the NAMES that ran rather than
+              the count, since the two tools neither count nor campaign alike.
+    CLOSES    NOT by running the fork suite on both: stock Foundry cannot talk
+              to base-anvil at all - it fails with "unsupported network family
+              base" - so B20 tests cannot run there, and a comparison that
+              assumes otherwise would be comparing nothing. What can be
+              compared is the part that needs no B20: the non-fork suite, plus
+              the build itself, under each tool. Record the versions with every
+              result either way.
+
+C5  THE base-std INTERFACE - PINNED BY NOT DEPENDING ON IT. 2026-09-20.
+    multiplier() answers on NVDAc and uiMultiplier() IS NOT IMPLEMENTED,
+    although the current base-std interface declares both.
+      CORRECTED 2026-09-19. This used to say uiMultiplier() "reverts", which
+      was read off a `custom error 0xa60bf13d` - and 0xa60bf13d is simply
+      keccak("uiMultiplier()")[0:4]. NVDAc answers any unknown selector by
+      reverting with the selector itself, so that was the token saying it has
+      no such function, not rejecting a call to one. See C1.
+    EVIDENCE  Nothing in src/ or web/ reads either one today [code: grep], so
+              this is not on the critical path.
+    DECIDED 2026-09-20 - PINNED BY NOT DEPENDING ON IT.
+      Nothing in src/ or web/ reads multiplier() or uiMultiplier(), and nothing
+      is going to: the pages read decimals() from the asset and price
+      everything from pools. The interface version is therefore pinned the one
+      way that cannot drift - by depending on none of the part that varies.
+      THE TRIGGER, written down so it is not rediscovered: the day anything
+      displays an issuer-supplied multiplier this stops being closed, and the
+      version has to be pinned for real.
+    BLOCKS    No.
+    CLOSED    By the decision above, not by pinning a version: nothing in src/
+              or web/ reads the part that varies, so there is nothing for a
+              version change to reach. The trigger that reopens it is written
+              into the decision.
+
+C6  DEPENDENCY PROVENANCE - RESOLVED AND VERIFIED AGAINST THE BYTES. 2026-09-20.
+    ROUTER_ACCESS.txt: the deployed UniversalRouter takes a legacy
+    ExactInputSingle layout, and our own tests determine which one the live
+    contract accepts rather than assuming. DEPENDENCIES.txt: several vendored
+    packages have no recorded upstream revision.
+    EVIDENCE  Provenance is weaker than "pinned source and tool versions"
+              requires, even though the vendored bytes are exact.
+    BLOCKS    No, but it is production readiness and belongs with A1.
+    PARTLY CLOSED 2026-09-20 - THE VERSIONS ARE RECOVERABLE AND ARE RECORDED.
+      Read from each vendored package's own package.json:
+        forge-std                  1.16.2
+        openzeppelin-solidity      5.7.0
+        @uniswap/v4-core           1.0.2
+        @uniswap/v4-periphery      1.0.4
+      lib/ is VENDORED, not submoduled - there is no .gitmodules and no
+      submodule commit to read, which is why nothing pointed at a revision.
+      The bytes are committed, so builds are reproducible from this repository
+      alone; what a version does not give is the upstream COMMIT, and a
+      released version is a weaker pin than a hash.
+
+      THE ROUTER LAYOUT NEEDS NO PIN. The deployed UniversalRouter takes a
+      legacy ExactInputSingle layout and our own fork test determines which one
+      it accepts rather than assuming [ROUTER_ACCESS]. That test IS the pin,
+      and it is a stronger one than a version number because it checks the
+      chain rather than a manifest.
+
+    DONE 2026-09-20 - BOTH HALVES. The commits were resolved from upstream and
+    the vendored bytes were compared against them, file by file, with line
+    endings normalised because this checkout is CRLF (core.autocrlf=true). That
+    normalisation is not a detail: hashing raw bytes first reported 0 of 510
+    v4-core files matching while the file SETS were identical, which is the
+    signature of a line-ending difference and not of a content one. Reporting
+    that would have been a false alarm of the worst kind.
+
+    THE HEADLINE, AND IT IS NOT WHAT THIS ENTRY EXPECTED:
+      TWO OF THE THREE DEPLOYED DEPENDENCIES ARE SNAPSHOTS TAKEN BETWEEN
+      RELEASES, NOT RELEASES. Their package.json carries the NEXT version
+      number, which is ordinary practice on a repository's main branch and
+      means the version we recorded names nothing that was ever published. This
+      entry said "a released version is a weaker pin than a hash". For two of
+      these it is not a weak pin, it is not a pin at all.
+
+    @uniswap/v4-core   1.0.2   EXACT MATCH.
+      All 510 .sol files identical to the published 1.0.2 tarball, nothing
+      extra on either side. Upstream commit, from npm's own gitHead:
+        59d3ecf53afa9264a16bba0e38f4c5d2231f80bc
+      This one is now pinned to a hash and verified against it.
+
+    @uniswap/v4-periphery   claims 1.0.4   NO SUCH VERSION EXISTS.
+      npm has 1.0.0 through 1.0.3; latest is 1.0.3. Our tree is a snapshot
+      ahead of it - 58 files it does not publish, 32 of 1069 shared files
+      differing.
+      WHAT REACHES OUR DEPLOYED CODE IS THREE FILES, and that is the number
+      that decides the cost:
+        src/libraries/LiquidityAmounts.sol    line wrapping only
+        src/libraries/PositionInfoLibrary.sol line wrapping only
+        src/libraries/Actions.sol             three ADDED constants
+                                              (UNWIND_WITH_FALLBACK, SUBSCRIBE,
+                                              UNSUBSCRIBE) and two deprecation
+                                              comments
+      AND THE FOUR CONSTANTS WE ACTUALLY ENCODE ARE BYTE-IDENTICAL to 1.0.3:
+        MINT_POSITION 0x02, SETTLE_PAIR 0x0d, DECREASE_LIQUIDITY 0x01,
+        TAKE_PAIR 0x11.
+      Stronger than any of that: the graduation is exercised against the REAL
+      deployed PositionManager on the fork, so those action values are checked
+      against the chain rather than against a library file.
+
+    openzeppelin (package.json says openzeppelin-solidity 5.7.0)
+      THE TREE DOES NOT MATCH TAG v5.7.0 (cab19933c33c2ad1d4c7a84864a3601-
+      dddfd16f3): 242 of 365 shared files agree, 123 do not. Another snapshot
+      ahead of a release.
+      EVERY DIFFERENCE IN THE FILES WE COMPILE IS NON-SEMANTIC, checked one by
+      one rather than assumed:
+        ERC20.sol        import order, and draft-IERC6093.sol renamed to
+                         IERC6093.sol
+        SafeERC20.sol    one import moved
+        IERC1363.sol     import order
+        StorageSlot.sol  a comment naming the generator template
+        SafeCast.sol     a comment naming the generator template
+      No executable line in our import closure differs from v5.7.0.
+
+    forge-std   1.16.2   tag commit bf647bd6046f2f7da30d0c2bf435e5c76a780c1b.
+      TEST-ONLY. Not compiled into anything deployed, so it is recorded and not
+      verified byte for byte.
+
+    THE ROUTER LAYOUT STILL NEEDS NO PIN, for the reason already given: the
+    fork test determines what the deployed UniversalRouter accepts, and a test
+    against the chain is a stronger pin than a manifest.
+
+    CLOSED    The commit behind each is recorded, and the vendored bytes were
+              compared against it. What a future revision should do - and this
+              is a NEW item, not this one - is re-vendor v4-periphery and
+              openzeppelin from an actual release so the version in their
+              package.json names something that exists. Nothing depends on it
+              today: every difference reaching our deployed code was examined
+              and none of it is executable.
+
+C7  AGGREGATOR AND INTERFACE ROUTING - CHECKED PER VENUE, 2026-09-20
+    Separate item from C6 on purpose: this is distribution and volume, not
+    production readiness, and closing either one does not close the other.
+    Our own front end is proven - a direct swap through the official
+    UniversalRouter against our hooked pool works (ROUTER_ACCESS Q1). Uniswap's
+    interface routing needs hook allowlisting; third-party aggregator support
+    is claimed and unverified.
+    EVIDENCE  No aggregator was checked against its own documentation.
+    CHECKED 2026-09-20, EACH VENUE AGAINST ITS OWN DOCUMENTATION. Every line
+    below is what THAT VENUE says on THAT DATE. None of it is a property of our
+    pool, which is why each carries its date - these change.
+
+    UNISWAP LABS - support.uniswap.org "Routing for hooked pools", read
+    2026-09-20, page states "Updated 16 days ago". The concrete one, and it
+    lands on us directly.
+
+      THE TRIGGER, quoted: "Your hook is automatically allowed unless ... your
+      hook uses any of the following flags: beforeSwapReturnsDelta,
+      afterSwapReturnsDelta, or dynamicFees."
+
+      OUR HOOK USES TWO OF THE THREE. REQUIRED_HOOK_FLAGS is BEFORE_INITIALIZE
+      | BEFORE_SWAP | BEFORE_SWAP_RETURNS_DELTA | AFTER_SWAP |
+      AFTER_SWAP_RETURNS_DELTA [LaunchRegistry.sol]. So we are NOT
+      automatically allowlisted and never could have been - and the flags were
+      not chosen with any of this in mind. They are there because the tax is on
+      the quote side in BOTH directions, and on a buy the quote is the INPUT,
+      which only a specified-currency delta in beforeSwap can reach.
+
+      THEIR SIX CRITERIA, AND WHERE WE ACTUALLY STAND:
+        1  deployed on a supported L1/L2 mainnet      NOT YET - this is A1
+        2  code validated in a block explorer         NOT YET - also A1
+        3  must not modify or bypass the AMM
+           protocol fee                               MET. beforeSwap returns 0
+                                                      as the lpFeeOverride, and
+                                                      our fee is taken
+                                                      separately through
+                                                      poolManager.take
+        4  not deployed through an upgradeable
+           proxy                                      MET. No proxy anywhere;
+                                                      the hook is immutable at
+                                                      a mined salt
+        5  not malicious or extractive towards
+           swappers or LPers                          THEIR JUDGEMENT, AND OUR
+                                                      WEAKEST POINT - below
+        6  must not require custom calldata their
+           router could only produce with
+           modification                               CALLDATA: met, the hook
+                                                      ignores hookData
+                                                      entirely. BUT SEE BELOW
+
+      WHERE WE ARE WEAK, SAID PLAINLY RATHER THAN HOPED PAST:
+
+        ON 5. The hook takes the launch's whole tax - 1% to 5% - out of the
+        swapper's quote side. It is disclosed on OUR page before the trade, but
+        a swapper arriving through an aggregator never saw our page. A hook
+        taking up to 5% from a swapper is the exact shape that "extractive
+        towards swappers" is written about. Whether a disclosed launch tax
+        reads that way is Uniswap Labs' call and not ours, and their page says
+        as much: the decision is at their "sole discretion and may change at
+        any time".
+
+        ON 6. Not calldata, but routing behaviour, which a reviewer checking
+        that criterion would meet immediately: our hook REVERTS on
+        exact-output swaps (ExactOutputNotSupported) and REVERTS on partial
+        fills (PartialFillNotSupported). Both were deliberate and both are
+        defended in FeeHook's own comments - charging the wrong side, or
+        charging for input that was never spent, are worse - but a general
+        router does produce exact-output swaps, and a route that fills
+        partially is ordinary. Our pool refuses both.
+
+      AND ALLOWLISTING IS NOT WHAT THE WORD SUGGESTS, quoted because it
+      misleads: "Allowlisting means only that our routing algorithm may
+      consider pools using your hook. It is not an endorsement,
+      recommendation, or security review."
+
+      THE FORM ALSO WANTS a pool deployed with minimal liquidity on at least
+      one chain, plus a name, description, address and a contact handle
+      [developers.uniswap.org/hook-allowlist, read 2026-09-20]. None of that
+      can be produced before A1.
+
+    1INCH - business.1inch.com portal documentation, read 2026-09-20.
+      SAYS NOTHING EITHER WAY. Pathfinder v6.1 is described as routing over a
+      "list of liquidity sources" and that list is not in the documentation.
+      Their own docs therefore do not answer whether a v4 hooked pool on Base
+      is routed at all.
+      DELIBERATELY NOT RECORDED HERE: third-party articles and social posts
+      saying they index v4. An announcement is not documentation, and neither
+      is a measurement.
+
+    KYBERSWAP - docs.kyberswap.com, read 2026-09-20.
+      Uniswap V4 IS listed as supported on Base (8453) in their own support
+      table. Their documentation does NOT address arbitrary hooked pools; the
+      only hook it discusses is their own FairFlow. So the venue reaches v4 on
+      our chain, and says nothing about whether it reaches a pool carrying
+      somebody else's hook.
+
+    ODOS - docs.odos.xyz, attempted 2026-09-20. COULD NOT BE READ, HTTP 530.
+      Recorded as unread rather than filled in from somewhere else.
+
+    WHAT NONE OF THIS IS. Not one line above is a measurement that a swap
+    actually routes into our pool from that venue, and none of it can be:
+    nothing is deployed. The only way to measure it is after A1 - ask each
+    venue's own quote endpoint for a swap into a real launch and look for our
+    pool in the route it returns.
+
+    WHAT IS MEASURED STAYS MEASURED: our own front end works through the
+    official UniversalRouter, now on a two-hop route as well [F2].
+
+    BLOCKS    No. Do not plan volume on it - and now for a sharper reason than
+              before. The one venue whose policy we can actually read needs an
+              application that cannot be filed until A1, and two of its six
+              criteria bear on properties of our hook we are not going to
+              change.
+    CLOSED as written: each venue checked against its own documentation and
+              recorded with the date it was read.
+    WHAT REPLACES IT, and it is a different item from this one: file the
+              Uniswap allowlist application after A1, and measure each venue's
+              real quote endpoint against a deployed launch. Neither can start
+              before A1.
+
+C8  SMALL, AND WORTH ONE LINE EACH
+    - Address.functionCall has never been exercised against B20, because
+      nothing in the stack routes a B20 call through it. Closes by staying out
+      of the path, or by a test if it ever enters one.
+    - foundry.toml's [profile.fork] is still comments only [code:
+      foundry.toml]; the fork suite passes --fork-url explicitly instead.
+    - FeePolicySnapshot.hookFeeBps is read by nothing in this repository [code:
+      grep]. It is inherited from PONS and is dead in our stack. The hook's own
+      rate is read from registry.PLATFORM_FEE_BPS() at construction and moved
+      only by announcePlatformFeeBps/executePlatformFeeBps (24 hours); it is
+      unrelated to it.
+
+    CLOSED 2026-09-20, all three, as decisions rather than as work:
+      Address.functionCall   stays out of the B20 path. Nothing routes a B20
+                             call through it and nothing is going to. If that
+                             changes it needs a test, and this line is the
+                             reminder.
+      [profile.fork]         stays comments only. The fork suite passes
+                             --fork-url explicitly, which is visible in every
+                             command that runs it; a profile would hide that in
+                             a file nobody reads while the command still had to
+                             name the port.
+      hookFeeBps             stays. It is a field of a VENDORED struct shared
+                             with PonsV2BondingCurve, so removing it changes
+                             somebody else's ABI for no gain. Dead in our
+                             stack, and now recorded as dead.
+
+C9  ACCEPTED AND DOCUMENTED, NOT FIXED - THE OWNER'S DECISION OF 9 OCTOBER
+    2026, on two findings of that day's internal audit. Neither takes an
+    existing balance; each is a limit of the design, written down here so it
+    is not rediscovered as a surprise.
+    - TAX-FREE TRADING THROUGH ONE-SIDED RANGE LIQUIDITY (finding 23). The
+      hook charges a graduated pool's tax on the swapper [FeeHook]. A holder
+      who adds a Uniswap v4 position of launch tokens only, just above the
+      price, has it turned into quote as buyers push through it - the buyers
+      pay the buy tax, the position's owner pays none - and removes it; the
+      mirror case, quote only below the price, buys tax-free. So one side of
+      any trade made as a limit order avoids the 1-5% tax, and the creator or
+      the launch's holders lose that revenue; the product's "one tax on every
+      buy and every sell" is true of swaps, not of liquidity. Refusing it
+      would take a hook with the add-liquidity permission, allowing only
+      full-range positions or only the pool opener, and the registry's
+      LIQUIDITY_BLOCKING_FLAGS check refuses such a hook today. Accepted as a
+      Uniswap v4 limitation.
+    - HOLDERS' INCOME DEPENDS ON A LIVE PLATFORM PUBLISHER (finding 25). Once
+      a launch switches holder sharing on - one way, for good - its creator
+      income goes to its distributor, and the distributor pays only against
+      roots the platform's publisher proposes through the
+      HolderDistributorFactory. If the platform stops - the publisher key
+      lost and not rotated by the policy Safe, the keeper shut down - no new
+      root is published, and what the distributor receives after the last
+      activated root stays in it for good; without the switch, that income
+      would have stayed the creator's to claim. No fallback publisher is
+      built. Documented: the switch is offered knowing it, and DEPLOY.txt
+      decision 5 says it where the roles are chosen.
+
+
+================================================================================
+D. PHASE 0 EXIT - PRODUCT DECISIONS STILL OPEN
+================================================================================
+ROADMAP: "none of these may slip into Phase 1."
+
+D1  CURVE PARAMETERS - DECIDED 2026-09-16. CLOSED.
+
+    SUPERSEDED 2026-10-03: THE SHAPE IN THE DEPLOYMENT NOW opens a launch at a
+    market cap of about $4,000 and graduates it at about $55,000, with each
+    asset's own phantom and threshold [DeployCurb.quoteAssets] - WETH 1.65 /
+    4.47, NVDAc 18.5 / 50 at the prices of 2026-10-15 (1.46 / 3.94 and
+    18.1 / 49.1 before) - so r is about 0.27: about 73% of the supply sells
+    on the curve, about 20% opens the pool, about 7% is burned. The pool tier,
+    the supply and the tax band below are unchanged; the lock is forever and
+    there is no launch fee (2026-10-04). THE SET below is the record of
+    2026-09-16.
+
+    THE SET
+      graduation threshold   60 NVDAc
+      phantom quote          60 NVDAc   (r = 0.5)
+      supply                 1,000,000,000
+      LP lock                forever (was 180 days; 4 October 2026)
+      POOL FEE TIER          0.05%, tick spacing 10   <- the one that changed
+      creator's total tax    1% to 5%, chosen at launch, immutable afterwards
+      platform's share       0.5% out of that tax at every setting, AT
+                             DEPLOYMENT - the policy owner can move it to
+                             0..80 bps for later launches (D2); each launch
+                             freezes the share in force
+      the form's default     1%
+
+    WHAT IT IS BUILT ON. DEPTH.txt section 3 - every candidate threshold
+    (10/20/60 NVDAc) against every corner of the tax band at both tier
+    candidates, both directions, at the same absolute trade sizes; 3.7 prices
+    the scenario a user actually walks through. The design point is a $100
+    trade arriving in ETH, with $500 as a second point to look at. THAT IS A
+    SCENARIO, NOT A MEASURED USER PROFILE - nothing observes who trades or how
+    much, and the sizes were named rather than derived.
+
+    WHY 60 AND NOT 10 OR 20. At $100 all-in, Q=60 is the only candidate ever
+    under 3% (2.13% at a 1% tax and the chosen tier), and the only one in range
+    at all for $500 (5.14%). Q=20 is 3.61% and 11.72% at the same corner.
+
+    WHY 0.05% AND NOT 0.30%. Measured at both, at the same sizes: 15 to 24 bps
+    to the trader across the scenario cells, largest at the small sizes where
+    the total is smallest. It is a transfer, not new room - our LP is the
+    locked position and its fees are the creator's - and it does not rescue a
+    thin pool. It was chosen on the trader's side of that trade.
+
+    WHAT THE NUMBERS ARE AND ARE NOT. They are MEASURED OPENING costs: a pool
+    as it graduates, at one block's conversion prices. A pool that has traded
+    is a different pool. Gas is not in them. No cost is promised to anybody.
+
+    IN THE CODE
+      script/DeployCurb.s.sol      POOL_FEE 500, TICK_SPACING 10
+      test/fork/B20Graduation.t.sol  FEE 500, TICK_SPACING 10, so the suite
+                                   measures the pool we intend to deploy. The
+                                   cost-limit depths moved with the fee: a 1
+                                   NVDAc trade needs 52 NVDAc for a 3% price
+                                   limit and 26 for 5%, where it was 60 and 28.
+      web/app.html                 the parameters read "decided", the default
+                                   tax is 1%
+      web/app.js                   the confirmation shows the launch's tax as a
+                                   rate, the pool fee, and the TOTAL EXECUTION
+                                   COST against mid - every leg the transaction
+                                   has, the ETH conversion included
+
+D2  THE FEE MODEL - THE BAND AND THE BASE ARE FROZEN; THE PLATFORM'S OWN LEG
+    IS OWNER-SETTABLE AS OF 2026-09-21. See FEE_POLICY.txt.
+
+    WHAT IS STILL FROZEN, and it is most of it: the tax band (1% to 5%), the
+    NVDAc base on both sides of graduation, that the creator picks their own
+    launch's tax, and that the platform's leg comes OUT of that tax rather than
+    being added to it. A trader's total is the creator's tax T - plus the
+    0.05% LP tier IN THE POOL only; on the curve it is T, with no LP fee.
+    (The base is the launch's quote asset, NVDAc being one of fourteen.)
+
+    WHAT CHANGED, and why. Following PONS, the fee policy now lives on the HOOK
+    behind Ownable2Step setters, and the factory reads it at launch. The
+    founder's reason: PONS proved this shape on Robinhood Chain and we are
+    following their path on Base rather than rediscovering one. My own reason
+    for the design INSIDE that decision: the pool charges the launch's frozen record,
+    so if the numbers are settable at all they have to be settable in ONE place
+    or the pre-graduation and post-graduation rates drift apart - which is the
+    one thing this entry has always promised they do not.
+
+    WHAT A CHANGE REACHES, measured rather than described:
+      THE CURVE SIDE IS FROZEN PER LAUNCH. A launch keeps the recipient and the
+        rate it was created with, permanently, and the creator's leg was
+        recomputed against that same number
+        [test_aCurveKeepsThePolicyItWasLaunchedWith].
+      WHAT A CHANGE REACHES: LAUNCHES CREATED AFTER IT, ON BOTH SIDES. launch() reads
+      the share and recipient once into the launch's registry record; the curve is
+      built from it and configureLaunch copies it into the pool
+      [test_aLaunchCarriesOnePolicyFromItsCurveIntoItsPool]. A change never reaches
+      a pool that exists. (This paragraph used to say the pool side was live, that
+      PONS's setter reached every pool, and cited a test that does not exist.)
+
+    AND THEN THE SHAPE CHANGED AGAIN, SAME DAY - THESTONKS' MODEL, NOT PONS'S.
+    The founder chose it after the admin surfaces were measured side by side,
+    and the reason is in that measurement: PONS moves its fee policy in ONE
+    transaction, from an owner holding 17 more functions on the factory alone.
+    The reference that runs on OUR chain against the same equities is tighter,
+    and it is the one with 893 coins on it.
+
+      ANNOUNCE, WAIT 24 HOURS, EXECUTE. Their number, taken not invented: "each
+        behind a 24-hour announced on-chain delay". A creator deciding where to
+        launch and anyone about to launch can SEE a change coming.
+        An immediate setter hands them the news and the consequence together.
+        [test_aPolicyChangeIsAnnouncedWaitedForAndCanGoStale]
+      AND IT CAN BE CALLED OFF before it lands
+        [test_anAnnouncedChangeCanBeCancelled].
+      A CAP THAT LEAVES THE CREATOR A FIFTH OF THEIR OWN TAX. Theirs: "hard
+        caps that always leave the creator at least 20%". Ours keeps
+        totalTaxBps - platformFeeBps, and the binding case is the SMALLEST tax
+        a launch may pick, so the cap is 80 bps - four fifths of the 100 bps
+        floor. The deployed value is 50, so this owner may go to 0.8% at most.
+        [test_theCapAlwaysLeavesTheCreatorAFifthOfTheirTax]
+
+    THE CAP REPLACED A WEAKER ONE THAT WAS ALSO MINE, and the difference is the
+    point. The first version capped at MIN_TOTAL_TAX_BPS itself - the exact
+    point where the creator's leg underflows and every swap on their pool
+    reverts. That is the line between WORKING and BROKEN. Theirs is the line
+    between FAIR and UNFAIR, and only the second is worth promising anybody.
+
+    ONE PIECE IS OURS RATHER THAN THEIRS: an announcement EXPIRES after seven
+    days. Their page describes a delay and no window, and without one an
+    announcement made today can be executed in six months - by which time the
+    information it was meant to give people has gone stale but the power has
+    not. Announce it again, in the open.
+
+    AND WHAT IT COSTS, said plainly because it is a real trust surface where
+    there was none: THERE IS NOW AN ADMIN KEY that can move the platform's cut
+    and recipient for launches created after a change - never for a launch that
+    exists, whose record froze both. It cannot touch a
+    creator's share, a registry record, a locked position or anybody's balance.
+    Ownable2Step, so a mistyped transfer does not lose it
+    [test_onlyTheOwnerMovesTheFeePolicy]. It is a SEPARATE role from the
+    deployer's and the recipient's, set by CURB_POLICY_OWNER at deployment and
+    defaulting to the deployer - and like the recipient, it should be a Safe
+    before A1 rather than after. The deploy script now classifies it as it
+    does the recipient: one key, or a contract that is not Safe-shaped, is
+    refused unless CURB_ALLOW_EOA_POLICY_OWNER or
+    CURB_ALLOW_NON_SAFE_POLICY_OWNER says so - the deployer default included
+    [test_theDeploymentsPolicyOwnerCheckKnowsAKeyFromASafe].
+    AND THE TOTAL A TRADER PAYS IS FROZEN TOO, now that the tier is decided in
+    D1: in the pool it is the creator's tax plus 0.05%, on the curve the tax
+    alone, and the confirmation screen shows the two separately and their
+    effect together. ROADMAP Section 11 asked for
+    the TOTAL; that is what the total-execution-cost line is.
+
+D3  DEPTH - MEASURED, AND RE-MEASURED AFTER THE FIRST WRITE-UP WAS WRONG.
+    SCOPE NOTE, 2026-09-20: measured for NVDAc. The other six assets have
+    pool CUSTODY figures [MULTI_RWA.txt 2.2], which bound depth from above
+    and are not a depth measurement. Their thresholds rest on that bound.
+    See DEPTH.txt for the figures, the block, the method and the corrections.
+    THE CONVERSION, Uniswap v3 on Base at block 51357412. Scope, exactly: ONE
+    factory; the fee tiers found enabled among a PROBED domain of 2,907 values
+    (the complete answer is the factory's FeeAmountEnabled logs, and this
+    upstream caps eth_getLogs at 2,000 blocks, so it is not available); seven
+    quote tokens each confirmed on chain. Not Aerodrome, no other DEX, no v2
+    or v4.
+      - the pools hold about 43,300 USD between them. THAT IS A BALANCE SHEET,
+        NOT A DEPTH.
+      - THE TWO POOLS HAVE DIFFERENT KINDS OF LIMIT, and measuring the swap
+        itself rather than inferring from other swaps is what showed it.
+        THE WETH POOL STOPS TAKING INPUT at ~43 NVDAc. That is a PARTIAL FILL,
+        not a refusal: the call succeeds, the pool takes what it can and pays
+        for it, and the rest is never spent. Read from the pool's own returned
+        deltas for that one swap.
+        THE USDC POOL SPENT EVERY AMOUNT PUT TO IT - up to 2,722 NVDAc and
+        16.87M USDC, the most the probe could fund - while its output stopped
+        rising at ~10,836 USDC. Both of those are OBSERVATIONS over the amounts
+        tried, not proven maxima.
+      - A PARTIAL FILL'S COST IS NOW CHARGED ON WHAT WAS SPENT, not on what was
+        offered. The unspent input never leaves the trader. At the recorded
+        block the $50,000 NVDAc->ETH row shows both: 8282 bps of shortfall
+        against the whole offer, and 564 bps for the trade that actually
+        happens there - $9,102 of NVDAc. A factor of fifteen.
+      - under 1% of cost, about 1,200-2,600 USD moves per trade; under 3%,
+        about 4,000-9,900. Retail is cheap - 31-56 bps at 50-500 USD, most of
+        it the LP fee. The search requires the trade to FILL IN FULL, which it
+        did not before, and takes both the cost and the fill from the SAME
+        probe call.
+      - every quote is read from the SAME starting state. The rows are
+        alternatives, not a sequence.
+    OUR OWN POOL is parameter-driven rather than chain-driven, so the pinned
+    measurements stand. At a 1% tax a 1 NVDAc trade needs 59.31 NVDAc of depth
+    to stay under a 3% PRICE limit, or 56.22 under a 3% SHORTFALL - the two
+    definitions are now separated and named everywhere.
+    THE TWO MEET, NARROWLY. A 60 NVDAc threshold is ~12,700 USD, which is more
+    than either pool will give up in one trade. That is a constraint on ONE
+    ROUTE: buyers are not obliged to convert through these pools - NVDAc can be
+    held already, bought at Coinbase, or bridged - so it is not ROADMAP 7.1's
+    ceiling with a number on it, it is one route's ceiling with a number on it.
+    EIGHTEEN CORRECTIONS ARE RECORDED IN DEPTH.txt SECTION 4, from four rounds
+    of review. The ones that change what may be claimed - four from the
+    first round: the 42,000 USD "depth", the scan's
+    advertised scope, a $10,000 cell that only ever spent 78.7% of its input,
+    and "a buy costs more than a sell" - two cost definitions in one table,
+    which reverses under one. And four from the second, all of them in how
+    the measuring tool itself behaved:
+      - RPC FAILURES WERE READ AS DATA. A failed quote in the cost-limit search
+        became zero output, which reads as infinite cost, which drove the
+        search DOWNWARDS. A network fault produced a plausible low depth.
+        Now: three outcomes per call, searches ABANDON rather than shrink, and
+        script/b20/faultinject-depth.sh breaks the RPC on purpose to check it.
+        Mutation-tested: with the old behaviour restored and the same fault,
+        the search answers 419 / 1,159 / 3,024 where the truth is
+        420 / 1,231 / 4,103.
+      - the exact-output quote is a DIFFERENT simulation and was standing in as
+        the consumed input. It is a cross-check now, and the consumed share is
+        read off the reported call itself.
+      - "the largest input the pool accepts" was one absurd quote, not a
+        measurement, and it hid the difference between the two pools above.
+      - the fee-tier scope was 12 hand-written candidates.
+    AND FOUR FROM THE THIRD ROUND, all about claiming more than was measured:
+      - THE CONSUMED SHARE WAS AN ESTIMATE PRINTED AS A MEASUREMENT. Bisecting
+        a price bound asks many simulations of DIFFERENT amounts; it is not the
+        input the reported swap spent, which QuoterV2 does not return at all.
+        script/b20/SwapDeltaProbe.sol now reads the pool's own deltas for that
+        one swap, through a single eth_call state override - nothing mined. The
+        estimate turned out to agree to 0.0000%, which is worth knowing and is
+        not a reason to have printed it as a measurement.
+      - "the pool REFUSES an input over X" described a revert. Nothing reverts;
+        the swap FILLS PARTIALLY, and for anyone building on this the two are
+        different things.
+      - "the USDC pool consumes any input however large" went past a finite
+        sweep. It now reads as what was done: every amount tried was consumed,
+        up to the most the probe could fund.
+      - the cost-limit search never checked that the size it was reporting
+        would FILL. It does now, against the measured spend.
+    AND THREE FROM THE FOURTH ROUND, the most expensive to have believed:
+      - A PARTIAL FILL'S COST WAS CHARGED ON MONEY THE TRADER STILL HAD. The
+        shortfall was taken against the whole offer, so unspent input counted
+        as a loss. 8282 bps of shortfall where the real trade cost 564 - a
+        factor of fifteen, in the direction that makes the venue look
+        unusable. The cost
+        is measured against what was SPENT now, and the old figure is still
+        printed as "shortfall", explicitly not a trade cost.
+      - THE COST AND THE FILL CAME FROM DIFFERENT SIMULATIONS - cost from the
+        quoter, fill from the probe, the probe's own output discarded - so a
+        disagreement between them could not have been noticed. Both come from
+        one probe call now, and a disagreeing quoter ABANDONS the search. A new
+        `skew` fault mode bends an answer by one unit to test exactly that.
+      - measure-depth.sh read the block hash by asking for the FULL block; the
+        endpoint answered "backend response too large" and the run died on a
+        python traceback. Right outcome, wrong mechanism. It fetches the header
+        without transactions now and validates the hash before using it.
+    AND ONE IS THIS FILE'S OWN. "20 minutes elapsed, 31 seconds of CPU,
+    blocked on upstream RPC" stated a cause that was never measured. What was
+    observed is the elapsed time, the CPU figure, and a run that did not
+    finish; low CPU with no progress is consistent with waiting on the
+    network and with other things, and nothing measured which.
+    THE DECISION TABLE IS BUILT - DEPTH.txt section 3. Every candidate
+    threshold (10 / 20 / 60 NVDAc) against every corner of the tax band
+    (1 / 3 / 5%), at BOTH candidate LP tiers, both directions, at the same five
+    absolute trade sizes. 174 pool cells at the nominal sizes plus 90 at the
+    net sizes the conversion really produces, on the pinned fork, plus 42
+    exit-leg and 10 entry-leg conversions at one live block.
+    THE EXTERNAL CONVERSION AND OUR OWN POOL ARE PRINTED SEPARATELY AND THEN
+    COMPOSED. Both are the user's cost - a trader pressing our ETH button pays
+    the conversion too - and what separates them is who SETS them, not who
+    collects. The composition is labelled as arithmetic over three different
+    blocks; nothing measures the route end to end.
+    EACH LEG IS MEASURED AT THE AMOUNT THAT LEG ACTUALLY TRADES, in both
+    directions. Leaving is MEME -> NVDAc -> ETH and the second leg sells the
+    NET NVDAc the first returned, so it was measured at the 42 amounts the grid
+    produces; arriving is the same in the other order, so our pool is measured
+    at the NET NVDAc the conversion produced rather than at the nominal
+    notional. Both conversion directions are read at ONE block, 51359669.
+    The entry table cannot be reused for the exit: 0.218 NVDAc out costs 31 bps
+    into ETH and 16.74 NVDAc out costs 124.
+    WHAT IT SHOWS, as readings rather than choices:
+      - $100 at under 3% all-in: only Q=60, and only at a 1% tax (237 bps).
+      - $100 at under 5% all-in: Q=20 or Q=60 at 1%, Q=60 only at 3%, nothing
+        at 5% - the tax-and-LP-fee floor is 528 bps there before any impact,
+        and the conversion composes on top.
+      - $500 at under 5% all-in: nothing. Q=60 at a 1% tax is 540 bps.
+      - across all 84 cells where both directions are measured, the all-in
+        sell is 0 to 130 bps WORSE than the all-in buy, widening with size and
+        tax, and in none of them is it cheaper. THAT IS SCOPED TO THIS TABLE -
+        three thresholds, three taxes, five sizes, two routes - and is not a
+        general rule about markets. An earlier write-up claimed the opposite at
+        $5,000; that came from measuring the buy's pool leg at a size the user
+        never held. See DEPTH.txt correction 19.
+      - THE LP TIER IS NOT A CONSTANT 25 bps. Measured at both settings, 0.05%
+        instead of 0.30% saves 24 bps on the smallest trades and 2 on the
+        largest - most where the total is already smallest, nearly nothing
+        where it is unusable. And it is a transfer, not an improvement: our LP
+        is the locked position and its fees go to the creator.
+    AND A SCENARIO IS PRICED - DEPTH.txt 3.7. A user arriving with ETH and
+    leaving for ETH, at $100 and at $500, across all three taxes and both LP
+    tiers, both directions: 36 composed cells. IT IS A SCENARIO, NOT A MEASURED
+    USER PROFILE - nothing here observes who trades or how much, and the two
+    sizes are the ones the founder named.
+      - at $100 only Q=60 is ever under 3% all-in, and only at a 1% tax.
+      - at $100 under 5%: Q=60 at 1% and 3% tax, Q=20 at 1%. NO cell at a 5%
+        tax passes, at either tier - the tax-and-fee floor is 528.5 bps at the
+        0.30% tier and 504.7 at 0.05%, and the cheapest conversion measured
+        anywhere composes those to 558 and 534 before any impact.
+      - covering the whole 1-5% band at $100: only Q=60 is in range, and its
+        worst measured cell is 608 bps at the 0.05% tier and 632 at 0.30%.
+        Those are what it COSTS; the limit is a choice above them, not a
+        number the table forces.
+      - at $500 nothing is under 5% all-in. Best is Q=60, 1% tax, 0.05% tier:
+        514 buying and 519 selling.
+    DECIDED 2026-09-20 - THE DECIDING PART, WHICH WAS ALREADY BEING USED.
+      S, the trade size the pool serves:  $100, with $500 as a second point.
+      C, the cost it may carry:           3% all-in at a 1% tax at $100,
+                                          6% at $500.
+      WHICH TAXES it must hold for:       the 1% end of the band. Above that
+                                          the tax itself is the cost and no
+                                          depth fixes it.
+      The chosen parameters already meet this: 2.13% and 5.14% [D1]. This is
+      not a new target, it is the one D1 was measured against, written down as
+      a target instead of left implicit in a comparison.
+      MEASURED FOR NVDAc ONLY. SPCXc and GOOGLc are enabled at the same DOLLAR
+      threshold, so their graduated pools should be comparably deep and their
+      costs comparable - should, not measured. Re-running DEPTH.txt's method
+      per asset is the work that would settle it.
+
+    WHAT THE TABLE STILL CANNOT DO. It cannot pick - a 3% target cannot cover a 5% launch at any depth
+    or tier. It does not measure how easily a threshold FILLS, which is demand
+    rather than depth, nor a round trip, nor gas. Nothing is set to any
+    candidate and no parameter was changed; choosing the target is not approval
+    to fix anything in code. B1's bounds cannot be written until somebody
+    chooses. Measuring Aerodrome would change both conversion legs and has not
+    been done.
+
+D4  PHASE 1C - DECIDED 2026-09-20, AND ONE FINDING CHANGES ITS SHAPE
+
+    THE FINDING FIRST, BECAUSE IT DECIDES WHAT THE REST CAN MEAN. THIS DESIGN
+    CANNOT ENFORCE A LIMIT. Launching is permissionless by decision [A5], the
+    graduated pool is an ordinary Uniswap pool nobody controls, and the curve
+    has no owner. "Launches per day" and "maximum trade" cannot be capped by
+    anything in src/ - they can only be WATCHED, and watching them is not a
+    limit however it is written down. PONS has an owner switch for this
+    [setLaunchEnabled, PonsV2LaunchFactory.sol:435]; we deliberately have no
+    owner, and adding one now would put a new admin surface into the contracts
+    immediately before the audit. NOT ADDED - named as the gap it is.
+
+    SO THESE ARE MONITORING THRESHOLDS, NOT LIMITS
+      launches per day          more than 20 in a day is unusual for a launch
+                                week and is a prompt to look, not a cap
+      single trade              more than $500 is outside the size D3 designed
+                                for; above it the cost is the trader's to see
+                                and the page already shows it
+      round-trip cost           above 6% at a 1% tax means the pool is not
+                                behaving the way D1 measured, and that is a
+                                reason to stop promoting the asset
+      asset-level trigger       a quote asset whose largest pool falls below
+                                one threshold [F1's bar] stops being offered
+
+    THE HALT, AND WHAT IT CAN ACTUALLY DO
+      WHO        the founder, the only party, reachable at the treasury key.
+                 There is no second person, so there is NO ESCALATION PATH -
+                 that is a fact about the team and not an omission here.
+      WHAT       remove the asset or the launch from the front end, and stop
+                 publicising it. That stops discovery, which is where every
+                 user comes from.
+      WHAT IT CANNOT DO   stop somebody calling the factory directly, and stop
+                 anyone trading a pool that already exists. Both are
+                 consequences of permissionless launching and of using a public
+                 AMM, and both were chosen deliberately.
+      RESPONSE   a default of: look within 4 hours, act within 24. Written as a
+                 default so there is a number to miss; the founder's own figure
+                 replaces it.
+      UPDATED 2026-10-08. The front-end halt is now a setting, not a code
+      edit: web/config.js's hiddenFactories and hiddenLaunches take a paired
+      asset or a launch out of the site, and its banner puts a notice on every
+      page, in one commit, then a redeploy - each applies on the next page
+      load. A hidden factory leaves the create form's choices, and its
+      launches leave the Launches grid, the hero and the search; a hidden
+      launch leaves the same lists. Their token pages show a notice and still
+      trade and claim, so holders can leave. The banner is one line of plain
+      text under the site bar on every page. INCIDENT.txt is the playbook -
+      every lever with what it cannot do, who signs, the target times
+      (shorter than the default above where a payout's veto hour or a site
+      takeover needs it) and what users are told - and its WHO section
+      replaces "there is no second person" with the names it records: Safe
+      signers, the guardian's operator, who can publish the site.
+    AND ONE OF ITS CONDITIONS CANNOT BE WRITTEN AS SPECIFIED. Phase 1C states a
+    halt condition in bps of deviation from a reference. B1/B2 decided there is
+    no reference, so there is nothing to take those bps against. That condition
+    has to be restated against something observable on chain, or dropped
+    deliberately - not left in the document as though it were implementable.
+
+D5  SUCCESS METRICS - DECIDED 2026-09-20
+
+    Numbers chosen so the gate can be failed. They are modest on purpose: this
+    is a three-asset launchpad on pools holding tens of thousands of dollars,
+    and a gate nobody can miss is not a gate. THEY ARE NOT DERIVED FROM
+    ANYTHING MEASURED - nothing observes demand, and no comparable is public
+    for this venue - so they are a judgement and should be replaced by the
+    first real numbers that exist.
+
+      over the first 30 days after A1
+        launches created            >= 10
+        launches that GRADUATED     >= 3        the one that matters: a curve
+                                                that never fills is a product
+                                                that does not work
+        distinct creators           >= 5        not one person launching ten
+        distinct traders            >= 50
+        a graduated pool still traded on day 30 >= 1
+
+      AND TWO THAT FAIL THE GATE WHATEVER ELSE HAPPENS
+        any launch stuck after its sale                  - the failure A2/6.4
+                                                           exist to prevent
+        the platform's fees unclaimable for any reason   - A6's whole point
+
+    ROADMAP says to define these before they can be rationalised. Legal advice
+    before Phase 1 is in the document's own disclaimer. The decision NOT to
+    geofence any jurisdiction is already recorded in ROADMAP section 12 and is
+    not an open item.
+
+
+D6  NO REFERENCE PRICE, AND NO MARKET-HOURS MODE - ACCEPTED 2026-09-24
+
+    Raised by an outside audit as a high finding: no oracle, no staleness
+    check, no deviation bound, no weekend handling.
+
+    EVIDENCE   There is no price feed in this system at all. `grep -rn
+               "oracle\|latestRoundData\|updatedAt" src/curb/` returns
+               nothing, so there is no `updatedAt` to forget: every price the
+               product uses is the curve's own arithmetic or a pool's state
+               read at the moment of the trade. PONS says the same of itself
+               in so many words - "no price oracle anywhere"
+               [reference/ponsfamily/contractsV2/src/v2/PonsV2BondingCurve.sol:21,
+               PonsV2LaunchFactory.sol:47].
+               The decision was already recorded in code
+               [test/fork/B20PriceFeed.t.sol].
+    BLOCKS     no. There is nothing to build and nothing to fix.
+    CLOSES     it does not close as a defect; it closes as a PRODUCT DECISION,
+               and that decision is still open in one respect only:
+
+                 should a stock-paired pool refuse trades while the underlying
+                 market is closed?
+
+               Base's own documentation says a tokenized stock's price feed may
+               run 24/5 and hold its last value over weekends and holidays. Our
+               pools have no such feed, so the question is not "is the price
+               stale" but "should we trade a proxy for a closed market at all".
+               thestonks.exchange does. Answering it is one line of policy and
+               a gate on the pool panel; NOT answering it is also an answer and
+               should be a recorded one.
+    ANSWERED 2026-10-15 BY THE OWNER: NO MARKET-HOURS GATE. A stock-paired
+    pool trades while the stock's market is closed - weekends, nights,
+    holidays - because the tokenized stock it is paired with keeps trading on
+    Base around the clock, and thestonks.exchange does the same. No gate is
+    built on the pool panel or in any contract. What the site already does is
+    unchanged: its Chainlink conversion check reads the stock's 24/5 feed,
+    which holds its last answer while the market is shut, and warns or
+    refuses on the deviation it sees (web/app.js withConversion).
+
+    WHAT IS ALREADY TRUE WITHOUT ANY DECISION: nothing in the product claims a
+    tokenized stock tracks its underlying, and F4 already says on the page that
+    spreading across equities does not spread issuer risk.
+
+
+D7  AN ISSUER CAN STOP EVERYTHING, AND NO CODE OF OURS CAN ROUTE AROUND IT -
+    ACCEPTED 2026-09-24
+
+    The half of the audit's H-03 that survives the work done for it.
+
+    EVIDENCE   The fee half is fixed and tested: a recipient that cannot take
+               delivery no longer stops a swap, because the fee becomes a debt
+               and is claimed later [FeeHook._deliver / claim, and the three
+               tests inverted for it on 2026-09-23]. What remains is the case
+               no arrangement of our contracts can answer: if the issuer pauses
+               the asset, or blocks the addresses a graduation must pay,
+               transfers of that asset stop - and a market denominated in it
+               stops with them. Curves cannot be filled, graduations cannot
+               move reserves, and claims cannot be paid, for as long as the
+               pause lasts.
+    BLOCKS     no. It is a property of the asset, not a defect in the code, and
+               it is the same property that makes the asset worth pairing with.
+    CLOSES     it does not. It is accepted, and the only actions it implies are
+               disclosure - which F4 already carries on the page - and the
+               operational one of watching for it.
+
+    WHAT WOULD CHANGE THIS: nothing short of a quote asset with no issuer. That
+    is WETH, which is already on the list, and the reason the list is not only
+    equities.
+
+
+================================================================================
+E. CLOSEABLE ON EVIDENCE ALREADY IN HAND
+================================================================================
+
+E1  "THE SWEEP-PRESERVES-PRICE RESULT IS UNPROVEN FOR buybackEnabled = true"
+    (DEPENDENCIES.txt) FALLS AWAY BY CONSTRUCTION.
+    The factory constructs every curve with buybackEnabled = false [code:
+    CurbLaunchFactory.launch, the literal `false` argument], and
+    setBuybackEnabled is onlyFactory with the Graduator holding that role and
+    never calling it [code: PonsV2BondingCurve.sol:312, src/curb/Graduator.sol].
+    Buyback cannot be turned on for any launch this factory creates.
+    CLOSES by recording exactly that. No test is needed, and the item should
+    not be carried as though one were.
+
+
+================================================================================
+F. MULTI-RWA - NEW SCOPE, ADDED 19-20 SEPTEMBER 2026
+================================================================================
+
+  THIS FILE DID NOT MENTION ANY OF THIS UNTIL NOW, which made it wrong rather
+  than merely incomplete: seven quote assets (fourteen today) are built and deployed on the fork
+  and the document that lists what is open before mainnet said nothing about
+  them. MULTI_RWA.txt is the survey and design; MULTI_RWA_AUDIT.txt is what was
+  built and what auditing it found.
+
+  WHAT IS DONE, so it is not carried as open:
+    the registry admits more than one launcher, add-only, same loop check
+    one escrow/policy/vault/factory per asset, cross-checked at deployment
+    the interface picks the asset from the registry and labels from the chain
+    the curve-to-pool lifecycle passes for every asset on the fork
+
+F1  THE ASSET LIST AND THE THRESHOLDS - DECIDED 2026-09-20
+    EVIDENCE   Seven of the thirteen B20 equities are enabled, because the
+               other six have no pool or only dust [MULTI_RWA.txt 2.2]. Each
+               threshold is set to the same share of that asset's largest
+               measured pool as the decided 60 NVDAc is of its own - 41.38% -
+               which holds fillability equal and lets the dollar size range
+               from about $1,100 to $15,900.
+    BLOCKS     the deployment. Not the technical work. (It said "alongside
+               A6"; A6 blocks nothing now - see its BLOCKS line.)
+    NOW, AND IT IS NOT WHAT THE LINES BELOW DECIDED. The deployment lists
+               FOURTEEN quote assets (chosen and priced 2026-10-15, decision
+               1a above), every one sized to the same dollar shape - about
+               $4,000 at launch and $55,000 at graduation (2026-10-03) -
+               at Chainlink's answer that day, each with its own phantom /
+               threshold [DeployCurb.quoteAssets]: WETH 1.65 / 4.47, USDC
+               4,000 / 10,800, cbBTC 0.0487 / 0.132, cbXRP 3,010 / 8,150,
+               cbZEC 3.40 / 9.20, VIRTUAL 5,940 / 16,100, AERO 4,510 /
+               12,200, GOOGLc 11.5 / 31.1 (fillable), and NVDAc 18.5 / 50.0,
+               SPCXc 27.5 / 74.5, AMZNc 15.8 / 42.9, MSFTc 7.42 / 20.1,
+               AAPLc 11.6 / 31.5, METAc 5.44 / 14.7 (listed, and marked
+               fillable=false - short of liquidity; the page says so when a
+               creator picks one). SPCXc moved to the second group on
+               2026-09-22 and NVDAc on 2026-10-15. Before 2026-10-03 every
+               threshold was about $13,231 (D1's 60 NVDAc at each asset's
+               rate) with the phantom equal to it. The "$1,100 to $15,900"
+               range above and the three-asset decision below are the record
+               of 2026-09-20.
+    DECIDED    (2026-09-20, SUPERSEDED) THREE ASSETS: NVDAc at 60, SPCXc at 88,
+               GOOGLc at 39.
+
+               THE RULE IS PONS'S, because theirs is the better-stated one:
+               size the pair from ONE TARGET VALUE at each asset's own rate.
+               Only threshold/(threshold+phantom) decides what share of supply
+               reaches the pool, so scaling both leaves the curve's shape
+               untouched and every launch raises the same amount. The target is
+               D1's decided 60 NVDAc - $13,230.36 at the pools' own mids, which
+               read $220.51 for NVDAc at the pinned block - so nothing is
+               reversed, it is carried across.
+
+               THE BAR IS THE ONE B20MultiAsset's E1 TEST ALREADY USES: the
+               largest measured pool must hold AT LEAST ONE THRESHOLD. A pool
+               that cannot supply one cannot fill a launch, and any tighter
+               fraction would be a number nobody measured.
+
+               THE TWO NUMBERS ARE READ DIFFERENTLY AND CANNOT BE SWAPPED. The
+               units come from the pool's slot0, because that is the price; the
+               custody comes from balanceOf, because that is what the pool can
+               actually pay out. A v3 pool's balance ratio is not its price.
+               The last column is units/held, so it can be recomputed from the
+               two beside it - and it is printed to two places because when it
+               was rounded to whole percents five of these seven rows did not
+               survive the recomputation.
+
+                 GOOGLc  39.92 units vs 116.18 held    34.36%   enabled
+                 NVDAc   60.00        vs 144.99        41.38%   enabled
+                 SPCXc   88.81        vs 108.67        81.72%   enabled
+                 AMZNc   52.29        vs  31.11       168.05%   held
+                 MSFTc   26.71        vs  13.67       195.37%   held
+                 METAc   20.22        vs   6.15       328.60%   held
+                 AAPLc   40.59        vs   8.26       491.53%   held
+
+               THE SIX B20 EQUITIES NOT IN THIS TABLE - MSTRc, TSLAc, SNDKc,
+               COINc, CRCLc, INTCc - are absent because there is nothing to
+               measure: three have no USDC pool at all and three hold
+               effectively zero. They are not candidates at any threshold.
+
+               AND THE REASON THE THRESHOLD IS NOT SIMPLY MADE SMALLER, which
+               was my first instinct and was wrong: D1 measured that the
+               threshold sets the graduated pool's depth. At a $100 buy, Q=60
+               costs 2.13% all-in and Q=20 costs 3.61%; at $500 it is 5.14%
+               against 11.72%. Shrinking it to fit the thin assets would make
+               trading expensive for everyone.
+
+               ROUNDED DOWN so nothing asks for more than was measured - except
+               NVDAc, kept at exactly the 60 D1 decided rather than quietly
+               rounded to 59.
+
+               THE FOUR HELD ASSETS ARE NOT REJECTED. The mechanism takes any
+               asset and the lifecycle passes for all seven on the fork; this
+               is the product choice on top of it, and one line in
+               quoteAssets() brings any of them back when their liquidity
+               returns.
+
+F2  THE ETH ROUTE - BUILT AND MEASURED. CLOSED 2026-09-20.
+    EVIDENCE   Only NVDAc has a WETH pool holding anything; every other asset
+               trades against USDC. Measured, not assumed: B20MultiAsset's E1
+               counts the WETH pools each asset has - zero for five of the six,
+               one holding dust for GOOGLc.
+    BLOCKED    offering ETH entry on any asset but NVDAc - past tense now, see
+               DONE. It blocked nothing else even then: the asset traded
+               normally for anyone already holding it.
+    DONE       ETH -> WETH -> USDC -> asset is one UniversalRouter command
+               with a longer packed path, and the fill is read off the chain:
+               test_ethReachesAnAssetWithNoWethPool_throughUsdc buys METAc - an
+               asset R1 first checks has no WETH pool holding anything - and
+               0.05 ETH DELIVERED 18998507 raw units, 0.18998507 METAc, read as
+               a balance difference on the buyer. R5 then finds the router
+               holding no WETH, no USDC, no METAc and no native ETH.
+               test_theTwoHopMinimumIsOnWhatArrives sets a minimum larger than
+               the pool holds and the whole command reverts, so the bound is on
+               what ARRIVES and not on the first leg only - without that a
+               two-hop route could pass its check and still deliver anything.
+
+               THE TIER IS MEASURED PER LEG, not fixed: _deepestTier picks by
+               what each pool holds of the token being bought, because a pool
+               cannot sell more than it has.
+
+               AND THE PAGE CHOOSES BY ASKING, NOT BY CUSTODY. An earlier
+               version here picked the venue by which pool held more of the
+               asset and called that direction-neutral. It is not: custody
+               answers "where can this be BOUGHT" and says nothing about where
+               it can be SOLD. NVDAc's WETH pool holds 0.818 WETH, so selling
+               60 NVDAc into it pays 0.784 WETH against 5.155 through USDC - an
+               85% loss at exactly the size of a graduation threshold. Both
+               candidate paths are now quoted at the real amount and the better
+               one wins [web/app.js bestV3Leg].
+
+F3  THE ISSUER REFUSAL PATH - MEASURED ON TWO ASSETS. CLOSED 2026-09-20.
+    EVIDENCE   C1 provoked a real PolicyForbids on NVDAc through the policy
+               admin. All thirteen equities report policy id 5 with the same
+               admin, which is an ARGUMENT that the mechanism is identical and
+               not a measurement that it is.
+    BLOCKS     nothing on its own. It is the same risk C1 closed, now spread
+               over seven assets.
+    DONE       test_oneBlocklistEntryStopsTwoDifferentAssets provokes it for
+               real through the policy admin and then checks BOTH NVDAc and
+               METAc, and the shape of the result is the point: ONE blocklist
+               entry stops transfers of two different assets. That is stronger
+               than the closure asked for - it does not merely show the
+               mechanism travels, it shows the two assets are not independent,
+               which is F4's claim measured rather than argued.
+
+               THE INTERFACE SURFACES IT BEFORE THE TRADE. policyStanding()
+               reads the sender and receiver scopes off the asset, resolves the
+               policy id and asks the registry, so a restricted account sees a
+               row saying so instead of meeting PolicyForbids as a failed
+               transaction it already paid gas for [web/app.js,
+               policyStanding].
+
+F4  SPREADING ACROSS EQUITIES DOES NOT SPREAD ISSUER RISK - SAID ON THE PAGE.
+    CLOSED 2026-09-20.
+    EVIDENCE   All thirteen sit under ONE policy with ONE admin
+               (0xEC0F05C1...). A restriction applied there reaches every one
+               of them in the same block.
+    BLOCKS     nothing technical. It is a copy and positioning constraint.
+    DONE       A static line sits under the quote-asset picker saying the list
+               is a choice of price exposure and not a choice of issuer
+               [web/app.html #issuerNote], and the restriction message repeats
+               it at the moment it bites.
+
+               THE FIRST ATTEMPT DID NOT MEET THIS ENTRY'S OWN CONDITION and
+               was recorded as closed anyway. The sentence existed only in the
+               branch that fires AFTER an account is found restricted, which is
+               the wrong moment - by then the asset has been chosen - and it
+               never appeared for an unconnected wallet or an allowed one. The
+               condition was "wherever the asset choice is presented"; it is
+               now met there.
+
+               THE OTHER PATH REMAINS AVAILABLE AND IS NOT TAKEN: adding an
+               asset under a different regime would make the spreading real
+               rather than merely disclosed. The wrapped assets carry their own
+               policies and admins and six of the eight are not B20 at all
+               [MULTI_RWA.txt 2.4]. That is a product decision, not a defect.
+
+================================================================================
+THE TWO DECISIONS THAT COME FIRST - BOTH TAKEN. SUPERSEDED 2026-09-20.
+================================================================================
+BOTH DECISIONS BELOW HAVE BEEN MADE AND BUILT. Decision 1 is A5: anyone may
+create a launch, and the parameters closed in the same change. Decision 2 is
+D2 and FEE_POLICY.txt: the fee model is frozen.
+
+THE TEXT BELOW IS KEPT AS THE RECORD OF THE DECISION BEING TAKEN - what the
+code did then, what a product would want, what had to be settled. It is not a
+description of the code now, and four of its numbers have since changed:
+
+    then                        now
+    launch() owner-only         open to anyone [CurbLaunchFactory.launch and
+                                its @dev line]
+    curve feeBps 100            the hook's platformFeeBps, read at launch and
+                                frozen into the record (50 at deployment). It
+                                said "PLATFORM_FEE_BPS = 50, a constant" - since
+                                superseded; that constant is only the band floor
+    protocolFeeShareBps 2000    PROTOCOL_FEE_SHARE_BPS = 10000 - all of the
+                                platform's leg, no split [CurbLaunchFactory,
+                                the constant of that name]
+    creatorTaxBps 300, fixed    a band the launch picks inside, floored above
+                                the platform's leg [CurbLaunchFactory: the
+                                minTotalTaxBps/maxTotalTaxBps immutables and
+                                the BandBelowPlatformFee check]
+    (THE CITATIONS IN THIS TABLE ARE BY NAME. They were line numbers, and the
+    three that were not rewritten with the feeBps row had drifted onto the
+    Terms struct and the file's header comment.)
+
+READ D2, FEE_POLICY.txt AND A5 FOR THE CURRENT ANSWER. Anyone pricing a trade
+off the table below gets the platform's leg wrong by a factor of two.
+
+
+1. WHO MAY CREATE A LAUNCH  -  ANSWERED BY A5: ANYONE CAN.
+--------------------------------------------------------------------------
+  WHAT THE CODE DID WHEN THIS WAS WRITTEN
+    CurbLaunchFactory.launch() was owner-only; anyone else got NotTheOwner.
+    The owner was set at construction. NEITHER THE CHECK NOR THE ERROR EXISTS
+    TODAY - the function carries "@dev Open to anyone." and no owner test
+    [CurbLaunchFactory.launch and its @dev].
+    What that owner CANNOT do is worth stating in the same breath, because it
+    bounds the decision: the registry is write-once, so a created launch's
+    terms - beneficiary, pool configuration, refund address -
+    can never be altered, and the owner has no path to anyone's funds. The
+    privilege is over what EXISTS, not over what has already happened.
+
+  WHAT A PRODUCT WOULD WANT
+    A launchpad, as the word is normally used, is permissionless: a creator
+    arrives, pays gas, and a launch exists. That is also what the demo's shape
+    implies to anyone using it.
+
+  WHAT HAS TO BE DECIDED
+    (a) Permissionless, or curated at the opening?
+    (b) If curated: for how long, on what criteria, and who holds the key -
+        one key, or a multisig? What happens to launches in flight if that key
+        is lost?
+    (c) If permissionless: what stops the obvious abuse - a launch pointing its
+        beneficiary or refund address somewhere harmful - given that the
+        registry validates a configuration at launch and can never revise it?
+        The validation that exists today runs at creation precisely because it
+        cannot run later, and it would become the only filter.
+    (d) Either way: is the owner's ability to create launches on OTHER people's
+        behalf - which is what owner-only creation means when a creator address
+        is a parameter - intended, and is it surfaced?
+
+  WHY THIS ONE IS FIRST
+    It decides whether the fee decision below is about a handful of curated
+    launches or about an open stream of them, and those are not the same
+    design.
+
+
+2. WHERE EVERY FEE COMES FROM AND WHERE IT GOES  -  ANSWERED BY D2. FROZEN.
+--------------------------------------------------------------------------
+  THE TABLE BELOW IS THE OLD PARAMETERS. See the banner at the top of this
+  section, and FEE_POLICY.txt for what is charged now.
+  Five different charges exist. They are on different bases, in different
+  tokens, to different recipients, with different withdrawal rights. Until they
+  are in one table nobody can say what a user pays or what the protocol earns.
+
+  WHAT THE CODE DOES NOW - read out of the contracts, not from the plan
+
+    CHARGE        BASE                      TOKEN      TO WHOM, AND HOW
+    ------------  ------------------------  ---------  ------------------------
+    curve fee     the quote INPUT on a buy  quote      accrues in the curve;
+    feeBps        (`spent`); the GROSS      (NVDAc)    at sweep it is SPLIT -
+    100 bps       quote output on a sell               protocolFeeShareBps of
+                  [:407-409, :479-481]                 it to the immutable
+                                                       protocolFeeRecipient,
+                                                       the remainder to the
+                                                       creator [:_sweepFees]
+    creator tax   the same base as above    quote      the creator IN FULL. It
+    creatorTaxBps                           (NVDAc)    never enters the split
+    300 bps                                            [:_sweepFees]
+    LP fee        the pool's own fee tier,  both       accrues to the locked
+                  fixed per launch in the   sides      position; PositionLock
+                  registry record                      pays the BENEFICIARY,
+                                                       and the recipient is not
+                                                       a parameter [PositionLock
+                                                       .sol:53]
+    hook fee      the swap OUTPUT of a      the        FeeHook.feeRecipient,
+    FeeHook       pool swap                 memecoin   IMMUTABLE, taken inside
+    100 bps       [superseded: it is now    on a buy,  the same transaction
+    (superseded)  the platform's 50, read
+                  from the registry at
+                  construction, plus the
+                  creator's T-50, each an
+                  independent floor of the
+                  base - FeeHook's header,
+                  WHICH TOKEN, and
+                  FeeHook.configureLaunch]
+                                            NVDAc on
+                                            a sell
+    buyback       - none -                  -          OFF by construction and
+                                                       unreachable. See E1.
+
+    WHO CAN TRIGGER A SWEEP: the creator, or the policy's feeSweepOperator
+    [code: PonsV2BondingCurve.sol:503-509]. And every graduation sweeps on its
+    own way through, whoever sends it [:543].
+    WHERE IT LANDS: the escrow. Which is a mock. Which is A2.
+
+  ONE NUMBER THAT IS READ WRONG, SO IT IS WRITTEN OUT HERE
+    protocolFeeShareBps = 2000 IS NOT A 20% CUT OF A TRADE. It is 20% OF THE
+    CURVE FEE. On a 100 NVDAc buy at the candidate parameters:
+        the trader pays        4.0 NVDAc  (1% fee + 3% creator tax)
+        the protocol receives  0.2 NVDAc  (20% of the 1 NVDAc fee)
+        the creator receives   3.8 NVDAc  (0.8 of the fee, plus the whole tax)
+    So the protocol's take on a curve trade is 0.2%, and 95% of what the trader
+    pays goes to the creator. Whether that is the intended division is a
+    decision, not a detail - and it is separate from the pool, where the hook
+    takes 1% of the output for the protocol and the LP fee goes to the creator.
+
+  WHAT HAS TO BE DECIDED
+    (a) THE DIVISION ITSELF: the four live rates, and the total a trader pays
+        on the curve and in the pool. Section 11 wants this frozen.
+    (b) THREE RECIPIENT ADDRESSES, ALL FIXED EARLY AND NONE OF THEM THE SAME
+        DECISION: protocolFeeRecipient (immutable per curve),
+        FeeHook.feeRecipient (immutable per deployment), and the policy's
+        feeSweepOperator. Who are they - and are any of them a multisig?
+    (c) HALF THE HOOK'S REVENUE ARRIVES IN THE LAUNCH'S OWN MEMECOIN. The
+        hook charges the OUTPUT of the pool it sits on, and that pool is always
+        the launch token against NVDAc - so a buy pays the hook in the memecoin
+        and a sell pays it in NVDAc. Those are the only two.
+          NOT WETH, which an earlier draft of this file claimed. The ETH route's
+          other leg is a plain Uniswap V3 swap that carries no hook of ours
+          [code: web/app.js CMD.v3SwapExactIn, used by the ETH route's buy
+          and sell] -
+          WETH/NVDAc when this was written, and since F2 whichever one- or
+          two-hop path the quoter picks per asset. Nobody can attach this hook
+          to some other pair either: beforeInitialize refuses every opener but
+          the graduator [code: FeeHook.beforeInitialize], and the registry pins the ONE
+          hook address a launch may use [code: LaunchRegistry.requiredHook].
+        The decision stands even so: one half of this revenue is a different
+        illiquid token per launch, accumulating at an immutable address. Keep
+        it, sell it, or charge the fee on the input instead - each is a
+        different answer and none is the default.
+    (d) WITHDRAWAL: who may take the protocol's share out, under what
+        authority, and on whose signature? This is the question A2 cannot be
+        answered without.
+    (e) DOES THE ESCROW EARN ITS PLACE AT ALL? The curve credits it because
+        PONS did. A direct payment to the recipient is fewer moving parts; the
+        escrow buys the ability to keep paying when one recipient address stops
+        being deliverable, which is a real property for a permissioned quote
+        asset - the vendored code says as much in rescueFees' own comment.
+        Decide it on that trade-off rather than by inheritance.
+    (f) THE CREATOR'S ADDRESS IS FIXED FOR THE LIFE OF THE LAUNCH (C3). Accept
+        it, or design the handoff - and if the handoff exists, it is a new
+        authority and belongs in this table.
+
+  ORDER OF WORK, ONCE THESE ARE DECIDED
+    the two decisions  ->  real escrow/policy, or the design that removes them
+                       ->  a mockless deployment script, proven on a fork of
+                           the target chain
+                       ->  scope the audit
+                       ->  audit
+    Nothing in that chain should start before the line above it is settled.

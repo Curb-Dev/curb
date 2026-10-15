@@ -1,0 +1,310 @@
+================================================================================
+B20 NATIVE TEST ENVIRONMENT
+How to run against real B20 behaviour, and what is proven where
+================================================================================
+Date  : 11 September 2026
+Status: Environment stands up and serves real B20. Pool work not yet done.
+
+
+================================================================================
+1. THREE ENVIRONMENTS, KEPT SEPARATE
+================================================================================
+
+These are different things and a result proven in one is not proven in the
+other. Every claim below says which it came from.
+
+  MAINNET, READ-ONLY
+    Base mainnet over a public RPC, queried with stock cast from Windows.
+    Has: real B20 state and real precompile behaviour.
+    Cannot: send transactions, seed liquidity, or run our contracts.
+    Used for: the codesize/0xef measurements, multiplier(), the
+    InsufficientBalance signature match, Uniswap v4 deployment verification.
+
+  LOCAL FORK UNDER base-anvil          <- new, this document
+    base-anvil forking Base mainnet at a pinned block, running in WSL2.
+    Has: forked mainnet state, and - observed rather than configured - B20
+    calls answer correctly. See section 4 on activation: we have not found
+    the positive signal that says the precompiles are active, only that the
+    calls worked.
+    Can: send transactions, fund accounts, deploy, seed pools.
+    Used for: everything from here on that needs a live B20 to transact with.
+
+  A THIRD ENVIRONMENT EXISTS AND IS NOT THIS ONE
+    base-anvil with NO fork gives precompile behaviour but no issued B20
+    assets - there is no NVDAc to trade. Not used yet; noted so nobody
+    confuses "precompiles are on" with "the assets are there".
+
+
+================================================================================
+2. INSTALLED TOOLCHAIN
+================================================================================
+
+HOST
+  Windows 11, with WSL2 Ubuntu 24.04.3 LTS, x86_64.
+  base-anvil has no Windows build, which is why this lives in WSL.
+
+IN WSL
+  stock foundry      forge 1.8.1 / anvil 1.8.1
+                     curl -L https://foundry.paradigm.xyz | bash && foundryup
+  Base build         base-forge 1.6.0-v1.1.0 / base-anvil 1.6.0-v1.1.0
+                     (6130ccf6af, 2026-06-15)
+                     installed under ~/.foundry/versions/base-v1.1.0
+                     curl -L https://raw.githubusercontent.com/base/base-anvil/HEAD/foundryup/install | bash
+                     base-foundryup
+  python3            3.12.3
+
+ON WINDOWS (the project itself)
+  forge 1.7.1, solc 0.8.30 pinned in foundry.toml, via_ir on.
+
+THREE FOUNDRY VERSIONS ARE NOW IN PLAY: 1.7.1 (project, Windows),
+1.8.1 (stock, WSL), 1.6.0 (base-forge). They are not interchangeable and the
+differences are not yet characterised.
+  [ ] Confirm the project still builds and tests identically under base-forge
+      1.6.0 before trusting any result it produces.
+
+PYTHON VERSION GAP
+  Base's fork-test runner documents Python 3.13. WSL has 3.12.3. Not hit yet
+  because the runner has not been used, but it will matter if we adopt it.
+
+
+================================================================================
+3. THE GOTCHA THAT COSTS AN HOUR
+================================================================================
+
+`cast call` FAILED HERE WITH STOCK cast 1.8.1.
+
+Scoped to what was actually observed: with stock cast 1.8.1, against this
+base-anvil fork, every `cast call` failed with
+
+    Error: unsupported network family `base` reported by fork endpoint
+
+Not tested: other cast versions, other subcommands, or an unforked node. The
+general claim "stock cast cannot talk to base-anvil" is broader than the
+evidence and is not made here.
+
+What still worked: cast codesize returned 1, because that reads state and
+needs no network-family support. So a shallow check LOOKS fine while every
+call fails. Use base-cast.
+
+  WRONG   cast call <b20> 'name()(string)' --rpc-url http://127.0.0.1:8546
+  RIGHT   base-cast call <b20> 'name()(string)' --rpc-url http://127.0.0.1:8546
+
+
+================================================================================
+4. COMMANDS
+================================================================================
+
+START THE NODE (WSL)
+    export PATH="$HOME/.foundry/bin:$PATH"
+    base-anvil       --fork-url https://mainnet.base.org       --fork-block-number 51171034       --port 8546 --host 0.0.0.0
+
+  PIN THE BLOCK. Without --fork-block-number the node forks HEAD, so a rerun
+  is a different chain state from the one whose results were recorded, and
+  every figure in section 5 stops being reproducible.
+    block 51171034
+    hash  0x7bfea0b62586ce94188b32d84f6037333fc6a0ac2d826f4bd2c3d7987075b35f
+
+  --host 0.0.0.0 so the node is reachable from the Windows side as well.
+
+  THE NODE IS THE PIN. FORGE IS NOT PINNED UNLESS YOU CHECK.
+  forge, given no --fork-block-number, forks at whatever the NODE calls latest.
+  That equals the fork block only while nothing has been mined on the node
+  since it started - and our own scripts mine: an impersonated B20 transfer is
+  a local transaction, and anvil mines a local block for it.
+
+  A drifted latest is NOT new mainnet blocks arriving. It is local blocks on
+  top of the same fork base, so what changes underneath a test is the LOCAL
+  STARTING STATE those transactions left behind - balances, approvals - not the
+  mainnet data being forked. Still enough to move a measured figure.
+
+  THIS HAPPENED. Every constant in section 5 was first recorded with the node
+  two blocks past its fork base, while the documents said 51171034.
+  test/fork/B20ForkTest.sol now asserts block.number in every fork test's
+  setUp, so it fails loudly instead of drifting quietly.
+    FIX:  bash script/b20/start-node.sh
+
+  DO NOT REACH FOR --fork-block-number ON THE FORGE SIDE WITHOUT CHECKING IT.
+  Passing it here produced a burst of "failed to get storage ... operation
+  timed out" errors and left the node unresponsive to any further request.
+  That is what was OBSERVED, once, in this environment. The explanation that
+  suggests itself - that naming a historical block makes anvil serve each read
+  from upstream, and that the upstream rate-limits - was NOT established:
+  nothing measured upstream traffic or saw a rate-limit response. Restarting
+  the node is the workaround that was used, not a diagnosis.
+
+ACTIVATION STATE - RECORD IT, DO NOT ASSUME IT
+  The base-foundryup installer prints "Base precompiles are ON by default in
+  these commands". That is the installer's claim, not the node's. The node's
+  own startup banner contains NO precompile or feature-activation line - the
+  only "Base" strings in it are the fork endpoint and "Base Fee".
+  Base's own guide notes that in node mode features can start disabled and
+  may need activating.
+  So what is established is narrower and empirical: IN THIS FORK RUN, B20
+  calls worked. Capture the startup log with each run rather than relying on
+  a default.
+  [ ] Find the positive signal that says features are active, rather than
+      inferring it from calls happening to succeed.
+
+QUERY IT
+    base-cast chain-id     --rpc-url http://127.0.0.1:8546
+    base-cast call <addr> '<sig>' --rpc-url http://127.0.0.1:8546
+
+CALLING WSL FROM THE WINDOWS SIDE
+  Git Bash rewrites /home/... into C:/Program Files/Git/home/..., so
+  `wsl.exe -- /home/<user>/.foundry/bin/base-anvil` fails with exit 127.
+  Prefix with MSYS_NO_PATHCONV=1, and put multi-command work in a script file
+  rather than a quoted -c string, because $VARIABLES in such strings are
+  consumed by the outer shell before WSL sees them.
+
+
+================================================================================
+5. WHAT THIS ENVIRONMENT HAS PROVEN
+================================================================================
+
+Fork of Base mainnet pinned at block 51,171,034
+(hash 0x7bfea0b62586ce94188b32d84f6037333fc6a0ac2d826f4bd2c3d7987075b35f),
+queried with base-cast:
+
+    NVDAc  0xb20000000000000000000078ee7ce2fE4908108C
+      codesize    1                        (the 0xef marker, forked state)
+      name        "NVIDIA Corporation"
+      symbol      "NVDAc"
+      decimals    8
+      totalSupply 1691570119555
+      multiplier  1000000000000000000      (1e18)
+
+This is the first time anything in this repository has run against real B20
+behaviour rather than a mock. It confirms, in an environment we can transact
+in, what mainnet reads had already suggested.
+
+  NOTE: totalSupply differs from the 1719770119555 read from mainnet earlier
+  today. Expected - the fork is pinned to a block and supply moves with
+  mint/redeem. Pin the fork block when a test needs a stable figure.
+
+STEP 1 - FORK AND MAINNET AGREE AT THE SAME BLOCK
+  Run against the block-pinned node, comparing each read with the same read
+  on mainnet at --block 51171034:
+
+    name         "NVIDIA Corporation"    ==  "NVIDIA Corporation"
+    symbol       "NVDAc"                 ==  "NVDAc"
+    decimals     8                       ==  8
+    totalSupply  1691570119555           ==  1691570119555
+    multiplier   1000000000000000000     ==  1000000000000000000
+    codesize     1                       ==  1
+
+  Six of six. The fork is not approximating B20, it is serving it.
+
+A PROVENANCE TRAP WORTH RECORDING
+  The first attempt at this comparison produced the same six matches - from
+  the WRONG NODE. The pinned node had failed to start with "Address already
+  in use", because the earlier unpinned node still held 8546, and the
+  comparison silently used that one instead. It agreed only because an anvil
+  fork does not advance blocks on its own, so the unpinned node was still
+  sitting at the height it forked at.
+  `pkill -f base-anvil` does not stop it: base-anvil is a wrapper that execs
+  anvil, so the process is named `anvil`. Check with
+      ss -ltnp | grep 8546
+  and confirm the node's own startup log shows the pinned block and hash
+  before trusting any figure it produced.
+
+
+STEP 2 - A REAL B20 STATE CHANGE, LOCALLY
+  This is the stronger evidence, and it supersedes hunting for an activation
+  log line. Reads could in principle be served from forked state; a state
+  TRANSITION cannot - the precompile has to execute.
+
+  Impersonated holder  0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef
+    found by taking the largest Transfer recipients in a 134-block window and
+    checking only those. codesize 0, so an EOA - nothing to fight.
+  Recipient            0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 (anvil #0)
+  Amount               100000000  (1.0 NVDAc, 8 decimals)
+
+    before   sender 1334609703   recipient 0
+    after    sender 1234609703   recipient 100000000
+    receipt  status 0x1, gasUsed 59070
+    tx       0xdbf2b514717b268432127a3f929acea63dab3464d9245cea73840bc52d10ef85
+
+  Both sides moved by exactly the amount. script/b20/transfer-b20.sh asserts
+  that and exits non-zero otherwise.
+
+  HOW NOT TO LOOK FOR A HOLDER. The first attempt scanned every Transfer
+  recipient over 11,000 blocks and called balanceOf on each. On a fork every
+  miss proxies upstream, so that is one network round trip per candidate - it
+  ran for eighty minutes, and the WSL VM then stopped responding with
+  HCS_E_CONNECTION_TIMEOUT, needing wsl --shutdown. The volume of calls is a
+  plausible trigger but is NOT established as the cause - that error only says
+  the VM stopped answering. Query a narrow window, sort by amount from the log
+  data, and probe three addresses.
+
+
+STEPS 3-5 - B20 WORKS IN UNISWAP V4 CORE
+  test/fork/B20UniswapV4.t.sol, run against this node:
+
+    base-forge test --match-path "test/fork/B20UniswapV4.t.sol"                     --fork-url http://127.0.0.1:8546 -vv
+
+  Against the PoolManager already deployed on Base
+  (0x498581fF718922c3f8e6A244956aF099B2652b2b), not a locally deployed one, so
+  the result speaks about the live contract.
+
+  Pool         NVDAc / CURBTEST, fee 3000, tickSpacing 60, hooks address(0)
+  Settlement   by hand: sync(currency) -> transfer -> settle() for what is
+               owed to the pool, take() for what is owed to us
+  Callback     rejects any caller that is not that PoolManager
+
+  ALL FIGURES ARE RAW UNITS, and the two sides are not comparable. NVDAc has
+  8 decimals, the test meme token has 18. So 100000000 raw is 1.0 NVDAc on one
+  side and 0.0000000001 MEME on the other. The pool is initialised at a 1:1
+  RAW price, which is not an economically meaningful rate - it only has to be
+  a valid one for the mechanics under test.
+
+    initialize   pool created with a B20 currency
+    liquidity    NVDAc   100000000 raw in   MEME   100000000 raw in
+    swap NVDAc->MEME     1000000 raw in     987158 raw out
+    swap MEME->NVDAc     1000000 raw in    1006838 raw out
+
+  The figures are coherent. Full range at a 1:1 raw price takes equal raw
+  amounts of each side. The first swap loses 1.28% to the 0.3% fee plus price
+  impact on a trade worth 1% of the position. The second gets more NVDAc back
+  than the MEME it paid because the first swap moved the price in its favour;
+  netted across both, 12842 MEME was spent to gain 6838 NVDAc, which came out
+  of our own MEME balance rather than from nowhere.
+
+  A REAL FAILURE ON THE WAY, WORTH KEEPING. The first attempt asked for
+  liquidity of 1e12 while the harness held 5e8 NVDAc, and B20 rejected it with
+  0xdb42144d - the same InsufficientBalance selector matched earlier from
+  mainnet. The error surfaced cleanly through v4 core with the holder, the
+  balance and the request in its parameters. That is itself evidence the
+  integration behaves: the token's own error reached us unmangled.
+
+  EVIDENCE TYPE. These are forge assertions on exact balance deltas, not
+  transaction receipts. The receipt-level evidence is in step 2, from
+  script/b20/transfer-b20.sh, which asserts status 0x1 and both deltas.
+
+
+================================================================================
+6. WHAT IT HAS NOT PROVEN
+================================================================================
+
+  [x] Seed a Uniswap v4 pool with a B20 asset
+  [x] Add liquidity to it
+  [x] Swap in both directions and show the balance changes on both sides
+  [x] PositionManager, Permit2 and locking an LP position NFT.
+      test/fork/B20PositionManager.t.sol and test/fork/B20PositionLock.t.sol.
+      A position mints through the real two-step Permit2 flow and a lock holds
+      it; most of the lock's file is negative assertions, because "locked" is a
+      claim about what cannot happen.
+  [x] The same flow through OUR hook, with fee collection.
+      test/fork/B20FeeHook.t.sol and test/fork/B20LockedPoolLifecycle.t.sol.
+      The lifecycle file runs mint -> lock -> two-way swaps -> fee claim ->
+      release on ONE pool carrying the hook, and separates the LP fee from the
+      hook fee: they are charged on different sides, in different tokens.
+  [x] An end-to-end swap arriving through a router a real user would use.
+      test/fork/B20UniversalRouter.t.sol, through the official UniversalRouter
+      with the real Permit2 approvals. That is Q1 in ROUTER_ACCESS.txt.
+      IT IS NOT Q2: nothing here shows an aggregator CHOOSING our pool for a
+      user who did not name it, which remains the allowlist question.
+
+Those last two are distinct results and neither follows from the first. A
+hookless pool working says nothing about whether a hooked pool works, and a
+working hooked pool says nothing about whether user flow reaches it - which
+is the routing risk recorded in VENUE_DECISION.txt section 5.

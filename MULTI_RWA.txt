@@ -1,0 +1,552 @@
+================================================================================
+CURB - MULTI-RWA SUPPORT: SURVEY AND PROPOSED DESIGN
+================================================================================
+Date  : 19 September 2026
+Status: SURVEY AND PROPOSAL. Nothing is decided. No asset is adopted, no
+        threshold, phantom, tier or route is chosen, and no code is changed by
+        this file.
+
+WHAT WAS ASKED FOR
+  1. Where NVDAc is assumed, across factory, registry, graduator, hook, escrow,
+     router and the interface.
+  2. Which RWAs could be supported first on the target chain, with verified
+     address, decimals, transfer policy and conversion liquidity.
+  3. A proposed architecture and what it costs the system that exists.
+  4. An implementation order, and the lifecycle to verify per asset.
+
+WHAT IS HELD FIXED, AND NOT REOPENED HERE
+  THE FEE MODEL DOES NOT CHANGE. One tax per launch, 1%-5%, chosen by the
+  creator; the platform takes a fixed 50 bps of the trade base at every
+  setting; the creator keeps T - 50. Charged on the QUOTE side both ways, on
+  the curve and in the pool. FEE_POLICY.txt stands as written.
+
+  B1 AND B2 STAY OUT OF SCOPE by the decision of 19 September 2026. Nothing
+  proposed here needs a reference price or a weekend mode, and nothing here is
+  an argument to revisit them.
+
+  CLOSED ITEMS ARE NOT REOPENED. A2, A5, B3, C1, C2, C3, D1, D2 and E1 keep
+  their closures. Where multi-asset work would extend one of them - the escrow
+  in A2, the refusal path in C1 - it is named as an EXTENSION to verify per
+  asset, not as a reopening.
+
+  NO NEW TEST INFRASTRUCTURE IS PROPOSED. The lifecycle in section 4 is the
+  existing fork suite and the existing browser suite, parameterised by asset.
+
+PROVENANCE
+  Every on-chain figure below is an eth_call against a LOCAL FORK of Base at
+  block 51171039, made on 19 September 2026. Nothing was sent, nothing was
+  deployed, and no figure here was measured on mainnet by this file. Code
+  claims name the file and line they were read from.
+
+
+================================================================================
+1. WHERE NVDAc IS ASSUMED
+================================================================================
+
+1.1 THE CONTRACTS - LESS THAN EXPECTED, AND THE CONSTRAINT IS NOT WHERE IT LOOKS
+
+    THERE IS NO NVDAc ADDRESS ANYWHERE IN src/. Every occurrence of the name in
+    the contracts is a comment. The quote asset is a FIELD ON THE LAUNCH
+    RECORD, and every consumer reads it from there.
+
+    ALREADY ASSET-AGNOSTIC - these need no change to serve a second asset:
+
+      LaunchRegistry   stores `address quoteToken` per launch [:83]. No
+                       allowlist and no per-asset branch: register() checks
+                       only that it is non-zero [:280] and not the launch token
+                       itself [:285].
+      Graduator        reads rec.quoteToken for the reserve transfer, the
+                       currency ordering and the refund [:213, :218, :225,
+                       :232-233, :287].
+      FeeHook          stores quoteToken per POOL [:117] and derives which side
+                       of the pair it is [:197, :200]. One hook already serves
+                       any number of quote assets.
+      LaunchLens       reads it from the record and rebuilds the pool key
+                       [:97, :104-107].
+      PositionLock,
+      FeePolicy        no quote-asset term at all.
+
+    BOUND TO ONE ASSET:
+
+      CurbLaunchFactory  `address public immutable quoteToken` [:158, set :249,
+                         used :312, :337]. One factory serves one asset.
+      FeeEscrow          `address public immutable quoteToken` [:61, set :95];
+                         creditToken and the claim path refuse every other
+                         token with UnsupportedToken [:110, :194].
+
+    BOUND TO ONE SET OF NUMBERS - the same mechanism, and the bigger half of
+    the problem. All of these are immutable on the factory [:164-172]:
+
+      supply, phantomQuote, graduationThreshold, poolFee,
+      tickSpacing, hooks, protocolFeeRecipient, maxInternalPriceImpactBps
+
+    So a factory is not merely "the NVDAc factory": it is one asset AND one
+    parameter set. For multi-asset that is a feature, not an obstacle - see
+    section 3 - because the parameters have to differ per asset anyway.
+
+    THE REAL CONSTRAINT IS THE REGISTRY, AND IT IS EASY TO MISS.
+    LaunchRegistry.wire() [:241] names ONE factory and ONE hook, is callable
+    exactly once by the deployer, and VERIFIES the whole loop closes before
+    accepting them - the launcher's graduator points back at this registry, the
+    hook has code and the right permissions, the hook's poolOpener is that
+    graduator, and hook and graduator agree on the PoolManager
+    [the checks are documented at LaunchRegistry.sol:237-255, the block above
+    wire() itself].
+
+    Consequence: "just deploy a second factory" DOES NOT WORK against the
+    registry that exists. A second factory cannot register into it. Any
+    multi-asset design has to answer this, and the two honest answers are a
+    second registry per asset or a registry that admits more than one factory.
+
+1.2 DEPLOYMENT
+
+    script/DeployCurb.s.sol:138   new FeeEscrow(NVDAC)
+
+    That is the ONLY place the NVDAc address is written down in anything that
+    runs. It is a script constant, and the factory takes the same value at
+    :154.
+
+    Note the hook is deployed with a mined salt [:131] because a v4 hook's
+    permissions are encoded in its address. Any design that needs one hook per
+    asset pays that mining cost per asset; any design that keeps one hook does
+    not.
+
+1.3 THE ROUTER AND THE ETH ROUTE
+
+    WHAT FOLLOWS IN 1.3 AND 1.4 IS THE STATE BEFORE THE WORK, kept because it
+    is the measurement that justified doing it. THE WORK IS DONE - see
+    PRE_MAINNET F2 - and none of the three line numbers below now points at
+    what it describes. Re-read them as the "before" column.
+
+    The conversion route is NOT in the contracts. It lives in the page, and it
+    WAS the most asset-specific thing in the system:
+
+      web/app.js:42   const V3_FEE = 3000, whose own comment at :41 reads
+                      "The only NVDAc/WETH fee tier on Base with liquidity at
+                      the pinned block"
+      web/app.js:40   WETH as the intermediate leg
+      web/app.js:52   the v3 factory, used only to find that pool for its mid
+
+    NOW: V3_FEE is gone and a tombstone comment stands where it was
+    [web/app.js:50]; the tiers are a list [V3_TIERS], the pools are discovered
+    per asset, and which path is taken is decided by QUOTING BOTH and keeping
+    the better one rather than by any rule written here [bestV3Leg].
+
+    ETH -> WETH -> NVDAc on Uniswap v3, then NVDAc -> token on our v4 pool, in
+    one UniversalRouter call. Section 2 shows this route DOES NOT EXIST for
+    TWELVE OF THE THIRTEEN equities - NVDAc is the only one with a WETH pool
+    holding anything - which makes it the hardest part of the work rather than
+    an afterthought.
+
+1.4 THE INTERFACE
+
+    Literal occurrences of the string "NVDAc", counted rather than estimated:
+
+    web/app.js     94 occurrences on 86 lines
+    web/app.html   10 on 8
+    web/browse.js   2 on 2
+
+    AND RE-COUNTED AFTER THE WORK, 2026-09-20, the same way:
+
+    web/app.js     37 on 35     all 35 of those lines are prose in block
+                                comments, where the asset is named as an
+                                example or as history
+    web/app.html    0
+    web/browse.js   0
+
+    THE LAST 24 WERE FOUND BY A CHECK, NOT BY THE WORK ITSELF. The labels had
+    been made generic early, which made the page LOOK converted; the SENTENCES
+    had not. The allowance prompt, both receipts, the tax breakdown, the ETH
+    route's "in the middle" line and the tax-split preview all still said NVDAc
+    to somebody trading SPCXc. They now read the symbol.
+
+    Already generic: DECIMALS ARE READ FROM THE ASSET, not assumed - the page
+    calls decimals() and fails loudly if the asset does not answer
+    [app.js:274-276, :552-554]. That is the one part of the interface that
+    needs nothing.
+
+    Not generic AT THE TIME: every label, and the route above. There was also
+    a comment stating the parameter rationale in NVDAc terms which would become
+    wrong rather than merely stale under a second asset. All three are done.
+
+
+================================================================================
+2. THE ASSETS ON BASE - THE FULL LIST, VERIFIED
+================================================================================
+
+  HOW THIS LIST WAS BUILT, AND WHY IT IS NOT A SEARCH OF THE CHAIN.
+  There is no way to enumerate B20 on chain. base-std's IB20Factory declares
+  exactly four functions - createB20, getB20Address, isB20, isB20Initialized -
+  and none of them counts, indexes or lists. The precompile sits at
+  0xB20f000000000000000000000000000000000000. A B20 address is 0xb2, ten zero
+  bytes, then nine bytes that cannot be walked.
+
+  So candidates came from outside and the CHAIN decided. Three public token
+  lists (CoinGecko's Base list, 1inch's chain-8453 list, Uniswap's default Base
+  list) gave 25 B20-shaped addresses between them. That was INCOMPLETE: it was
+  missing COINc, CRCLc and INTCc, which press coverage names. A competitor,
+  thestonks.exchange, ships its pairing list in its own page bundle; parsing it
+  supplied those three and the wrapped assets. 39 candidates in total.
+
+  EVERY ONE WAS THEN ASKED THE CHAIN, and the chain's answer is what is
+  recorded below - isB20(), symbol(), name(), decimals(), totalSupply(), the
+  three transfer policy scopes, the policy registry, and every pool at three
+  venues against both WETH and USDC. A list's label is carried only so a
+  mismatch can be reported; it is never the evidence.
+
+  isB20() WAS CONTROL-TESTED FIRST, against two known B20s (true) and three
+  known non-B20s - WETH, USDC and an address with no code (false). Without that
+  a "true" would mean nothing. The three venue factories were control-tested
+  the same way against WETH/USDC, so "no pool" below is a real absence and not
+  a wrong address.
+
+  WHAT THIS STILL CANNOT SAY: that it is complete. An asset in none of the four
+  sources is absent from here, and nothing on chain would reveal it. The
+  measurement is a floor on what exists, not a ceiling.
+
+2.1 THE TOKENIZED EQUITIES - THIRTEEN, ALL VERIFIED
+
+    Every one: isB20 = true, initialized = true, DECIMALS = 8, and all three
+    transfer policy scopes = policy 5, admin 0xEC0F05C174e54FBf0Fe16ad930a8AFEb
+    Ce612812. Sorted by the dollars in their largest measured pool, which is
+    the only ordering that matters for a quote asset.
+
+    sym     company                       address
+    ------  ----------------------------  ------------------------------------------
+    NVDAc   NVIDIA Corporation            0xb20000000000000000000078ee7ce2fe4908108c
+    SPCXc   Space Exploration Tech.       0xb2000000000000000000007b9fcbd005511acbd5
+    GOOGLc  Alphabet Inc.                 0xb2000000000000000000002d0ba3164cc74f58b7
+    AAPLc   Apple Inc.                    0xb200000000000000000000c2e324d24d7eecd1fb
+    MSFTc   Microsoft Corporation         0xb200000000000000000000ab99cfa739e253872b
+    METAc   Meta Platforms Inc.           0xb2000000000000000000008bc8786b856e61707c
+    AMZNc   Amazon.com Inc.               0xb200000000000000000000d9192b6b456483c2e8
+    MSTRc   Strategy Inc.                 0xb2000000000000000000004884b426556b92883d
+    TSLAc   Tesla Inc.                    0xb2000000000000000000001e800a7f5189430cd0
+    SNDKc   Sandisk Corporation           0xb200000000000000000000397293cb8cda9a10c5
+    COINc   Coinbase Global Inc.          0xb200000000000000000000c85a31389d71f3ecfb
+    CRCLc   Circle Internet Group Inc.    0xb20000000000000000000019f6e7c675b73c2e4d
+    INTCc   Intel Corporation             0xb2000000000000000000004aff16039ba04bdfbc
+
+2.2 WHAT EACH ONE CAN ACTUALLY BE ENTERED WITH
+
+    The largest pool found for each, at Uniswap v3, Aerodrome v2 and Aerodrome
+    CL, against WETH and USDC.
+
+    THESE ARE CUSTODY FIGURES - what the pool holds at the forked block. That
+    is a HARD UPPER BOUND, because nothing can take more of an asset out of a
+    pool than the pool has. IT IS NOT DEPTH and it is not a price: in a
+    concentrated pool the balance ratio is neither the mid nor the shape of
+    liquidity around it. D3 is what measures depth and it has only ever been
+    run for NVDAc.
+
+    sym     largest pool           holds
+    ------  ---------------------  --------------------------------------------
+    NVDAc   uni-v3 USDC 0.3%       144.99 NVDAc / 22,181.86 USDC
+            uni-v3 WETH 0.3%       154.42 NVDAc /      0.8183 WETH
+    SPCXc   uni-v3 USDC 1%         108.67 SPCXc / 14,776.07 USDC
+    GOOGLc  uni-v3 USDC 1%         116.18 GOOGLc / 11,776.52 USDC
+    AAPLc   uni-v3 USDC 0.3%         8.26 AAPLc / 11,311.27 USDC
+    MSFTc   uni-v3 USDC 1%          13.67 MSFTc /  5,381.74 USDC
+    METAc   uni-v3 USDC 0.3%         6.15 METAc /  4,589.57 USDC
+    AMZNc   uni-v3 USDC 1%          31.11 AMZNc /  4,151.50 USDC
+    MSTRc   uni-v3 USDC 1%           0 MSTRc / 0.06 USDC            - EMPTY
+    TSLAc   uni-v3 USDC 1%           0.0009 TSLAc / 0 USDC          - EMPTY
+    SNDKc   uni-v3 USDC 1%           0.0001 SNDKc / 0 USDC          - EMPTY
+    COINc   none                   NO POOL AT ANY VENUE ASKED
+    CRCLc   none                   NO POOL AT ANY VENUE ASKED
+    INTCc   none                   NO POOL AT ANY VENUE ASKED
+
+    SIX OF THIRTEEN HAVE NOTHING TO TRADE AGAINST. A competitor listing an
+    asset is not evidence that the asset can be entered: three of the names on
+    thestonks.exchange's own pairing list have no pool at all at the venues
+    asked, and three more hold dust. Listing them would offer a launch nobody
+    could buy into.
+
+    NVDAc IS THE ONLY EQUITY WITH A WETH POOL THAT HOLDS ANYTHING. Every other
+    one is USDC-only. The page's whole ETH route exists because that single
+    pool exists; for any other asset the route has to be ETH -> WETH -> USDC ->
+    asset, a second hop with its own fee and impact. UniversalRouter takes a
+    multi-hop v3 path, so this is supportable - but it is UNMEASURED.
+
+2.3 SIXTY UNITS DOES NOT TRANSFER, AND THE MEASUREMENT SAYS SO
+
+    Against each asset's largest measured pool, a 60-unit threshold would be:
+
+      NVDAc      60 / 144.99  =    41%  of everything that pool holds
+      GOOGLc     60 / 116.18  =    52%
+      SPCXc      60 / 108.67  =    55%
+      AMZNc      60 /  31.11  =   193%   - twice the pool
+      MSFTc      60 /  13.67  =   439%
+      AAPLc      60 /   8.26  =   727%
+      METAc      60 /   6.15  =   975%   - nearly ten times
+      MSTRc, TSLAc, SNDKc      unfillable - the pools are empty
+      COINc, CRCLc, INTCc      unfillable - there are no pools
+
+    A threshold of 60 AAPLc could not be filled from the measured venues at any
+    price. Three of them could not be filled at all. The threshold, the phantom
+    and the route have to be chosen per asset, from that asset's own
+    measurement. THIS FILE CHOOSES NONE OF THEM.
+
+2.4 THE WRAPPED ASSETS - EIGHT, AND HALF OF THEM ARE NOT B20
+
+    Coinbase's wrapped crypto is on the same competitor's pairing list. These
+    are NOT real-world assets - a wrapped BTC is a claim on BTC - but they are
+    candidate quote assets, and one of them is by far the deepest thing
+    measured here.
+
+    sym      isB20   dec  policy   largest pool holds
+    -------  ------  ---  -------  -----------------------------------------
+    cbBTC    FALSE   8    none     46.00 cbBTC / 4,360,888.05 USDC
+    cbXRP    FALSE   6    none     8,719.25 cbXRP / 34,727.45 USDC
+    cbDOGE   FALSE   8    none     587,817.33 cbDOGE / 19.50 WETH
+    cbLTC    FALSE   8    none     1,378.33 cbLTC / 11.32 WETH
+    cbZEC    TRUE    8    118      7.55 cbZEC / 13,161.45 USDC
+    cbADA    FALSE   6    none     1,723.42 cbADA / 357.29 USDC
+    cbMEGA   FALSE   18   none     1.10 cbMEGA / 0.04 USDC
+    cbHYPE   TRUE    18   119      NO POOL AT ANY VENUE ASKED
+
+    TWO FINDINGS HERE MATTER MORE THAN THE LIST.
+
+    (a) "cb" IS A VANITY ADDRESS PREFIX, NOT A STANDARD. Six of these eight are
+        ordinary ERC-20s at addresses beginning 0xcb; isB20() says false for
+        every one. Only cbZEC and cbHYPE are B20. Anything that reasons "it is
+        a Coinbase asset, so it behaves like NVDAc" is wrong about six of eight.
+
+    (b) THE NON-B20 ONES HAVE NO TRANSFER POLICY AT ALL. There is no policy
+        system on them, so there is no PolicyForbids to surface and C1's whole
+        concern does not apply. That is a DIFFERENT integration, not an easier
+        one: the escrow's no-movement assumption, the refusal path and the
+        interface's restriction message all change shape.
+
+    cbBTC holds 4.36 MILLION USDC in a single pool - roughly two hundred times
+    NVDAc's deepest. If depth is what decides the second asset, it is not an
+    equity.
+
+2.5 THE B20 MEMECOINS - AND A THIRD POLICY ANSWER
+
+    Also verified as real B20s, at 18 decimals: Basecat, BASEJUICE, BaseUnc,
+    BLUECHIP (two different tokens share this symbol), B420, BRIAN, GJESSE,
+    HAYLORD, MEOW, owl1, RAWR, RWAGMI.
+
+    EVERY ONE OF THEM REPORTS POLICY ID 0 ON ALL THREE SCOPES - no transfer
+    policy. So B20 has at least three regimes in production: one policy with
+    one admin over the thirteen equities, separate policies with separate
+    admins for the wrapped assets (118, 119), and no policy at all for the
+    memecoins. "It is a B20, so it is policy-gated" is false.
+
+    Basecat holds 89.67 WETH in one pool - more WETH liquidity than any equity
+    measured here, NVDAc included.
+
+2.6 WHAT WAS NOT MEASURED - so it is not mistaken for absence
+
+    - Uniswap v4 pools, for anything. A v4 pool is addressed by the hash of its
+      PoolKey, so it cannot be enumerated without knowing fee, tick spacing and
+      hook in advance. There may be v4 liquidity none of this saw.
+    - Any venue beyond Uniswap v3/v4 and Aerodrome v2/CL.
+    - Depth, price impact and round-trip cost for anything but NVDAc. That is
+      D3's method.
+    - A real swap for anything but NVDAc, which test/fork/B20EthRoute.t.sol
+      covers.
+    - The refusal path for any asset but NVDAc. The twelve other equities share
+      policy 5, which is an argument that the mechanism is identical - it is not
+      a measurement that it is.
+    - ISTONKS (0xcb2baff7177c8966a8b059b3df3e9323dc2ee267), on the competitor's
+      list, did not answer decimals() at this block and is recorded as
+      unresolved rather than guessed at.
+    - Price feeds. Deliberately: B1/B2 are out of scope.
+    - Mainnet. Every figure is from a fork at block 51171039.
+
+2.7 THE RISK THAT GOT WORSE, NOT BETTER
+
+    All thirteen equities sit under ONE policy with ONE admin. Offering more of
+    them does NOT diversify issuer risk: a restriction applied at policy 5 would
+    reach every one of them in the same block. Any claim that a wider equity
+    list spreads that exposure would be false, and the interface must not imply
+    it. Spreading across REGIMES - an equity, a wrapped asset with its own
+    admin, a policy-free token - is the only thing measured here that would.
+
+
+================================================================================
+3. PROPOSED ARCHITECTURE
+================================================================================
+
+3.1 WHAT THE SHAPE OF THE PROBLEM ACTUALLY IS
+
+    Two things must be per-asset and one thing must not.
+
+      PER ASSET, necessarily:  the quote token, and the parameter set
+                               (threshold, phantom, pool tier, tick spacing),
+                               because section 2.3 shows they cannot be shared.
+      PER ASSET, by current
+      construction:            the escrow, which refuses any other token.
+      NOT PER ASSET:           discovery. One registry is what makes browse a
+                               single lens call; fragmenting it is a product
+                               regression, not an implementation detail.
+
+3.2 THREE OPTIONS
+
+    OPTION A - A WHOLE STACK PER ASSET
+      A registry, factory, graduator, hook and escrow per asset.
+      FOR   no contract changes at all; complete isolation - a halted or
+            restricted asset cannot affect another.
+      AGAINST
+            a hook per registry means MINING A HOOK SALT PER ASSET [:131];
+            discovery fragments into N registries and the browse page becomes
+            an aggregator over N lenses; N escrows to sweep and N wirings to
+            verify; the platform recipient is repeated N times, which multiplies
+            the surface A6 is deciding.
+      VERDICT  the honest fallback if 3.3 is judged too invasive, but it pays
+            in the place the product is weakest - discovery - to avoid touching
+            one function.
+
+    OPTION B - ONE REGISTRY, A FACTORY PER ASSET   << RECOMMENDED >>
+      One registry, one graduator, one hook. A factory per asset, each keeping
+      its immutable parameters and its own escrow. The registry admits more
+      than one launcher.
+      CHANGE REQUIRED
+            LaunchRegistry.wire() becomes "add a launcher": the SAME loop
+            verification runs per factory, the hook stays single and is fixed
+            at the first call, and each factory is added once and never
+            changed. This is the most safety-critical function in the file and
+            the change must keep every check it performs today.
+      FOR   discovery stays ONE registry and ONE lens call, so browse, the
+            launch page and the whole browser suite keep working unchanged;
+            one hook, so no salt mining per asset; parameters stay IMMUTABLE
+            per asset, which is what D1 bought.
+      AGAINST
+            it touches a write-once function that currently cannot be called
+            twice, and "callable more than once" is exactly the property that
+            made it safe. The mitigation is that each launcher is still
+            add-only and never replaceable, and the loop check is unchanged -
+            but this needs its own tests at the registry, including a mutation
+            run, before it is believed.
+
+    OPTION C - ONE FACTORY, PARAMETERS IN A TABLE
+      A mapping from asset to parameter set inside one factory.
+      AGAINST  it converts immutable parameters into mutable state with an
+            administrator. This project has deliberately spent effort removing
+            exactly that - C3 records that nobody can point a creator's
+            income at an address of their choosing, with no admin recovery.
+            NOT RECOMMENDED.
+
+3.3 THE ESCROW
+
+    Keep ONE ESCROW PER ASSET, unchanged. FeeEscrow holds money and refuses
+    every token but its own; making it multi-token means editing the credit and
+    claim paths of a contract that custodies fees, for no gain the per-asset
+    instance does not already give. A2's closure then carries per asset, and a
+    restriction on one asset cannot strand another's fees.
+
+    The platform recipient (A6) stays SHARED across assets - it is one decision,
+    not N.
+
+3.4 WHAT THE INTERFACE HAS TO GROW
+
+    - the create form gains a quote-asset choice, from a SHORT EXPLICIT LIST -
+      not "any address", because section 2.3 shows an asset without a route is
+      a launch nobody can enter.
+    - the choice is fixed at launch and read back from the record everywhere
+      else; the curve and the graduated pool use the same asset by construction,
+      since both already read rec.quoteToken.
+    - labels come from symbol() instead of the 106 literal occurrences above.
+    - the ETH route becomes per-asset: a one-hop WETH path where one exists
+      (NVDAc today) and a two-hop WETH->USDC->asset path otherwise. THIS IS THE
+      ONLY GENUINELY NEW ENGINEERING in the interface and it is unmeasured.
+    - browse gains a filter by quote asset once more than one exists.
+
+3.5 WHAT DOES NOT CHANGE
+
+    The fee model, in full. The registry record's shape. The hook. The
+    graduator. The lock. The lens's ABI. The browser suite's selectors.
+
+
+================================================================================
+4. IMPLEMENTATION ORDER, AND WHAT EACH ASSET MUST PASS
+================================================================================
+
+4.1 ORDER - each step is useful on its own and none needs the next
+
+    1  DECIDE THE ASSET LIST. Product, not engineering, and it comes first
+       because everything downstream is sized by it. Section 2 is the input;
+       this file does not make the choice.
+
+    2  MEASURE EACH CHOSEN ASSET THE WAY D3 MEASURED NVDAc: depth, price
+       impact and round-trip cost at the trade sizes the product intends. Only
+       then can the threshold, the phantom and the tier be chosen - per asset,
+       from its own table. Copying 60 is refused by 2.3(c).
+
+    3  REGISTRY: admit more than one launcher, keeping every check wire()
+       performs today, add-only and never replaceable. Tests at the registry
+       in the existing fork suite, plus a mutation run on the new gate. No new
+       harness.
+
+    4  DEPLOY SCRIPT: parameterise the stack per asset - quote token, escrow,
+       factory parameters - with the registry, graduator and hook deployed once.
+
+    5  INTERFACE: asset choice at create, labels from symbol(), per-asset route.
+       The two-hop route is built and MEASURED against the deployed router on
+       the fork before it is offered, the way the one-hop route was.
+
+    6  PER-ASSET LIFECYCLE, below. An asset is not supported until it passes.
+
+    A6, A4, A3 and A1 are unaffected in kind by any of this; A3's scope grows
+    with the asset count, which is a reason to fix the list before the audit
+    rather than after.
+
+4.2 THE LIFECYCLE EACH ASSET MUST PASS BEFORE IT IS OFFERED
+
+    Nothing here is a new kind of test - it is the existing fork and browser
+    coverage, run against that asset.
+
+    ON THE CURVE
+      1  a launch is created with that asset as quote, and the record carries it
+      2  a buy delivers exactly what was quoted, and the tax splits 50 bps to
+         the platform and T-50 to the creator, in that asset
+      3  a sell does the same on the gross output side
+      4  the books close: reserve == owed + tradeable, independently accounted
+
+    GRADUATION
+      5  the threshold is crossed and graduation runs
+      6  the pool is opened on the right pair, with the right hook, at the
+         chosen tier and tick spacing
+      7  the LP position is locked for the full duration
+      8  the remainder is burned and the leftover quote is refunded
+
+    IN THE POOL
+      9  a buy is charged on the asset side in beforeSwap
+      10 a sell is charged on the gross asset output in afterSwap
+      11 the recipients are checked PER LEG, not by the sum
+
+    THE MONEY OUT
+      12 the sweep credits the escrow for that asset
+      13 the platform claims; the creator claims; neither can take the other's
+
+    THE WAY IN
+      14 the ETH route end to end through the deployed UniversalRouter, with
+         the fill MEASURED from the swap deltas rather than inferred from a
+         minimum-output bound
+      15 a routed revert unwinds whole, leaving the trader what they started
+         with
+
+    THE ISSUER
+      16 the policy refusal path for that asset, provoked through the policy
+         admin the way C1 did for NVDAc, and surfaced in the interface
+
+    FAILING ANY OF 1-16 MEANS THE ASSET IS NOT SUPPORTED. "It is a B20 token
+    like NVDAc" is not evidence - 2.3 is the counter-example, where three of
+    four share every property that can be read off the asset and none of them
+    share the route.
+
+
+================================================================================
+5. WHAT THIS FILE DOES NOT DECIDE
+================================================================================
+
+    - which assets are adopted, and how many
+    - any threshold, phantom, r, pool tier or tick spacing for any asset
+    - the conversion route for any asset but NVDAc, which exists already
+    - whether a dollar entry is offered alongside the ETH one
+    - anything about the fee model, which is frozen
+
+    All of these are product decisions. The measurements in section 2 are the
+    input to them and not a substitute for them.

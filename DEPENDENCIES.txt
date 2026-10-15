@@ -1,0 +1,85 @@
+================================================================================
+PINNED DEPENDENCIES
+================================================================================
+Recorded 11 September 2026. lib/ is vendored into this repository rather than
+referenced as submodules, so builds are hermetic and every licence file stays
+in tree. This file records what was vendored and where it came from.
+
+TOOLCHAIN
+  forge        1.7.1
+  solc         0.8.30 (pinned in foundry.toml)
+  evm_version  cancun (pinned in foundry.toml)
+
+VENDORED LIBRARIES
+  forge-std                version 1.16.2     licence: LICENSE-APACHE, LICENSE-MIT
+  openzeppelin-contracts   version 5.7.0      licence: LICENSE
+  v4-core                  version 1.0.2      licence: licenses
+  v4-periphery             version 1.0.4      licence: LICENSE
+
+KNOWN INSTALL REVISION
+  openzeppelin-contracts  7328abe100445fc53885c21d0e713b95293cf14c
+  (reported by forge install; the other three were installed the same way
+   but their revisions were not captured - see the gap below)
+
+GAP TO CLOSE
+  forge install --no-git leaves no lockfile, so v4-core, v4-periphery and
+  forge-std have no recorded upstream revision. The vendored bytes are exact
+  and committed, so builds are reproducible - but provenance is weaker than
+  the roadmap's 'pinned source and tool versions' requires.
+  [ ] Re-derive and record the missing revisions.
+DELIBERATELY NOT VENDORED
+  Uniswap/v4-hooks-public. PONS's MemeHook imports BaseHook from it, and
+  BaseHook is NOT in v4-periphery 1.0.4 - upstream moved it out. So a v4 hook
+  of our own would need this package.
+
+  It was installed, measured at 32,065 files, and then REMOVED because the
+  hook decision is open - see DIFF_TABLE.txt C1 and ROADMAP.txt Phase 0 E.
+
+  [CORRECTED] An earlier version of this note, and the commit message that
+  removed it, treated 32,065 files as the cost of writing a v4 hook. That is
+  wrong. BaseHook.sol imports only from v4-core and v4-periphery:
+    Hooks, IPoolManager, IHooks, BalanceDelta, PoolKey, BeforeSwapDelta,
+    ModifyLiquidityParams/SwapParams   (all @uniswap/v4-core)
+    ImmutableState                     (@uniswap/v4-periphery)
+  Nothing from briefcase. The 32k figure is the SIZE OF THAT REPOSITORY,
+  which vendors briefcase for its own test suite - not the dependency a hook
+  actually pulls in. The needed files can be taken from a pinned source with
+  their licences.
+
+  DO NOT let that number weigh on the venue decision. It measured the wrong
+  thing.
+  [ ] Reinstall when the venue decision lands, and record its revision then.
+
+GITLINK NOTE - ALSO OVERSTATED
+  Commit b669453f says a fresh clone "would not have built". Too absolute for
+  the state it described: nothing imported v4-hooks-public, so the current
+  tests pass in a fresh clone either way. The gitlink was a real defect, but
+  it would only have bitten once something depended on that package.
+
+OPEN TEST WORK - NOT DONE, DO NOT MARK COMPLETE
+  [x] Multi-trade accounting invariants - DONE, test/CurveInvariants.t.sol.
+      Six invariants over randomised buy/sell/sweep/donate sequences, each
+      256 runs x 500 calls. afterInvariant() refuses a run in which no buy,
+      sell or sweep actually succeeded, so an all-reverting campaign cannot
+      report green. Costs ~39s, the bulk of the suite's runtime.
+  [ ] The sweep-preserves-price result is proven for buybackEnabled = false,
+      our MVP setting. With buyback on, the sweep trades against the curve's
+      own reserve and moves both sides; that case is untested.
+
+B20 ENVIRONMENT - STOOD UP, SEE B20_ENVIRONMENT.txt
+  base-anvil 1.6.0-v1.1.0 in WSL2 Ubuntu 24.04, forking Base mainnet, serves
+  real B20: NVDAc reads name/symbol/decimals/supply/multiplier correctly at
+  block 51,171,034. First time this repository has touched real B20 rather
+  than a mock.
+  Gotcha worth the line: stock cast CANNOT talk to base-anvil - it fails with
+  "unsupported network family `base`" - while cast codesize still works,
+  so a shallow check looks fine while every call fails. Use base-cast.
+  [ ] foundry.toml's [profile.fork] is still comments only; wire it up.
+  [ ] Three Foundry versions now in play (1.7.1 project, 1.8.1 stock WSL,
+      1.6.0 base-forge). Confirm the project builds and tests identically
+      under base-forge before trusting results from it.
+
+LICENCE NOTE
+  lib/v4-core carries BUSL-1.1 (Pool.sol, Position.sol) alongside MIT. See
+  REUSE_ANALYSIS.txt: Change Date 2027-06-15, Change Licence MIT, and the
+  Additional Use Grant could not be resolved from its ENS records.

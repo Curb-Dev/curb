@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>$CURB — not launched yet</title>
+<meta name="description" content="Curb's own token, not launched yet: where the platform's fees go, what the contracts say now, and what is still undecided." />
+<meta property="og:site_name" content="Curb" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="$CURB — Curb's own token" />
+<meta property="og:description" content="Curb's own token: where the platform's fees go, and what the contracts say now." />
+<meta property="og:image" content="https://curb.fun/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Curb: launch coins paired with ETH, stocks and more" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@curbfun" />
+<!-- THE DEPLOYMENT AND THE INCIDENT SWITCHES, before any script reads them. -->
+<script src="config.js"></script>
+<link rel="icon" href="curb-mark.svg" />
+<link rel="stylesheet" href="topbar.css" />
+<style>
+  /* THE SAME PALETTE AS THE REST OF THE SITE, and the token page's cards
+     (app.html .tvCard, .tvFeeBox, .tvStatus), so $CURB reads as one more page
+     of the same product rather than a brochure bolted on. */
+  :root {
+    color-scheme: dark;
+    --bg: #080b11; --panel: #0e131b; --panel2: #131a24; --line: #1d2633;
+    --ink: #eef2f7; --dim: #94a0b0; --dimmer: #5f6b7c;
+    --paint: #0052ff; --paint-hi: #2a6dff; --good: #3ddc97; --bad: #ff6b6b;
+    --amber: #f5a524;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); }
+  /* The bar's own expression, so the two stay aligned (see browse.html). */
+  main { max-width: calc(45% + 540px); margin: 0 auto; padding: 0 clamp(24px, 3vw, 40px) 90px; }
+  /* CENTRED, like app.html's own column. */
+  .wrap { max-width: 900px; margin: 0 auto; }
+
+  a { color: var(--paint-hi); }
+  p { font-size: 14px; line-height: 1.65; color: var(--dim); margin: 0 0 12px; }
+  p:last-child { margin-bottom: 0; }
+  strong { color: var(--ink); font-weight: 650; }
+
+  /* ---- the card, as the token page draws it */
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+    padding: 20px 22px; margin: 0 0 14px; min-width: 0; }
+  .card > h2 { margin: 0 0 10px; font-size: 15px; font-weight: 700; letter-spacing: 0; color: var(--ink);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .card.open { border-color: rgba(245, 165, 36, 0.32); }
+  .count { font-size: 11px; font-weight: 700; color: var(--dim); background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
+  ul { margin: 0; padding-left: 19px; }
+  li { font-size: 14px; line-height: 1.7; color: var(--dim); }
+  li + li { margin-top: 4px; }
+
+  /* ---- 1. the header */
+  .head { background: linear-gradient(160deg, #101a2b 0%, var(--panel) 58%); padding: 26px 26px 22px; }
+  .headTop { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 12px; }
+  .mark { flex: none; width: 56px; height: 56px; border-radius: 50%; overflow: hidden;
+    border: 1px solid var(--line); background: var(--panel2); }
+  .mark img { display: block; width: 100%; height: 100%; }
+  h1 { font-size: 33px; line-height: 1.1; margin: 0; letter-spacing: -0.035em; }
+  .status { flex: none; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+    padding: 5px 10px; border-radius: 7px; border: 1px solid rgba(245, 165, 36, .5);
+    color: var(--amber); background: rgba(245, 165, 36, .08); }
+  .lede { font-size: 15px; line-height: 1.6; color: var(--dim); margin: 0 0 16px; max-width: 62ch; }
+  .links { display: flex; gap: 8px; flex-wrap: wrap; }
+  .links a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 999px;
+    background: var(--panel2); border: 1px solid var(--line); color: var(--ink);
+    font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .links a:hover { border-color: var(--dim); }
+
+  /* ---- 2. the split. Amber is the brand's, and here it means the token. */
+  .split { display: flex; height: 12px; border-radius: 999px; overflow: hidden; margin: 6px 0 12px;
+    background: var(--panel2); border: 1px solid var(--line); }
+  .split i { display: block; height: 100%; }
+  .split .burn { width: 80%; background: linear-gradient(90deg, #d98a0f, var(--amber)); }
+  .split .ops { width: 20%; background: var(--paint); }
+  .shares { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0 0 14px; }
+  .box { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+  .box b { display: block; font-size: 22px; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .box span { display: block; margin-top: 3px; font-size: 12px; color: var(--dim); line-height: 1.45; }
+  .box.burnBox b { color: var(--amber); }
+  .box.opsBox b { color: var(--paint-hi); }
+  .policy { border-left: 3px solid var(--amber); padding: 2px 0 2px 13px; margin: 0 0 14px; }
+  .policy p { margin: 0; color: var(--ink); }
+
+  /* ---- 3. what the chain says now */
+  .source { font-size: 12px; color: var(--dimmer); margin: -4px 0 14px; overflow-wrap: anywhere; line-height: 1.5; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; }
+  .tile { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+  .tile .k { font-size: 11.5px; color: var(--dim); }
+  .tile b { display: block; margin: 4px 0 2px; font-size: 20px; font-weight: 700; letter-spacing: -0.015em;
+    font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .tile b.addr { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; letter-spacing: 0; }
+  .tile .sub { display: block; font-size: 11.5px; color: var(--dimmer); line-height: 1.5; overflow-wrap: anywhere; }
+  .tile .sub + .sub { margin-top: 4px; }
+  .tile .sub.warnTxt { color: var(--amber); }
+  .waiting { margin: 14px 0 0; }
+  .waiting h3 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--ink); }
+  .rows { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 13px; min-width: 0; }
+  .row + .row { border-top: 1px solid var(--line); }
+  .row .badge { flex: none; width: 22px; height: 22px; border-radius: 50%; overflow: hidden; display: grid; place-items: center;
+    background: var(--panel2); border: 1px solid var(--line); font-size: 9px; font-weight: 800; color: var(--dim); }
+  .row .badge img { width: 100%; height: 100%; object-fit: cover; }
+  .row .asset { flex: 1; min-width: 0; font-weight: 650; overflow-wrap: anywhere; }
+  .row .asset small { display: block; font-weight: 400; font-size: 11.5px; color: var(--dimmer); }
+  .row .amt { flex: none; font-variant-numeric: tabular-nums; font-weight: 650; text-align: right; overflow-wrap: anywhere; max-width: 50%; }
+  .row.empty { color: var(--dim); justify-content: center; padding: 16px 14px; text-align: center; }
+  .note { font-size: 11.5px; color: var(--dimmer); line-height: 1.55; margin: 8px 0 0; }
+
+  /* ---- 4. burns */
+  .emptyBurns { border: 1px dashed var(--line); border-radius: 12px; padding: 22px 16px; text-align: center; margin: 0 0 12px; }
+  .emptyBurns b { display: block; font-size: 16px; margin: 0 0 4px; }
+  .emptyBurns span { font-size: 12.5px; color: var(--dim); }
+  #burnList .rows { margin: 0 0 12px; }
+  .burnRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; }
+  .burnRow .links { justify-content: flex-end; }
+  .kv { font-size: 12.5px; color: var(--dim); overflow-wrap: anywhere; margin: 0; }
+  .kv code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--ink); }
+
+  /* ---- 5. not decided */
+  .alert { border: 1px solid rgba(255, 107, 107, .45); background: rgba(255, 107, 107, .07);
+    border-radius: 12px; padding: 12px 14px; margin: 14px 0 0; }
+  .alert p { margin: 0; color: var(--ink); }
+
+  /* ---- 6. the rules, as label and value */
+  .rules { margin: 0; display: grid; grid-template-columns: 170px minmax(0, 1fr); }
+  .rules dt, .rules dd { margin: 0; padding: 11px 0; border-top: 1px solid var(--line); font-size: 13.5px; line-height: 1.6; }
+  .rules dt:first-of-type, .rules dt:first-of-type + dd { border-top: 0; padding-top: 2px; }
+  .rules dt { color: var(--ink); font-weight: 650; padding-right: 14px; }
+  .rules dd { color: var(--dim); }
+
+  /* ---- 7. the small print */
+  .fine { padding: 4px 4px 0; }
+  .fine h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--dimmer); margin: 0 0 8px; }
+  .fine p { font-size: 12px; line-height: 1.65; color: var(--dimmer); }
+
+  @media (max-width: 620px) {
+    h1 { font-size: 28px; }
+    .head { padding: 20px 18px 18px; }
+    .card { padding: 18px 16px; }
+    .rules { grid-template-columns: 1fr; }
+    .rules dd { border-top: 0; padding-top: 0; }
+    .rules dt { padding-bottom: 2px; }
+    .burnRow { grid-template-columns: 1fr; }
+    .burnRow .links { justify-content: flex-start; }
+  }
+</style>
+</head>
+<body>
+<header id="siteBar" data-page="curb"></header>
+<script src="topbar.js"></script>
+<main>
+  <div class="wrap">
+
+    <!-- 1. WHAT IT IS, IN ONE LINE. The badge is the first thing read, and it
+         stays until there is a contract to point at. -->
+    <section class="card head" aria-labelledby="curbTitle">
+      <div class="headTop">
+        <div class="mark"><img src="curb-mark.svg" alt="" width="56" height="56" /></div>
+        <h1 id="curbTitle">$CURB</h1>
+        <span class="status">Not launched yet</span>
+      </div>
+      <p class="lede">
+        Curb's own token has not been created yet; this page shows what the platform does with its
+        fees, what the contracts say right now, and what is still undecided.
+      </p>
+      <!-- THE FIRST LINK TO THE LAUNCHES CARRIES THE PAIR (data-carry,
+           topbar.js carryLinks) - and only a pair this URL brought: the tests
+           read main a[href^="browse.html"] first, so it stays static and first. -->
+      <div class="links">
+        <a href="browse.html" data-carry>See the launches</a>
+        <a href="docs.html" data-carry>Read the docs</a>
+        <a href="terms.html" data-carry>What a launch fixes</a>
+      </div>
+    </section>
+
+    <!-- 2. WHERE THE PLATFORM'S FEES GO. A POLICY, AND SAID AS ONE: nothing in
+         src/curb splits the platform's income 80/20, buys $CURB or burns it -
+         FeePolicy.BUYBACK_BURN_BPS is 0 and the factory writes 0 into every
+         launch. (The contracts DO split each tax into its platform and creator
+         legs, and the Graduator DOES burn the launch tokens left over at
+         graduation - so "splits" and "burns" never stand alone here.) Never
+         "automatic", never "on-chain". -->
+    <section class="card" aria-labelledby="whereTitle">
+      <h2 id="whereTitle">Where the platform's fees go</h2>
+      <div class="split" role="img" aria-label="80 percent buys and burns $CURB, 20 percent runs the platform">
+        <i class="burn"></i><i class="ops"></i>
+      </div>
+      <div class="shares">
+        <div class="box burnBox"><b>80%</b><span>buys $CURB and burns it</span></div>
+        <div class="box opsBox"><b>20%</b><span>runs the platform</span></div>
+      </div>
+      <div class="policy">
+        <p>
+          <strong>A treasury policy, decided on 22 September 2026 — not code.</strong>
+          The treasury carries it out by hand, once enough fee income has built up: on a threshold,
+          not on a date.
+        </p>
+      </div>
+      <ul>
+        <li><strong>No contract splits the platform's income 80/20, buys $CURB or burns it.</strong> The
+            contracts collect the platform's income — its share of each trade; launching itself is free —
+            and pay it to the platform's address. They do nothing further with it. Every launch's
+            buyback share is set to zero, so no launch pays into a buyback.</li>
+        <li><strong>Some of the platform's fees wait in the contracts until they are claimed;</strong> the
+            amount waiting is shown below.</li>
+        <li><strong>No $CURB buyback or burn has happened yet.</strong></li>
+      </ul>
+    </section>
+
+    <!-- 3. WHAT THE CHAIN SAYS NOW, read by curb.js through the endpoint and
+         lens the bar carries (CurbBar.config()). Every figure starts as a dash
+         and stays one, quietly, when it cannot be read: no wallet is asked for
+         anything, and a page with no endpoint reads nothing. -->
+    <section class="card" id="live" aria-labelledby="liveTitle" aria-live="polite">
+      <h2 id="liveTitle">On chain now</h2>
+      <p class="source" id="liveSource">Not read.</p>
+      <div class="tiles">
+        <div class="tile">
+          <span class="k">Platform share, new launches</span>
+          <b id="liveShare">—</b>
+          <span class="sub" id="liveCap">Most it can be set to: 0.80%</span>
+        </div>
+        <div class="tile">
+          <span class="k">Announced change</span>
+          <b id="livePending">—</b>
+          <span class="sub" id="livePendingNote">A change is announced 24 hours before it can apply.</span>
+        </div>
+        <div class="tile">
+          <span class="k">Launches</span>
+          <b id="liveCount">—</b>
+          <span class="sub">on every paired asset</span>
+        </div>
+        <div class="tile">
+          <span class="k">Platform recipient, new launches</span>
+          <b class="addr" id="liveRecipient">—</b>
+          <span class="sub" id="liveRecipientNote">where a launch created now pays the platform's share</span>
+        </div>
+      </div>
+      <div class="waiting">
+        <h3>Platform fees waiting to be claimed</h3>
+        <div class="rows" id="liveWaiting"><div class="row empty">—</div></div>
+        <p class="note">
+          Platform fees already in the contracts and not yet claimed. Fees still on a launch's curve are not
+          included.
+        </p>
+      </div>
+    </section>
+
+    <!-- 4. BURNS. Listed from curb.js's BURNS, which the owner fills after each
+         one; until then, the honest line. -->
+    <section class="card" aria-labelledby="burnTitle">
+      <h2 id="burnTitle">Burns <span class="count" id="burnCount">0</span></h2>
+      <div id="burnList">
+        <div class="emptyBurns"><b>No burns yet</b><span>There is nothing to burn until $CURB exists.</span></div>
+      </div>
+      <p>
+        Each burn is listed here with its swap and its burn transaction, so it can be checked rather than
+        taken on trust. A burn reduces supply. It is not a payment to anyone, and it gives nobody a claim on
+        the platform's earnings.
+      </p>
+      <p class="kv" id="treasuryLine">Treasury address: not published yet.</p>
+    </section>
+
+    <!-- 5. WHAT IS NOT DECIDED. The warning is the point: a token page that
+         buries "no contract is this" is the shape of every launch that goes
+         wrong. -->
+    <section class="card open" aria-labelledby="openTitle">
+      <h2 id="openTitle">Not decided</h2>
+      <ul>
+        <li><strong>Supply</strong> — no number has been chosen.</li>
+        <li><strong>Distribution</strong> — no allocation, no schedule, no allowlist, no airdrop.</li>
+        <li><strong>Timing</strong> — no date, and no decision on where or how it would launch.</li>
+        <li><strong>Governance</strong> — whether it carries any vote or other right is open. Nothing here
+            promises income.</li>
+      </ul>
+      <div class="alert" role="note">
+        <p><strong>No contract is $CURB today — anything claiming to be it is not.</strong></p>
+      </div>
+    </section>
+
+    <!-- 6. THE FEE RULES, which ARE in the contracts: the tax band is
+         LaunchRegistry's 100..500 bps; the share is FeeHook.platformFeeBps,
+         capped by maxPlatformFeeBps() (80 bps at MIN_TOTAL_TAX_BPS = 100),
+         changed only by announce / 24 h / execute within 7 days, and frozen
+         into each launch's record; the pool fee is DeployCurb's POOL_FEE 500,
+         the lock has no end, and the launch fee is 0 on every factory. -->
+    <section class="card" aria-labelledby="rulesTitle">
+      <h2 id="rulesTitle">The fee rules in short</h2>
+      <dl class="rules">
+        <dt>Creator tax</dt>
+        <dd>1–5%, picked by the creator at launch and fixed for that launch. Charged in the paired asset on
+            every buy and every sell, on the curve and in the pool.</dd>
+        <dt>Platform share</dt>
+        <dd>Part of the tax, never added on top. At most 0.80%; it started at 0.50%. The creator keeps the
+            rest of the tax.</dd>
+        <dt>Changing the share</dt>
+        <dd>Announced on chain 24 hours ahead, and lapses unless applied within 7 days after that. It
+            reaches only launches created after it applies.</dd>
+        <dt>Each launch</dt>
+        <dd>Keeps the share and the recipient in force when it was created, for as long as it exists.</dd>
+        <dt>Pool LP fee</dt>
+        <dd>0.05%, only after graduation, and not part of the tax. It goes to the pool's liquidity
+            providers, mostly the launch's own position, whose fees the creator can collect at any time. That
+            position is locked forever: nobody can withdraw it.</dd>
+        <dt>Launch fee</dt>
+        <dd>None. Launching costs gas only.</dd>
+        <dt>Buyback in the contracts</dt>
+        <dd>0%. The 80/20 above is the treasury's policy, not the contracts'.</dd>
+      </dl>
+      <p style="margin-top:12px"><a href="docs.html#fees" data-carry>Every fee in detail, in the docs</a></p>
+    </section>
+
+    <!-- 7. THE SMALL PRINT, in the manner of pump.fun's and stonk.fun's: not
+         an obligation, can change or stop. -->
+    <section class="fine" aria-labelledby="fineTitle">
+      <h2 id="fineTitle">Disclaimer</h2>
+      <p>
+        $CURB does not exist, and nothing on this page is an offer or a solicitation to buy or sell any token,
+        or financial advice. The treasury policy above is how the platform intends to use its own fee income.
+        It is not an obligation to you or to anyone, it gives no one a right to any fee, buyback, burn, token
+        or payment, and it can be changed, paused or stopped at any time. Only the fee rules are in the
+        contracts, and a launch's own terms never change once it is created. Figures read from the chain are shown as they
+        were read and may be incomplete or out of date; check them on a block explorer.
+      </p>
+    </section>
+  </div>
+</main>
+<script src="keccak.js"></script>
+<script src="token-meta.js"></script>
+<script src="curb.js"></script>
+</body>
+</html>

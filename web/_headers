@@ -1,0 +1,24 @@
+# THE SITE'S RESPONSE HEADERS, for Netlify and Cloudflare Pages; web/vercel.json
+# carries the same five for Vercel, value for value (script/b20/check-publish-set.sh
+# fails when the two differ, and web/e2e/serve.js sends these with CURB_E2E_HEADERS=1).
+#
+# Content-Security-Policy, rule by rule:
+#   script-src   this origin's files, and the one inline script there is - the
+#                <base> app.html sets for /token/0x... - by its sha256. Editing that
+#                script changes its hash: the check script recomputes it, and the
+#                browser tests load the token view under this policy.
+#   style-src    'unsafe-inline': every page carries its own <style>, and pages and
+#                scripts write style="" attributes, which no hash can name.
+#   img-src      a token's picture is the creator's https or ipfs gateway URL, or a
+#                data: image (token-meta.js keeps nothing else).
+#   connect-src  https: - the read endpoint is the visitor's choice (?rpc=), and a
+#                token's metadata and a payout file come from gateways.
+#   frame-ancestors 'none' (and X-Frame-Options for older browsers): a page that
+#                sends wallet transactions is never drawn inside another site.
+# Referrer-Policy keeps a page's query (?rpc=, ?lens=) out of what other sites see.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-VXe6jHq2UwLFc787/QXj62k0l0UZuJWkqqiyy1VIuMA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()

@@ -1,0 +1,41 @@
+{
+  "name": "@curb/sharer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "curb-sharer: the holder sharing indexer, the CURB-SHARE v1 calculator, the Merkle tree, the curb.sharing.epoch/1 file, and the keeper, verifier and guardian built on them",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./calc": "./src/calc/index.ts",
+    "./browser": "./browser/curb-share.mjs"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --test-reporter=spec test/*.test.ts",
+    "test:live": "node --test --test-reporter=spec test/live/*.live.test.ts",
+    "vectors": "node scripts/vectors.ts",
+    "bundle": "node scripts/bundle.ts",
+    "mutate": "node scripts/mutate.ts",
+    "check": "npm run typecheck && npm run vectors && npm test",
+    "test:ops": "node --test --test-reporter=spec test/ops-*.test.ts",
+    "mutate:ops": "node scripts/mutate-ops.ts",
+    "config-from-run": "node scripts/config-from-run.ts",
+    "start": "node src/cli.ts"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.8.0",
+    "@openzeppelin/merkle-tree": "1.0.8",
+    "viem": "2.57.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "bin": {
+    "curb-sharer": "./src/cli.ts"
+  }
+}

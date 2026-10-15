@@ -1,0 +1,111 @@
+# curb-sharer on the keeper host (the primary keeper and a verifier) - see
+# RUNBOOK.md part 8: a Windows PC with Docker Desktop (8.6), or later a Linux
+# server (8.7). The same file serves both.
+#
+#   docker compose up -d                      # the image .env names (below)
+#   docker compose --profile ipfs up -d       # with a local kubo pin as well
+#
+# Files next to this one, in a folder OUTSIDE any clone of the code repository
+# (RUNBOOK 8.2), never committed:
+#   .env                       one line: CURB_SHARER_IMAGE=ghcr.io/<org>/curb-sharer:<git-sha>
+#                              (Compose reads it by itself, so the image stays named across reboots)
+#   config/sharer.json         the ops config (no secrets in it)
+#   secrets/publisher_key      0x... the publisher EOA (publish only)
+#   secrets/pusher_key         0x... a gas-only EOA (harvest, activate, push, payKeeper)
+#   secrets/rpc_urls           two RPC URLs of two DIFFERENT providers, one per line
+#   secrets/verifier_rpc_urls  two more, not the keeper's, for the verifier
+#   secrets/data_repo_token    the fine-grained GitHub token (contents:write on the data repo only)
+#   secrets/pin_tokens         {"pinata": "<JWT>", "filebase": "<key>", "third": "<key>"}
+#   secrets/alert_webhooks     {"telegram": {...}, "discord": "...", "email": {...}}
+# THE SECRETS ARE LOCKED BY THE HOST, as each host allows:
+#   on a Linux server, each file owned by uid 1000 (the image's `node` user),
+#   mode 0400 (RUNBOOK 8.7);
+#   on a Windows PC, Docker Desktop shows a mounted file as readable by every
+#   user inside the container, so uid and mode neither apply nor work there:
+#   the folder's Windows permissions are the lock (icacls, RUNBOOK 8.6 step 4).
+#
+# The guardian is NOT here: it runs from the same image on another machine,
+# with another provider, by the independent vetoer (RUNBOOK.md, part 10).
+
+name: curb-sharer
+
+x-sharer: &sharer
+  image: ${CURB_SHARER_IMAGE:?set CURB_SHARER_IMAGE to ghcr.io/<org>/curb-sharer:<git-sha>}
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  init: false # tini is PID 1 in the image
+  environment:
+    CURB_SHARER_CONFIG: /config/sharer.json
+    CURB_SHARER_DATA: /data
+  logging:
+    driver: json-file
+    options:
+      max-size: 20m
+      max-file: "10"
+
+services:
+  keeper:
+    <<: *sharer
+    command: ["keeper", "--loop", "--interval=300"]
+    volumes:
+      - keeper-data:/data
+      - ./config/sharer.json:/config/sharer.json:ro
+    secrets:
+      - publisher_key
+      - pusher_key
+      - rpc_urls
+      - data_repo_token
+      - pin_tokens
+      - alert_webhooks
+
+  verifier:
+    <<: *sharer
+    command: ["verify", "--loop", "--interval=300"]
+    volumes:
+      - verifier-data:/data
+      - ./config/sharer.json:/config/sharer.json:ro
+    secrets:
+      - source: verifier_rpc_urls
+        target: rpc_urls
+      - alert_webhooks
+
+  ipfs:
+    profiles: ["ipfs"]
+    image: ipfs/kubo:v0.43.0@sha256:63f5502f7a01b82a675e45bae81b2f5dfa90248ec4a86cd0a58c218347e1f2d2
+    restart: unless-stopped
+    environment:
+      IPFS_PROFILE: server
+    volumes:
+      - ipfs-data:/data/ipfs
+    # The RPC API (5001) stays on the compose network: the keeper reaches it
+    # as http://ipfs:5001 (config.ipfs.pinners kind "kubo"). Only the swarm
+    # port is published, so other IPFS nodes can fetch the files.
+    ports:
+      - "4001:4001"
+
+secrets:
+  publisher_key:
+    file: ./secrets/publisher_key
+  pusher_key:
+    file: ./secrets/pusher_key
+  rpc_urls:
+    file: ./secrets/rpc_urls
+  verifier_rpc_urls:
+    file: ./secrets/verifier_rpc_urls
+  data_repo_token:
+    file: ./secrets/data_repo_token
+  pin_tokens:
+    file: ./secrets/pin_tokens
+  alert_webhooks:
+    file: ./secrets/alert_webhooks
+
+volumes:
+  keeper-data:
+  verifier-data:
+  ipfs-data:

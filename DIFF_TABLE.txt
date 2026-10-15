@@ -1,0 +1,193 @@
+================================================================================
+FACTORY / CURVE DIFF TABLE
+What we need | what the current code does | what must change
+================================================================================
+Date   : 11 September 2026
+Source : reference/ponsfamily @ debbc21f, contractsV2/src/v2
+Scope  : PonsV2LaunchFactory.sol (1526), PonsV2BondingCurve.sol (777),
+         libraries/PonsV2BondingCurveMath.sol (88)
+Rule   : a row answered by "set a parameter" does NOT count toward a rewrite.
+         Only behaviour the existing design cannot express does.
+
+
+================================================================================
+A. ROWS ALREADY SOLVED BY CONFIGURATION - no code change
+================================================================================
+
+A1  B20 as the quote asset
+    NEED     Quote new tokens against NVDAc instead of native ETH.
+    CURRENT  Fully supported. isNativeQuote() is just pairToken == address(0);
+             any ERC-20 quote goes through pairToken + PairTokenEconomics.
+             Enabled with setPairTokenEconomics() then setPairTokenApproved().
+    CHANGE   None. Configuration only.
+
+A2  8 decimals
+    NEED     NVDAc is 8 decimals, not 18.
+    CURRENT  PairTokenEconomics carries a per-asset uint8 decimals.
+             MIN_PAIR_TOKEN_DECIMALS = 6, so 8 is inside the accepted range.
+             _requireDecimals() enforces the configured value against the
+             token's own decimals() at approval time.
+             The source's own note: "Scaling the pair by one rate leaves the
+             curve's shape untouched, since only threshold / (threshold +
+             phantomQuote) determines the fraction of supply that reaches the
+             graduated pool, so a custom quote asset trades identically to a
+             native launch of the same size."
+    CHANGE   None. Size phantomQuote and graduationThreshold at the 10^8
+             scale. This confirms the earlier "8 decimals breaks the maths"
+             claim was wrong.
+
+A3  Our fee level
+    NEED     Choose our own base trade fee.
+    CURRENT  LaunchConfig.curveFeeBps, per launch, ceiling
+             MAX_CURVE_FEE_BPS = 1000 (10%). Frozen into the curve as an
+             immutable at launch creation - good, fees cannot move under a
+             live launch.
+    CHANGE   None unless we want >10%, which we do not.
+
+A4  Our protocol / creator split
+    NEED     Decide what share of the fee the protocol keeps.
+    CURRENT  protocolFeeShareBps, immutable on the curve, taken from
+             memeHook.currentFeePolicy() at launch.
+    CHANGE   None to the contracts. This is the Phase 0 fee-model decision,
+             expressed as a policy value.
+
+A5  Creator tax
+    NEED     Optional creator tax on top of the base fee.
+    CURRENT  creatorTaxBps, layered separately, ceiling settable via
+             setMaxCreatorTaxBps() up to MAX_CREATOR_TAX_CEILING_BPS = 1000.
+             MAX_TOTAL_TRADE_FEE_BPS = 2000 caps the combined total.
+    CHANGE   None.
+
+A6  Graduation threshold
+    NEED     Our own threshold.
+    CURRENT  LaunchConfig.graduationThreshold, per launch, plus
+             PairTokenEconomics.graduationThreshold per quote asset.
+    CHANGE   None.
+
+A7  Buyback off at launch
+    NEED     Our plan disables buyback.
+    CURRENT  setBuybackEnabled(token, false). Per token, already supported.
+    CHANGE   None. The BuybackVault contract (357 lines) simply goes unused.
+
+A8  Curve shape
+    NEED     A bonding curve we can reason about.
+    CURRENT  Standard constant-product with fee on input - the Uniswap V2
+             formula, adapted from a Code4rena reference (2025-01-iq-ai
+             BootstrapPool.sol). 88 pure lines, no product opinion.
+    CHANGE   None. This is what we would write anyway.
+             [WITHDRAWN] An earlier draft called this "already audited in a
+             public contest context". It is not. The Code4rena contest
+             covered IQ AI's BootstrapPool.sol; PONS's derived version was
+             not in that scope and its own audit status is unverified.
+             Accurate statement: adapted from a source that entered an audit
+             contest; the audit coverage of THIS version is unverified.
+
+  >> A1-A8 is every product difference cited in the earlier "write our own"
+     argument. All eight are configuration. That argument is now dead.
+
+
+================================================================================
+B. ROWS THE EXISTING DESIGN CANNOT EXPRESS - genuinely new work
+================================================================================
+These are NOT reasons to rewrite the factory. They are components that sit
+ALONGSIDE it and which PONS simply does not have, because PONS never had to
+route a user from USDC into a stock token.
+
+B1  QuoteRouter - USDC/ETH in and out, with a depth guard
+    NEED     Users arrive with USDC; the curve wants NVDAc. Reject any trade
+             that would move NVDAc more than X bps off reference (7.1).
+    CURRENT  Nothing. PONS assumes the caller already holds the quote asset.
+    CHANGE   NEW CONTRACT. Our largest piece of original work.
+
+B2  Reference-deviation guard, separate from execution guard
+    NEED     Two distinct protections (ROADMAP 7.1).
+    CURRENT  The curve has slippage-style bounds on its own trade only. It has
+             no notion of an external reference price, because it has no
+             oracle - by design.
+    CHANGE   NEW, and it lives in the router, not the curve. Keeping it out of
+             the core preserves the CORE/EDGE split in 6.1.
+
+B3  Weekend / oracle degradation
+    NEED     Defined behaviour per layer when the feed is stale (7.2).
+    CURRENT  Nothing, and correctly so - core is oracle-free.
+    CHANGE   NEW, in the price adapter and the UI. Do not push it into the
+             curve.
+
+B4  Discovery surface
+    NEED     Core MVP UX (Phase 1).
+    CURRENT  Events exist to index; no UI.
+    CHANGE   NEW, entirely offchain.
+
+
+================================================================================
+C. ROWS NEEDING A DECISION, NOT A REWRITE
+================================================================================
+
+C1  The graduation venue
+    NEED     Graduate into a venue we control (ROADMAP Section 5).
+    CURRENT  memeHook is an IMMUTABLE constructor argument on the factory, and
+             the fee policy is read from memeHook.currentFeePolicy().
+             graduationExecutor is settable exactly once (AlreadySet).
+             So the venue is chosen at DEPLOYMENT, not at runtime - which is
+             a reasonable design, and it already means "our own hook".
+    CHANGE   No factory change. This is the Phase 0 E choice (reuse / adapt /
+             custom hook) and it is decided by which hook we deploy against.
+
+C2  Graduation failure handling
+    NEED     Retryable, idempotent, funds inspectable (ROADMAP 6.4).
+    CURRENT  Partly there: AutoGraduationFailed is emitted for a keeper and
+             "graduation stays permissionlessly retryable via the factory".
+             rescueSweptGraduation exists - onlyOwner, 7-day delay, arbitrary
+             recipient.
+    CHANGE   AUDIT IT AGAINST 6.4 rather than assume. Specifically: is retry
+             idempotent under a race, and do we accept the rescue function's
+             trust assumption? Verdict pending.
+
+C3  Snipe tax
+    NEED     Not in our plan at all.
+    CURRENT  Exists: MAX_SNIPE_TAX_START_BPS = 9900 (99%), decaying over
+             MAX_SNIPE_TAX_SECONDS = 60, up to 32 exemptions.
+    CHANGE   A product decision we have not made. Configure to zero, or adopt
+             deliberately. Do not inherit it silently.
+
+C4  The graduation guard's protections
+    NEED     Keep the checks, whatever we do about the BUSL import.
+    CURRENT  PonsV2GraduationGuard validates price, amounts and the
+             liquidity-per-tick bound before graduation.
+    CHANGE   Keep equivalent protection. The file is negotiable; the checks
+             are not.
+
+
+================================================================================
+D. CONCLUSION
+================================================================================
+
+The rewrite case for Factory and Curve FAILED its own test.
+
+Every product difference that was offered as justification - B20 quote, 8
+decimals, our fee split, our threshold - turns out to be a parameter that the
+existing code already accepts. Nothing in section A requires touching those
+2,303 lines.
+
+What we actually need to build is in section B, and none of it belongs inside
+the factory or the curve. It sits at the edge: a router, a price adapter, a
+discovery surface. That is our original work, and it is the part PONS could
+never have had.
+
+RECOMMENDATION
+  Do not rewrite Factory or Curve. Do not blanket-fork either.
+  Take PonsV2BondingCurveMath.sol (88 lines, pure; audit status of this
+  derived version unverified - see A8) with
+  attribution. Work through Factory and BondingCurve as a reading exercise
+  and adopt them where they hold up, section C being the open items.
+  Spend the engineering budget on section B, which is where CURB is actually
+  different from PONS.
+
+STILL OPEN, AND NOT DECIDED HERE
+  - C1 venue choice (Phase 0 E)
+  - C2 graduation failure audit against 6.4
+  - C3 snipe tax: adopt, zero it, or remove
+  - Interfaces: still not copied automatically - choose once MVP behaviour
+    is settled
+  - BUSL Additional Use Grant: ENS records did not resolve; plan as if
+    restrictions apply until 2027-06-15

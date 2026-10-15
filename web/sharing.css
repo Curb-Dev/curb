@@ -1,0 +1,125 @@
+/* HOLDER SHARING: the launch form's toggle, the token page's card and the
+   /sharing page. The palette is the pages' own (app.html and sharing.html
+   define the variables); nothing here adds a colour of its own except the
+   amber the "Holders earn" mark uses on the launches page too. */
+
+/* ---------------------------------------------------------------- the toggle */
+.shareToggle { display: flex; align-items: center; gap: 12px; cursor: pointer; margin: 0; text-transform: none;
+  letter-spacing: 0; font-size: 14px; font-weight: 650; color: var(--ink); }
+.shareToggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.shareKnob { flex: none; position: relative; width: 38px; height: 22px; border-radius: 999px; background: var(--line);
+  border: 1px solid var(--line); transition: background .15s ease; }
+.shareKnob::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--dim); transition: transform .15s ease, background .15s ease; }
+.shareToggle input:checked + .shareKnob { background: rgba(255,196,0,.25); border-color: rgba(255,196,0,.6); }
+.shareToggle input:checked + .shareKnob::after { transform: translateX(16px); background: #ffc400; }
+.shareToggle input:focus-visible + .shareKnob { outline: 2px solid var(--paint); outline-offset: 2px; }
+.shareToggle input:disabled + .shareKnob { opacity: .4; }
+.shareList { margin: 12px 0 0; padding: 0 0 0 18px; font-size: 12.5px; line-height: 1.6; color: var(--ink); }
+.shareList li { margin: 0 0 4px; }
+#shareVersion code, #shareVersion a { font-size: 11.5px; word-break: break-all; }
+
+/* ---------------------------------------------------------------- the token page's card */
+.tvShare h3 { margin: 0; }
+.shHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 6px; }
+.shBadge { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .06em; padding: 4px 9px; border-radius: 999px; border: 1px solid rgba(255,196,0,.5); color: #ffc400;
+  background: rgba(255,196,0,.08); }
+.shBadge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.shWho { margin: 0 0 12px; font-size: 12px; color: var(--dim); overflow-wrap: anywhere; line-height: 1.6; }
+.shWho a { color: var(--paint-hi); }
+.shAddr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--ink); word-break: break-all; }
+a.shAddr { color: var(--paint-hi); }
+.shGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 10px; }
+.shBox { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+.shBox b { display: block; font-size: 14.5px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.shBox span { display: block; margin-top: 3px; font-size: 11px; color: var(--dim); line-height: 1.45; }
+.shNote { margin: 6px 0 0; font-size: 12px; color: var(--dim); line-height: 1.6; overflow-wrap: anywhere; }
+.shNote.warn { color: var(--ink); border-left: 3px solid #ffc400; padding-left: 10px; }
+.shEpoch { margin: 12px 0 0; display: grid; gap: 6px; }
+.shState { font-size: 12.5px; line-height: 1.55; color: var(--ink); padding: 8px 12px; border-radius: 10px;
+  background: var(--panel2); border: 1px solid var(--line); overflow-wrap: anywhere; }
+.shState.pending { border-color: rgba(0,82,255,.5); }
+.shState.active { border-color: rgba(61,220,151,.4); }
+.shState.vetoed { border-color: rgba(255,107,107,.5); }
+.shCountdown { font-variant-numeric: tabular-nums; }
+.shWarn { margin: 10px 0 0; padding: 10px 12px 10px 28px; border-radius: 10px; border: 1px solid rgba(255,196,0,.45);
+  background: rgba(255,196,0,.06); font-size: 12.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.shWarn li { margin: 0 0 4px; }
+.shRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 0 0; }
+.shRow input { flex: 1 1 220px; min-width: 0; }
+.shRow label { margin: 0; flex: none; }
+.shRow .shNote { margin: 0; flex: 1 1 240px; }
+.shHolder { margin: 16px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); }
+.shHolder h4, .shWithdraw h4 { margin: 0 0 10px; font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.shClaim { padding: 9px 18px; }
+.shHistory, .shVerify { margin: 14px 0 0; border-top: 1px solid var(--line); padding: 12px 0 0; }
+.shHistory > summary, .shVerify > summary { cursor: pointer; font-size: 13px; font-weight: 650; color: var(--ink); }
+.shTable { width: 100%; border-collapse: collapse; margin: 10px 0 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.shTable th, .shTable td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.shTable th { color: var(--dim); font-weight: 600; }
+.shCli { display: block; margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--bg);
+  border: 1px solid var(--line); overflow-wrap: anywhere; white-space: pre-wrap; }
+.shChecks { margin: 12px 0 0; }
+.shVerdict { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
+.shVerdict.ok { color: var(--good); }
+.shVerdict.bad { color: var(--bad); }
+.shSteps { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.shSteps li { font-size: 12px; line-height: 1.5; padding: 6px 10px 6px 30px; position: relative; border-radius: 8px;
+  background: var(--panel2); overflow-wrap: anywhere; }
+.shSteps li::before { position: absolute; left: 10px; top: 6px; font-weight: 800; }
+.shSteps li.ok::before { content: "✓"; color: var(--good); }
+.shSteps li.bad::before { content: "✗"; color: var(--bad); }
+.shSteps li.info::before { content: "·"; color: var(--dim); }
+.shProblems, .shProof { margin: 8px 0 0; font-size: 12px; }
+.shProblems summary, .shProof summary { cursor: pointer; color: var(--dim); }
+.shProblems ul { margin: 6px 0 0; padding-left: 18px; color: var(--bad); }
+.shProof code { display: block; white-space: pre-wrap; margin-top: 6px; overflow-wrap: anywhere; }
+.shCreator { margin: 12px 0 0; padding: 12px 0 0; border-top: 1px dashed var(--line); }
+.shCreator .shNote { margin: 0 0 8px; }
+.shWithdraw { margin: 12px 0 0; }
+.shWithdraw input { max-width: 100%; }
+
+/* ---------------------------------------------------------------- the switch's dialog */
+.shDialog { max-width: min(560px, calc(100vw - 32px)); width: 100%; border: 1px solid var(--line); border-radius: 16px;
+  background: var(--panel); color: var(--ink); padding: 22px 22px 18px; }
+.shDialog::backdrop { background: rgba(4, 6, 10, .72); }
+.shDialog h3 { margin: 0 0 8px; font-size: 16px; }
+.shDialog p { margin: 0 0 8px; font-size: 13px; line-height: 1.55; }
+.shList { margin: 6px 0 12px; padding: 0 0 0 18px; font-size: 12.5px; line-height: 1.6; }
+.shList li { margin: 0 0 5px; }
+.shDialog label { margin: 10px 0 6px; }
+.shDialog .shRow { justify-content: flex-end; }
+
+@media (max-width: 760px) {
+  .shGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 420px) {
+  .shGrid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------------------------------------------------------------- /sharing: Holder fees */
+.shPage h1 { font-size: 22px; letter-spacing: -0.02em; margin: 0 0 6px; }
+.shPage .lede { color: var(--dim); font-size: 13.5px; line-height: 1.6; margin: 0 0 18px; }
+.shMineList { display: grid; gap: 8px; }
+.shMineRow { display: grid; grid-template-columns: minmax(120px, 1.2fr) repeat(3, minmax(0, 1fr)) 84px; align-items: center; gap: 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.shMineRow.shTotal { background: var(--panel2); }
+.shWhat { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--ink); text-decoration: none; }
+.shWhat b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shPic { position: relative; flex: none; width: 34px; height: 34px; border-radius: 10px; overflow: hidden; display: grid; place-items: center; }
+.shPic i { font-style: normal; font-weight: 800; color: #fff; font-size: 15px; }
+.shPic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.shFig { min-width: 0; display: grid; gap: 2px; }
+.shFig b { font-size: 13px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.shFigLabel { font-size: 11px; color: var(--dim); }
+.shUsd { font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.shClaimLink.btn { justify-self: end; padding: 7px 14px; border-radius: 9px; background: var(--paint); color: #fff; font-weight: 650;
+  font-size: 13px; text-decoration: none; }
+.shClaimLink.btn:hover { background: var(--paint-hi); }
+@media (max-width: 640px) {
+  .shMineRow { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px; }
+  .shWhat { grid-column: 1 / -1; }
+  .shClaimLink.btn { grid-column: 1 / -1; justify-self: stretch; text-align: center; }
+  .shClaimLink.none { display: none; }
+}

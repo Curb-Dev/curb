@@ -1,0 +1,73 @@
+# Holder sharing: an independent VERIFIER on GitHub's machines (core v2
+# design D.2.7, D.2.9). Every 15 minutes it fetches every published epoch
+# file by its IPFS URI and from the site, checks the sha256 against the chain,
+# recomputes the epoch on its own two providers and pages on any mismatch
+# with the Safe's veto and freeze calldata ready to sign. It also watches the
+# keepers' and the guardian's heartbeats in the data repo and pages when they
+# go stale. It holds NO key and never sends a transaction.
+# See services/sharer/RUNBOOK.md, part 9.
+
+name: sharing-verify
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharing-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    # THE DEFAULT BRANCH, WHATEVER IT IS CALLED (see sharing-keeper.yml).
+    if: github.event_name == 'schedule' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: sharing-verify
+    defaults:
+      run:
+        working-directory: services/sharer
+    env:
+      CURB_SHARER_CONFIG: deploy/sharer.json
+      CURB_SHARER_DATA: ${{ runner.temp }}/sharer-data
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.21.0"
+
+      - name: Install exactly the lockfile (no install scripts)
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+      # Remembers which epochs were already checked and which alerts went out,
+      # so a quiet run stays quiet; a cold cache only re-checks and re-alerts.
+      - name: Restore the verifier's /data
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/sharer-data
+          key: sharing-verify-data-${{ github.run_id }}
+          restore-keys: |
+            sharing-verify-data-
+
+      - name: Verify every published epoch
+        env:
+          CURB_SHARER_RPC_URLS: ${{ secrets.SHARING_VERIFY_RPC_URLS }}
+          CURB_SHARER_ALERT_WEBHOOKS: ${{ secrets.SHARING_ALERT_WEBHOOKS }}
+        run: node src/cli.ts verify --once
+
+      # SAVED ON FAILURE TOO: a run that found a mismatch fails, and its
+      # verdicts and alert cooldowns must survive it, or the same mismatch
+      # pages again every 15 minutes and hides the next real one.
+      - name: Save the verifier's /data
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/sharer-data
+          key: sharing-verify-data-${{ github.run_id }}

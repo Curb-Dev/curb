@@ -1,0 +1,97 @@
+# Holder sharing: the STANDBY keeper (core v2 design D.2.9).
+#
+# The keeper host (the keeper PC, later a VPS) runs the primary keeper. This
+# job runs every 15 minutes and does nothing unless the primary is silent -
+# its heartbeat (ops/status.json in the data repo) older than 45 minutes, or
+# its last CLEAN tick older than that - AND it can take the lease
+# (ops/lease.json, taken by compare-and-swap on the blob sha). On-chain
+# idempotency is the backstop.
+# See services/sharer/RUNBOOK.md, part 9.
+#
+# Secrets live in the `sharing-mainnet` environment, which the repository
+# settings restrict to the default branch. No pull_request trigger can reach
+# this job, and every action is pinned to a commit.
+
+name: sharing-keeper
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sharing-keeper
+  cancel-in-progress: false
+
+jobs:
+  standby:
+    # THE DEFAULT BRANCH, WHATEVER IT IS CALLED. A hard-coded main skipped
+    # every run of a repository whose default branch is master - "skipped" is
+    # not a failure, so no email said that no standby was running. A schedule
+    # always runs on the default branch; a manual run counts only from it.
+    if: github.event_name == 'schedule' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: sharing-mainnet
+    defaults:
+      run:
+        working-directory: services/sharer
+    env:
+      CURB_SHARER_CONFIG: deploy/sharer.json
+      CURB_SHARER_DATA: ${{ runner.temp }}/sharer-data
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.21.0"
+
+      - name: Install exactly the lockfile (no install scripts)
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+      # A speed-up only: the service is stateless and rebuilds from the chain
+      # and the published files. The journal it keeps lets a standby resume
+      # its own stuck transaction instead of cancelling it.
+      - name: Restore the keeper's /data
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/sharer-data
+          key: sharing-keeper-data-${{ github.run_id }}
+          restore-keys: |
+            sharing-keeper-data-
+
+      - name: Rebuild /data on a cold cache
+        env:
+          CURB_SHARER_RPC_URLS: ${{ secrets.SHARING_RPC_URLS }}
+          CURB_SHARER_ALERT_WEBHOOKS: ${{ secrets.SHARING_ALERT_WEBHOOKS }}
+        run: |
+          if [ -f "$CURB_SHARER_DATA/state.json" ]; then
+            echo "warm cache: no rebuild"
+          else
+            node src/cli.ts rebuild
+          fi
+
+      - name: Standby keeper tick
+        env:
+          CURB_SHARER_PUBLISHER_KEY: ${{ secrets.SHARING_PUBLISHER_KEY }}
+          CURB_SHARER_PUSHER_KEY: ${{ secrets.SHARING_STANDBY_PUSHER_KEY }}
+          CURB_SHARER_RPC_URLS: ${{ secrets.SHARING_RPC_URLS }}
+          CURB_SHARER_DATA_REPO_TOKEN: ${{ secrets.SHARING_DATA_REPO_TOKEN }}
+          CURB_SHARER_PIN_TOKENS: ${{ secrets.SHARING_PIN_TOKENS }}
+          CURB_SHARER_ALERT_WEBHOOKS: ${{ secrets.SHARING_ALERT_WEBHOOKS }}
+        run: node src/cli.ts keeper --once --standby
+
+      # SAVED ON FAILURE TOO. The combined cache action saves only after a
+      # job that succeeded, so a failing run lost the transaction journal and
+      # the alert cooldowns, and a persistent error paged again on every run.
+      - name: Save the keeper's /data
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/sharer-data
+          key: sharing-keeper-data-${{ github.run_id }}

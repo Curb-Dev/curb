@@ -1,0 +1,669 @@
+================================================================================
+CURB - AUDIT, 23 SEPTEMBER 2026
+Findings only. Nothing in this document has been fixed.
+================================================================================
+
+SCOPE. Everything changed between 21 and 23 September 2026: the launch fee, the
+native-ETH payouts, the launch form and its limits, the paired-asset artwork,
+the dev buy ceiling, and the page changes that go with each. Plus the parts of
+the older system those changes touch.
+
+STATE AT THE TIME OF WRITING. 61 non-fork tests, 272 fork tests, and the
+browser suite, all passing. Every finding below is something the suites do not
+catch, which is the point of writing it down.
+
+HOW TO READ THE SEVERITIES.
+  A  can produce a wrong number, a wrong claim or a wrong transaction.
+  B  the code and what it says about itself disagree.
+  C  a gap in what the product does, not a defect in what it does.
+  D  a risk taken deliberately, recorded so it is not rediscovered as a bug.
+  E  something this audit could not establish.
+
+
+================================================================================
+A. CAN PRODUCE A WRONG NUMBER OR A WRONG CLAIM
+================================================================================
+
+A-1  THE DEV BUY IS PARSED AT THE WRONG SCALE, AND UNCHECKED, WHEN THE FACTORY
+     CONTEXT HAS NOT LOADED.
+
+     web/app.js:2165
+         const devBuy = readDevBuy(ctx ? ctx.quoteDecimals : 8,
+                                   ctx ? ctx.threshold : 0n);
+
+     With ctx null, three things happen at once:
+
+       decimals fall back to 8. On an 18-decimal asset - WETH, the pair this
+       product calls its primary one - "1" becomes 1e8 wei instead of 1e18. Ten
+       orders of magnitude, silently, and the transaction succeeds.
+
+       the threshold falls back to 0, so devBuyCeiling() returns null and the
+       75% check does not run; and
+
+       `threshold && v >= threshold` is false, so the older below-threshold
+       check does not run either.
+
+     REACHABLE. Nothing gates the Create button on ctx. Buttons are disabled
+     only while an action is in flight (web/app.js:2120), so a click before the
+     first refresh finishes - or after a factory read that failed - takes this
+     path.
+
+     WHAT IT COSTS. A creator asks for 1 WETH of first buy and gets
+     0.0000000001, pays the gas, and owns a launch anybody can front-run -
+     which is the exact thing the dev buy exists to prevent.
+
+     THIS PARAGRAPH SAID "THIS CANNOT OVERSPEND" AND THAT IS NO LONGER TRUE.
+     It was written when every deployed asset had eight or eighteen decimals.
+     cbXRP has six. See N-1.
+
+     Not a contract bug. The contract is correct; the form hands it a number
+     computed from a guess.
+
+
+A-2  THE FORM DUPLICATES THE DEV BUY CEILING INSTEAD OF READING IT.
+
+     web/app.js:2301          const MAX_DEV_BUY_BPS = 7500n;
+     src/curb/CurbLaunchFactory.sol   uint16 public constant MAX_DEV_BUY_BPS = 7500;
+
+     The constant is public, so it has a getter and costs one call to read -
+     the same call the page already makes for the supply, the threshold, the
+     lock and the launch fee, all of which it reads rather than repeats.
+
+     WHAT IT COSTS IF THEY DRIFT. In one direction the form refuses a buy the
+     factory would have taken. In the other it promises one the factory
+     refuses, after the gas. It also prints the figure - "At most 45 NVDAc -
+     75% of this launch's graduation threshold" - so a drift is a page stating
+     a rule that is not the rule.
+
+     This is the same mistake the threshold comment in this file warns about,
+     made one field over.
+
+
+A-3  THE DESCRIPTION IS SILENTLY TRUNCATED AT 300 CHARACTERS.
+
+     web/app.js:2256     ($("nDesc").value || "").trim().slice(0, 300)
+     web/app.html:307    <textarea id="nDesc" rows="3" ...>  - no maxlength,
+                         no hint, nothing said anywhere on the page.
+
+     The summary card added on 23 September shows the WHOLE typed string, so a
+     creator reads back 500 characters, launches, and 300 are stored - for
+     good, since CurbLaunchToken has no setter.
+
+     This is precisely the defect that was just fixed for the name and the
+     symbol, in the opposite direction: there the page advertised a limit and
+     did not enforce it; here it enforces one and does not advertise it.
+
+
+A-4  THE PAGE CLAIMS A PAYOUT ARRIVES AS ETHER WITHOUT ASKING ANYTHING.
+
+     web/app.js  payoutSymbol() decides from the page's own WETH address
+     constant and the factory's quoteToken. It does not read the escrow, the
+     hook, or anything else that would establish the unwrapping actually
+     happens.
+
+     Against a factory wired to an escrow or hook deployed before 22 September,
+     the card would say "you are paid in: ETH" and the claimant would receive
+     WETH. DeployCurb builds a fresh escrow per asset and one hook on every
+     run, so this needs the page to be pointed at an older deployment rather
+     than a mixed one.
+
+     THAT IS NOT HYPOTHETICAL. On 23 September the page was open on the
+     previous day's deployment and showed "launch fee: Gas only" - correct for
+     the factory it was reading and wrong about the product. The launch fee is
+     read from the chain and was therefore merely stale; this row is computed
+     from a constant and would have been confidently false.
+
+     A page may summarise what the contracts do. This one asserts it from a
+     string comparison.
+
+
+================================================================================
+B. THE CODE AND ITS OWN DESCRIPTION DISAGREE
+================================================================================
+
+B-1  THE LOG-WINDOW RETRY SAYS IT HALVES AND IT QUARTERS.
+
+     web/app.js  renderLock()
+         comment:  "a refusal halves the window and asks again"
+         code:     span = Math.floor(span / 4);
+
+     Written on 23 September, in the change that fixed the window. Harmless to
+     execution and exactly the kind of thing that is believed later.
+
+
+================================================================================
+C. GAPS IN WHAT THE PRODUCT DOES
+================================================================================
+
+C-1  PAYING WITH ETHER ON AN ETH-QUOTED LAUNCH TAKES A POINTLESS ROUND TRIP
+     AND CHARGES 0.6% FOR IT.
+
+     CORRECTED 23 SEPTEMBER, AFTER THE FIRST VERSION OF THIS ENTRY WAS WRONG.
+     It said the route "throws No v3 route between ETH and WETH could be priced
+     at this size", which was read off quoteV3's error message rather than
+     traced through v3Candidates. It does not throw. What it does is worse,
+     because it is silent.
+
+     WHAT ACTUALLY HAPPENS. v3Candidates looks for three things: a direct
+     WETH -> quote pool, a USDC -> quote pool, and a WETH -> USDC pool. With
+     the quote asset being WETH:
+
+       getPool(WETH, WETH, 3000)  -> 0x0, verified on chain. No direct path.
+       getPool(WETH, USDC, 3000)  -> 0x6c561B44..., and it is used TWICE.
+
+     So the two-hop branch builds WETH -> USDC -> WETH, and the quoter prices
+     it happily. Measured against the deployed QuoterV2 at the pinned block:
+
+       1.000000000000000000 WETH in
+       0.994005604549159684 WETH out        -0.5994%
+
+     Two pool fees and the slippage between them, paid to arrive at the token
+     the buyer already had. Then the v4 leg into the launch token runs on what
+     is left. The same happens in reverse on a sell.
+
+     THE HONEST ROUTE IS ZERO HOPS: wrapEth on the way in, unwrapWeth on the
+     way out, and no v3 leg at all. It does not exist.
+
+     THE DEV BUY IS A SEPARATE, HARDER GAP: it takes the quote ERC20 and only
+     the quote ERC20, on every pair, so there is no ETH path into a first buy
+     anywhere.
+
+     THE DEV BUY. readDevBuy/createLaunchInner take the quote ERC20 and only
+     the quote ERC20. There is no ETH path into a first buy on any pair.
+
+     SO, ON THE PAIR THIS PRODUCT PUTS FIRST: a person paying with ether is
+     quietly charged 0.6% for a swap that does nothing, and a person wanting to
+     make a first buy has to hold the wrapped token and is told nothing.
+
+     WHAT THE REFERENCE DOES. thestonks.exchange accepts ETH for every pair and
+     routes ETH -> USDC -> quote with a floor enforced on-chain, executed by
+     their launcher rather than an aggregator. Read from a screenshot; see E-2.
+
+     This is the largest single gap in the product today and it is entirely in
+     the page and the factory's entry point, not in the curve or the hook.
+
+
+C-2  THE GRADUATOR RECORDS NEITHER THE LOCK NOR THE BURN.
+
+     It emits both and stores neither, so every client scans logs for what a
+     getter could return. That is why the page has a block-window search at
+     all - and why an upstream endpoint tightening its eth_getLogs range from
+     2,000 to 1,000 blocks broke the lock panel on 23 September.
+
+     The window now fits and narrows on refusal, so the symptom is gone. The
+     reason it was possible is not.
+
+
+C-3  THE THIN-MARKET WARNING IS STRUCTURAL, NOT NOISE.
+
+     Recorded because it has been asked about twice. Our curve must TAKE IN
+     graduationThreshold of the quote asset before it graduates, so the depth
+     of that asset's own market decides whether a launch can ever fill. The
+     reference launchpad's position is single-sided - all coin, no quote - so a
+     creator there needs none of the paired asset and depth is irrelevant.
+
+     The warning is correct for the product as built. Removing it means
+     changing the shape of the launch, which is an architectural decision and
+     not a UI one.
+
+     MEASURED RATHER THAN INFERRED, 23 SEPTEMBER. Their marketing copy says
+     single-sided; their chain says it too. A METAc-paired launch of theirs
+     with zero swaps, pool 0xcc0c251ef20ea22ceea1dd9dddeea03c45c7b083:
+
+         METAc in the pool         0
+         launch token in the pool  999,999,999.99...  (the whole 1e27 supply)
+
+     The creator supplied none of the quote asset. The pool is live the moment
+     it is made and there is nothing to fill, so the depth of METAc never
+     touches their launch - only whoever trades afterwards.
+
+     AND IT IS NOT A CORNER OF THEIR MARKET. Across their 923 launches
+     (/api/coins, same day) the quote assets are:
+
+         WETH 181, NVDAc 120, AAPLc 89, SPCXc 51, COINc 47, TSLAc 42,
+         METAc 34, MSFTc 27, AMZNc 26, MSTRc 21, SNDKc 10, cbBTC 8, ...
+
+     More than a third of those are assets this product either warns about or
+     cannot price a threshold for at all. Whatever is decided here, it is not
+     a rounding error.
+
+     DECIDED 23 SEPTEMBER: LEAVE IT. The warning stays and the thresholds stay
+     where they are. Three options were put and this was chosen; the other two
+     were per-asset thresholds sized to what each market can supply, and
+     moving to a single-sided launch. Revisit with the numbers above rather
+     than from scratch.
+
+
+C-4  THE SUMMARY CARD SHOWS NO LAUNCH WINDOW BECAUSE THERE IS NONE.
+
+     The reference card carries "Launch window - 99% snipe tax, 3s". This
+     product has no snipe tax and no launch window, so the row is absent rather
+     than empty. Listed here so the absence is a decision on the record.
+
+
+================================================================================
+D. RISKS TAKEN DELIBERATELY
+================================================================================
+
+D-1  THE HOOK MAKES AN UNTRUSTED CALL INSIDE afterSwap.
+
+     FeeHook._payNative sends ether to a launch's creator - an address someone
+     else chose - while the pool manager is unlocked, bounded to 30,000 gas.
+     Reentering the manager costs more than that, and the recipient is not the
+     locker, so it cannot take. The price of the bound is that a recipient
+     whose receive() does real work is paid WETH instead; that is tested.
+
+D-2  DevBuyTooLarge IS UNREACHABLE TODAY AND IS KEPT.
+
+     The 75% ceiling is tighter at every threshold. Setting MAX_DEV_BUY_BPS to
+     10,000 makes it reachable again, and the mutation run confirms it: it is
+     load-bearing under a plausible future, not dead weight.
+
+D-3  collected[token] STILL COUNTS THE QUOTE TOKEN AFTER THE UNWRAP.
+
+     The pool was charged in WETH; ether is what left. The counter is
+     denominated in the charge.
+
+D-4  SEVEN THIRD-PARTY TRADEMARKS ARE VENDORED INTO THE REPOSITORY.
+
+     web/assets/, with source, date, licence and removal instructions in
+     web/assets/README.txt. Used to identify which tokenized equity a launch is
+     priced against. Not a technical risk; recorded because it is a risk.
+
+D-5  THE ESCROW PAYS A CLAIMANT WITH ALL AVAILABLE GAS.
+
+     Deliberate, and different from D-1: the recipient is the caller, the
+     balance is written down first, and the reentrancy guard is held. A
+     claimant whose wallet is a contract is paid in ether like everyone else.
+
+
+================================================================================
+E. WHAT THIS AUDIT COULD NOT ESTABLISH
+================================================================================
+
+E-1  NOTHING HAS EVER BEEN DEPLOYED TO MAINNET. Not a finding about the code -
+     a statement about the evidence. Every result in this project comes from a
+     fork pinned at block 51171034.
+
+E-2  THE REFERENCE LAUNCHPAD WAS NOT OBSERVED DIRECTLY. thestonks.exchange
+     /launch would not finish loading in this environment, so everything C-1
+     says about their ETH handling is read off a screenshot rather than from
+     their page or their contracts.
+
+E-3  THE ETH-ROUTE COST TEST IS FLAKY. It passes in five runs of seven and is
+     instrumented to report what it compared on the next failure. The cause is
+     still unknown.
+
+E-4  NO FUZZING OR INVARIANT RUN COVERS THE DEV BUY CEILING OR THE NATIVE
+     PAYOUTS. Both are covered by unit tests and by mutation, which is a
+     narrower claim.
+
+
+================================================================================
+SECOND PASS, SAME DAY - WHAT THE WORK SINCE THE FIRST PASS ADDED
+================================================================================
+
+The dev buy ceiling, three new quote assets, the measurement script, and the
+page changes that went with them. Findings only; nothing below is fixed.
+
+
+N-1  A-1 IS WORSE THAN IT WAS WRITTEN, AND cbXRP IS WHY.
+
+     web/app.js:2196  readDevBuy(ctx ? ctx.quoteDecimals : 8, ...)
+
+     The first pass said this under-buys: on WETH, eighteen decimals read as
+     eight makes "1" into a ten-billionth of what was typed. cbXRP is SIX
+     decimals, and the same fallback runs the other way - "1" becomes 1e8 raw,
+     which is ONE HUNDRED cbXRP.
+
+     So the fallback does not fail in one direction. It fails in whichever
+     direction the asset happens to sit relative to eight, and the only thing
+     bounding the expensive direction is the factory's 75% ceiling.
+
+     Adding an asset with fewer than eight decimals turned a silent underspend
+     into a silent overspend, and nothing in the suites noticed.
+
+
+N-2  THE HALF-LINK WARNING ONLY WATCHES ONE HALF.
+
+     web/app.js:259
+         mixedEndpoint = !q.get("rpc") && !!(q.get("factory") || q.get("lens"));
+
+     A link that names an endpoint but no factory takes the factory from the
+     last session, reads it at the named endpoint, and says nothing. That is
+     the same mixing the warning exists for, from the other side.
+
+
+N-3  ASSET_VERSION AND ASSET_FILE ARE MAINTAINED BY HAND.
+
+     web/app.js:50, 58
+
+     The version exists because changing the artwork without changing the URL
+     left browsers drawing the previous files - white marks on what had become
+     a white tile, invisible, with no error anywhere. Forgetting to bump it
+     reproduces exactly that, and it fails the same silent way. ASSET_FILE has
+     the same shape: a file renamed from .png to .svg and not removed from the
+     map asks for a file that is not there.
+
+
+N-4  THE PAGE CARRIES A SECOND REGISTRY OF WHICH ASSETS ARE EQUITIES.
+
+     web/app.js  EQUITIES, an allow-list of twelve addresses, behind
+     isEquity().
+
+     THE DESIGN IS RIGHT AND THE MAINTENANCE IS THE FINDING. A prefix rule
+     would have been shorter and would have put cbZEC - which is 0xb2-prefixed
+     like the equities - under "Stocks", which is wrong. The cost is that an
+     equity deployed without being added to this list appears under "Coins",
+     silently, and nothing connects the list to the deployment that decides
+     what actually exists.
+
+
+N-5  PRICE_FLOOR_USD DECIDES WHICH ASSETS CAN EXIST, AND IS A CHOSEN NUMBER.
+
+     script/b20/measure-thresholds.js
+
+     $1,000 on the valuable side of a pool is what separates "priceable" from
+     "no market" - and nine of the twelve assets asked for on 23 September
+     failed it. The floor is documented and defensible; it is not derived from
+     anything, and it is doing more work than any other constant in that file.
+
+
+N-6  THE THRESHOLDS IN DeployCurb WERE MEASURED ON THREE DIFFERENT DAYS.
+
+     WETH and the equities on 22 September, the three coins on the 23rd. The
+     file says so per asset, and the script says to re-run immediately before
+     deploying - but nothing enforces it, and SPCXc is the standing proof that
+     a threshold measured once goes stale: it cleared the bar when it was
+     written and does not now.
+
+
+================================================================================
+THIRD PASS - TWO FINDINGS RAISED FROM OUTSIDE, BOTH CONFIRMED
+================================================================================
+
+Raised by the user relaying another model's reading of the ETH payout. Both are
+right, both are about code written on 22 September, and both were invisible to
+the suites for the same reason: no browser or fork test ever traded on a
+WETH-quoted pool until 23 September.
+
+
+X-1  A FEE RECIPIENT CAN STOP EVERY SWAP IN ITS OWN POOL. CONFIRMED.
+     SEVERITY: this is the failure the WETH fallback was written to prevent,
+     reached by a path the fallback cannot see.
+
+     WHAT D-1 CLAIMED, AND WHAT IS ACTUALLY TRUE. D-1 says "Reentering the
+     manager costs more than [30,000 gas], and the recipient is not the locker,
+     so it cannot take." The second half is simply wrong:
+
+         lib/v4-core/src/PoolManager.sol:291
+         function take(Currency currency, address to, uint256 amount)
+             external onlyWhenUnlocked
+         { _accountDelta(currency, -(amount.toInt128()), msg.sender); ... }
+
+     onlyWhenUnlocked and nothing else. Anybody may call it while the manager
+     is unlocked, and the debt is recorded against msg.sender - the caller, not
+     the unlocker.
+
+     AND THE FIRST HALF DOES NOT SAVE IT. 30,000 gas is enough to reach take().
+
+     THE MECHANISM, END TO END:
+       1. FeeHook._payNative sends ether to the creator with a 30,000 stipend,
+          from inside afterSwap, while the manager is unlocked.
+       2. The creator's receive() calls poolManager.take(WETH, itself, 1) and
+          RETURNS NORMALLY.
+       3. `(bool sent,)` is therefore TRUE. The wrapped-token fallback never
+          runs - it cannot, because nothing failed.
+       4. The stray delta is never settled, so PoolManager.sol:112 finds
+          NonzeroDeltaCount != 0 and reverts the whole transaction.
+
+     Result: one address, chosen by the creator at launch and unchangeable
+     afterwards, makes every swap in that pool revert forever.
+
+     PROVEN, NOT REASONED. test_wethPool_aCreatorCanStopEverySwapByReentering-
+     TheManager builds exactly that recipient, swaps, and asserts the revert
+     carries CurrencyNotSettled rather than merely asserting that something
+     failed. The control is already in the file: test_wethPool_aCreatorWhose-
+     ReceiveIsTooExpensiveGetsWeth has a contract recipient with an expensive
+     receive() and its swap SUCCEEDS, so the difference is the take() and not
+     "the recipient is a contract".
+
+     THIS WAS INTRODUCED BY THE 22 SEPTEMBER CHANGE. Before it, _pay did
+     poolManager.take(quote, recipient, amount) - an ERC20 transfer, with no
+     callback into anybody's code inside afterSwap at all.
+
+     NOT FIXED. The options are a design choice and are for the morning:
+       (a) go back to taking the quote token straight to each recipient - safe,
+           and gives up ETH payouts on the pool side;
+       (b) credit the escrow from the hook and pay ether on CLAIM, where there
+           is no lock to re-enter and the reentrancy guard is real;
+       (c) cut the stipend to 2,300, which cannot make a cold external call at
+           all - and pays every smart-contract wallet in WETH.
+     (b) keeps what the change was for. It is the one worth costing first.
+
+
+X-2  THE PAGE'S RECEIPT CHECK CANNOT RECONCILE AN ETH-PAIRED TRADE. CONFIRMED.
+
+     web/app.js  paidIn() reads Transfer logs whose sender is the POOL MANAGER
+     and matches them, one for one, against the two fee legs it computed.
+
+     On a WETH pool the new payout emits none of those:
+
+       poolManager.take(quote, address(this), charged)
+                                 ONE transfer, to the HOOK, for the total
+       IWETH.withdraw(charged)   a Withdrawal event, no Transfer to a payee
+       to.call{value:}           raw ether, NO LOG AT ALL
+
+     So matchPayments finds one payment to an address that is not a payee,
+     against two expected payments, and sets reconciles = false. Every trade on
+     an ETH-quoted pool reports "this pool paid out 1 time(s) ... and that does
+     not match a swap of ...".
+
+     The check is doing its job - the payments really are not there any more.
+     What is wrong is that nothing taught it about the unwrap.
+
+     WHY NEITHER SUITE SAW IT. The browser tests trade on the equity pool the
+     fixture builds; the new ETH-route tests read the calldata with dispatch()
+     and never mine a receipt. A test that presses through on a WETH pool would
+     have failed the day the payout changed.
+
+
+================================================================================
+FOURTH PASS - AN INDEPENDENT AUDIT ARRIVED, AND WHAT CHECKING IT FOUND
+================================================================================
+
+CODEX_AUDIT_2026-09-23.md, produced separately and without touching product
+code. Cross-checked here rather than accepted. Its two High findings are the
+two this document already proves (X-1 and A-1/N-1), reached independently,
+which is worth as much as the findings themselves.
+
+VERIFIED HERE, AND MORE SERIOUS AT ITS ROOT THAN THE REPORT SAYS:
+
+  M-02, the v4 quote being exact only within one liquidity range. The report
+  treats third-party liquidity as possible. It is not merely possible - the
+  hook cannot stop it:
+
+      mined flags: BEFORE_INITIALIZE | BEFORE_SWAP | BEFORE_SWAP_RETURNS_DELTA
+                   | AFTER_SWAP | AFTER_SWAP_RETURNS_DELTA
+
+  There is no BEFORE_ADD_LIQUIDITY bit, and the pool manager calls only the
+  hooks whose bit is set in the address. So FeeHook.beforeAddLiquidity - which
+  reverts HookNotImplemented, and reads like a refusal - IS NEVER CALLED.
+  Anybody may add liquidity in any range to a graduated pool. The same is true
+  of beforeRemoveLiquidity. Two functions that look load-bearing are dead.
+
+VERIFIED HERE, EXACTLY AS WRITTEN:
+
+  M-05. preflight-mainnet.sh:112 and :140 both pass
+  ${CURB_ALLOW_EOA_RECIPIENT:-true}. DeployCurb refuses a no-code platform
+  recipient by default; the preflight flips that default to allow, at the one
+  layer whose job is to protect the real deployment.
+
+  M-03. v3PoolsBetween sorts tiers by the token balance sitting in each pool
+  and v3Candidates keeps only [0]. Tiers are therefore eliminated before the
+  quoter ever sees them. In v3 custody is not executable depth at the current
+  price - which is the lesson the header of measure-thresholds.js already
+  spells out for PRICE, made again one layer over for ROUTE.
+
+VERIFIED, WITH ONE PART OF THE MECHANISM OVERSTATED:
+
+  M-06. The core is right and it is our code: launch() sends the fee to the
+  hook's current platform recipient with an unrestricted-gas call, so a
+  recipient that will not take ether stops every new launch. LaunchFeeNotTaken
+  was written as "refused rather than stranding the fee" and the availability
+  consequence was never stated.
+
+  The report adds that a recipient can "re-enter launch() and recycle the same
+  fee to itself until gas exhaustion". A re-entrant launch() must supply its
+  own msg.value or fail the exact-amount check, so the attacker is forwarding
+  ether they were just given rather than recycling one payment - and the
+  outcome is the same revert a plain refusal produces. The recursion is a
+  longer road to the DoS that already exists, not a second vulnerability.
+
+NOT RE-DERIVED HERE: M-04 (registry deployer is a permanent, immediate
+administrator) and L-03 (unbounded caller-chosen loops in the lens). Both read
+correctly against the source; neither was independently reproduced, and this
+document does not claim more than it did.
+
+
+================================================================================
+FIFTH PASS - THE SECOND EXTERNAL REPORT, AND THE FINDING THAT OUTRANKS X-1
+================================================================================
+
+CODEX_AUDIT_RECHECK_2026-09-23.md. Its H-01 and H-03 are this document's X-1
+and A-1/N-1. Its H-02 is new here, and checking it changed the shape of the
+whole problem.
+
+
+Y-1  AN ISSUER BLOCKING THE CREATOR'S FEE ADDRESS STOPS EVERY SWAP IN A
+     GRADUATED EQUITY POOL. CONFIRMED, INDEPENDENTLY.
+
+     WHAT THE REPORT PROVED AND WHAT IT DID NOT. It cites two tests already in
+     this repository - test_aBlockedRecipientIsRefusedWithPolicyForbids and
+     test_oneBlocklistEntryStopsTwoDifferentAssets. Those establish that a B20
+     TRANSFER to a blocked receiver is refused. They say nothing about a SWAP.
+     The step from one to the other is the claim, so it was tested here:
+
+         test_equityPool_aBlockedCreatorAddressStopsEverySwap
+
+       1. an NVDAc launch graduates with a named creator;
+       2. a swap SUCCEEDS - the control, without which this proves only that
+          something reverts;
+       3. the policy admin adds that creator to the receiver blocklist;
+       4. the same swap reverts, and the revert data carries PolicyForbids.
+
+     WHY THIS OUTRANKS X-1. X-1 needs a creator who chose a malicious payout
+     address. This needs nobody to misbehave at all: blocking an address is the
+     designed purpose of a compliance token, an expected event rather than an
+     attack. And it reaches every equity pair, which is most of the product,
+     where X-1 reaches only WETH pairs.
+
+     NOT INTRODUCED BY THE ETHER PAYOUT. _pay has taken the quote asset
+     straight to cfg.creator since long before 22 September. That change moved
+     the WETH case out of this path and put X-1 there instead.
+
+     THE CREATOR ADDRESS CANNOT BE ROTATED. It is written into the hook at
+     graduation and there is no setter, so a pool that hits this cannot be
+     repaired from inside the product at all.
+
+
+Y-2  X-1 AND Y-1 ARE ONE FLAW WITH TWO ENTRANCES, AND THAT IS THE THING TO FIX.
+
+     Both say: THE SUCCESS OF A SWAP DEPENDS ON AN EXTERNAL TRANSFER TO AN
+     ADDRESS CHOSEN AT LAUNCH AND NEVER CHANGEABLE.
+
+       WETH pairs   - the recipient runs code and can leave an unsettled delta
+       equity pairs - the recipient is subject to an issuer policy that can
+                      refuse the transfer
+
+     Treating them separately invites two partial fixes. The curve side already
+     solved this: fees are CREDITED to an escrow and claimed later, so a
+     recipient who cannot take delivery loses their claim rather than stopping
+     everybody's trading. The pool side pushes instead, and that is the whole
+     difference.
+
+     This raises the priority of the escrow option recorded under X-1 from "the
+     one worth costing first" to "the one that closes both".
+
+
+================================================================================
+CLOSING PASS - WHAT WAS FIXED, WHAT WAS NOT, AND WHAT THE FIXING BROKE
+================================================================================
+
+Written after the work, against the three suites green: 61 non-fork, 274 fork,
+64 browser. Everything below was verified by a test that fails without it.
+
+
+FIXED
+-----
+
+X-1 + Y-1  ONE FLAW, TWO DOORS, CLOSED TOGETHER. A swap's success no longer
+     depends on an external transfer to an address chosen at launch. WETH never
+     leaves during a swap; every other asset is still tried directly and falls
+     back to a debt only when refused. Three tests that proved the holes this
+     morning now assert the opposite, and the equity fallback is
+     mutation-checked.
+
+A-1  The dev buy is scaled by what the transaction pinned, and refuses when
+     nothing is pinned. N-1's overspend on a six-decimal asset goes with it.
+
+M-06 A refused launch fee is held for the platform rather than refusing every
+     launch. launch() is guarded against reentry from the fee call.
+
+M-01 The receipt reconciles a fee leg settled to its payee OR to the hook, one
+     payment per leg.
+
+M-03 Route candidates are no longer eliminated by custody before the quoter
+     sees them.
+
+M-05 The mainnet preflight stops defaulting the Safe-recipient override to
+     true.
+
+L-03 The lens caps a page at 50.
+
+A-2, A-3, A-4, B-1, N-2  The ceiling is read rather than repeated; the
+     description is capped, advertised and refused rather than cut; the ether
+     claim asks the hook; the retry comment matches the code; the half-link
+     warning watches both directions.
+
+
+NOT FIXED, AND WHY
+------------------
+
+M-02 THE v4 QUOTE DOES NOT MODEL TICK TRAVERSAL. Confirmed worse at its root
+     than the report said: the hook's mined flags carry no
+     BEFORE_ADD_LIQUIDITY bit, so FeeHook.beforeAddLiquidity - which reverts
+     HookNotImplemented and reads like a refusal - is never called, and anybody
+     may add liquidity in any range. Doing this properly needs an on-chain
+     quoter or tick walking; it is a piece of work, not a patch.
+
+M-04 THE REGISTRY DEPLOYER IS A PERMANENT, IMMEDIATE ADMINISTRATOR. A
+     governance decision, not a defect to fix unilaterally.
+
+C-3  THE THIN-MARKET WARNING STAYS, decided 23 September with the numbers
+     recorded above.
+
+
+WHAT THE FIXING BROKE, AND WHAT THAT SAYS
+-----------------------------------------
+
+Six of the failures in this stretch were caused by the fixes rather than found
+by them, and every one was caught by a suite rather than by reading:
+
+  pin.hook read in a function that never received pin;
+  q read outside loadCfg, where it does not exist;
+  quoting a nearly empty tier with a large amount, which QuoterV2 SIMULATES -
+    the eth_call effectively never returns, and one such path held up the whole
+    quote for a user as well as a test;
+  the lock panel's log window turned from a fast 413 into a slow upstream fetch
+    that every refresh awaited;
+  a fee expectation written as one aggregate payment when the contract takes
+    once per leg;
+  and the phrase "was expected" in an explanation, which the browser suite's
+    press() helper treats as the page reporting a failure.
+
+THE ONE THAT TOOK EIGHT ATTEMPTS was the last of the browser failures, and five
+of those attempts were hypotheses that measurement then disproved. What ended it
+was not a better guess: it was making the mismatch message name the payments on
+BOTH sides instead of only the output side. The message had been describing
+numbers that were fine while staying silent about the ones that were not.

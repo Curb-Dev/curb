@@ -1,0 +1,966 @@
+================================================================================
+DEPTH - WHAT A TRADE ACTUALLY COSTS, MEASURED
+================================================================================
+
+WHAT THIS ANSWERS
+  ROADMAP Phase 0 B: both directions, real sizes, total cost after fees rather
+  than slippage alone. It is in two halves because they are two different kinds
+  of fact:
+
+    THE CONVERSION      NVDAc against USDC and against ETH, on somebody else's
+                        liquidity. Depends on the chain, so it is measured at a
+                        named block and goes stale.
+    OUR OWN POOL        a graduated CURB pool. Depends on parameters WE pick,
+                        not on the chain, so it does not go stale - it changes
+                        when we change the threshold or the tax.
+
+WHAT IT DOES NOT ANSWER
+  Nothing here decides anything. "A trade of this size costs this much" is a
+  measurement; WHICH COST IS ACCEPTABLE is a product decision, it has not been
+  made, and the candidates at the end are candidates.
+
+--------------------------------------------------------------------------------
+ONE DEFINITION OF COST, AND THE OTHER ONE NAMED WHEREVER IT APPEARS
+--------------------------------------------------------------------------------
+  SHORTFALL      cost = 1 - returned / expected-at-mid
+                 "this share of my money did not arrive". Same on a buy and a
+                 sell, never above 100%. EVERY TABLE BELOW USES THIS.
+  PRICE OVER MID cost = paid / mid - 1
+                 "the price I got was this much worse than mid". Only the
+                 costLimit tests use it, because "a 3% limit" reads naturally
+                 as a price limit. Wherever it appears it says so in the label.
+
+  THEY ARE NOT THE SAME NUMBER: the second is the first divided by (1 - the
+  first). 48 bps against 48 bps is a rounding difference; 7745 against 7745 is a
+  factor of four.
+
+  THE FIRST VERSION OF THIS FILE MIXED THEM, and not only between the two
+  halves - the pool table's BUY leg was price-over-mid while its own SELL leg
+  was already the shortfall, in one table, under one "bps" heading. Its
+  headline conclusion was read straight off that gap. See CORRECTIONS at the
+  end; the tests now emit both, each named.
+
+HOW TO REPRODUCE
+  bash script/b20/measure-depth.sh          the conversion half, own fork,
+                                            read-only, prints its own block
+  B20_FORK=true base-forge test --match-path "test/fork/B20Graduation*" \
+      --match-test "depth_threshold|costLimit" --fork-url <pinned node> -vv
+  bash script/b20/mutate-depth-lock.sh    does the port lock actually hold?
+  bash script/b20/faultinject-depth.sh    does a broken RPC ever become a
+                                          number? (needs a node on 8553)
+  base-forge build script/b20/SwapDeltaProbe.sol    the measurement needs
+                                          this artifact and refuses without it
+
+  DO NOT run base-forge test with --fork-url and no --match-path. It does not
+  complete in this environment; script/b20/test-all.sh exists for that reason,
+  and this work re-made the mistake once.
+  WHAT WAS OBSERVED: 20 minutes elapsed, 31 seconds of CPU, no output, the
+  process alive, the node answering. WHAT WAS NOT: a cause. "blocked on
+  upstream RPC" was written here as if it had been established; it had not.
+  Low CPU with no progress is consistent with waiting on the network AND with
+  several other things, and nothing measured which. test-all.sh's own header
+  already says the cause was never measured - the same discipline belongs here.
+  Use test-all.sh.
+
+
+================================================================================
+1. THE CONVERSION - NVDAc against USDC and against ETH
+================================================================================
+  MEASURED 2026-09-15 20:29 UTC, Uniswap v3 on Base
+    block        51357412
+    block hash
+      0x3dd54e537e86b6e1932cd8a6fe78c593fb30204021ebd043df21fe1f7ecf4367
+    method       eth_call only, on an isolated fork. Nothing was sent or mined.
+    3,986 calls, 7 retried after the fork failed to fetch state from upstream,
+    0 failed outright. The tool prints that count, and re-reads the block
+    number afterwards and refuses the run if it moved.
+    EVERY FIGURE IN THIS SECTION IS FROM THAT ONE RUN. Runs minutes apart have
+    shown 55.68 / 56.56 / 61.80 NVDAc in the WETH pool, so mixing runs would be
+    mixing states.
+
+--------------------------------------------------------------------------------
+1.1  WHAT WAS ACTUALLY SEARCHED - the scope, stated exactly
+--------------------------------------------------------------------------------
+  ONE FACTORY: Uniswap v3, 0x33128a8fC17869897dcE68Ed026d694621f6FDfD.
+
+  THE FEE TIERS ARE PROBED, NOT ENUMERATED, and that distinction is the point.
+    probed      every fee from 1 to 1,000, every multiple of 10 up to 20,000,
+                and 25k / 30k / 50k / 100k / 200k / 500k / 1M - 2,907 values,
+                by feeAmountTickSpacing(uint24) != 0
+    enabled     100, 200, 300, 400, 500, 3000, 10000
+    NOT DONE    the factory's FeeAmountEnabled logs, which would be the
+                complete answer. This upstream refuses it: eth_getLogs is
+                capped at a 2,000-block range and Base is past block
+                51,000,000, so a full scan is about 25,000 requests.
+  So the honest claim is "the enabled tiers WITHIN THAT DOMAIN".
+
+  SEVEN QUOTE TOKENS, each confirmed on chain by symbol() and decimals():
+  WETH, USDC, USDbC, USDT, DAI, cbBTC, cbETH.
+
+  THAT IS THE WHOLE CLAIM. Not "every pool on Base" and not "NVDAc's
+  liquidity": Aerodrome is named in ROADMAP 7.1 and is not looked at, no other
+  DEX is, no v2 or v4 pool is, and no pair outside that list of seven is.
+
+--------------------------------------------------------------------------------
+1.2  WHAT THE POOL CONTRACTS HOLD - a balance sheet, NOT a depth
+--------------------------------------------------------------------------------
+    pair   tier    NVDAc        other        in-range liquidity
+    WETH    100     0.00       0.0000 WETH   0
+    WETH   3000    56.56       3.6317 WETH   5043549345749605
+    USDC    200     0.00       0.0001 USDC   0
+    USDC    500     0.00       0.0025 USDC   0
+    USDC   3000    54.94   10903.0673 USDC   191484060023
+    USDC  10000     0.21       5.3503 USDC   30625540
+    cbBTC  3000     0.00       0.0000 cbBTC  0
+
+  ADDING THESE UP GIVES ABOUT 43,300 USD, AND THAT NUMBER IS NOT A DEPTH.
+  It is what the CONTRACTS hold: every tick, in range and out of it, plus fees
+  nobody has collected. An earlier version of this file added them up, called
+  the total "all of NVDAc's Uniswap v3 depth on Base", and reasoned about
+  graduation thresholds from it. What a trade can really get is 1.3 and 1.5.
+
+--------------------------------------------------------------------------------
+1.3  THREE KINDS OF STATEMENT, AND THEY ARE NOT INTERCHANGEABLE
+--------------------------------------------------------------------------------
+  OBSERVED    the highest output seen across the amounts tried. A finite sweep
+              cannot prove a plateau is final, so the range tried is printed
+              with it. It is a floor under the true ceiling, not the ceiling.
+  MEASURED    the input a swap REALLY consumed and the output it REALLY
+              produced, read from the pool's own returned deltas for that one
+              swap - script/b20/SwapDeltaProbe.sol, installed for the duration
+              of a single eth_call by that call's state override. Nothing is
+              mined. No inference.
+  ESTIMATED   the same quantity from bisecting QuoterV2's price bound over many
+              simulations of DIFFERENT amounts. An estimate, kept only because
+              agreeing with the measurement is worth something.
+
+    leg             observed ceiling        measured input boundary
+    NVDAc -> USDC   10,836.25 USDC          2,721.65 NVDAc asked for and ALL of
+                    (~10,836 USD) over      it spent. No boundary at or below
+                    inputs up to 2.7e18     that - and that is the largest the
+                    NVDAc                   probe could fund, not a statement
+                                            about larger amounts.
+    USDC  -> NVDAc  54.59 NVDAc             16,867,776 USDC asked for and ALL
+                    (~11,560 USD) over      of it spent. Same caveat.
+                    inputs up to 1.4e20
+    NVDAc -> ETH    3.579 ETH               42.98 NVDAc really consumed out of
+                    (~8,588 USD)            a 2,722 NVDAc request (~9,102 USD)
+    ETH   -> NVDAc  55.03 NVDAc             5.119 ETH really consumed out of a
+                    (~11,655 USD)           4,407 ETH request (~12,286 USD)
+
+  THE ESTIMATE AND THE MEASUREMENT AGREE TO 0.0000% on both WETH legs, and the
+  exact-output quote lands on the same number as well. Three routes, one
+  answer; only one of them is a measurement of the swap itself.
+
+  THE TWO POOLS BEHAVE DIFFERENTLY, AND NEITHER "REFUSES" ANYTHING.
+    The WETH pool stops taking input at ~43 NVDAc. That is a PARTIAL FILL: the
+    call succeeds, the pool takes what it can and pays for it, and the rest of
+    the input is never spent. An earlier version said the pool "REFUSES an
+    input over ~36.6 NVDAc", which describes a revert. Nothing reverts.
+    The USDC pool spent every amount that could be put to it - up to 2,722
+    NVDAc and 16.87M USDC, the most the probe host could fund - while its
+    output stopped rising at ~10,836 USDC. An earlier version said the pool
+    "consumes any input however large"; the sweep is finite and that claim went
+    past it.
+
+--------------------------------------------------------------------------------
+1.4  WHAT A TRADE COSTS at the sizes Phase 0 B names
+--------------------------------------------------------------------------------
+  THE COST IS OF THE TRADE THAT ACTUALLY HAPPENED:
+      cost = 1 - received / (mid value of the input REALLY SPENT)
+  Both sides come from the same probe call, and the quoter is a cross-check
+  that STOPS the row if it disagrees. Includes the 30 bps LP fee; our own tax
+  is zero on these legs.
+
+  ON A PARTIAL FILL THE UNSPENT INPUT STAYS WITH THE TRADER, so it is not a
+  cost. "shortfall" is how far the output falls below the mid value of the
+  WHOLE offer, and it is NOT a trade cost - it is printed only so the two
+  cannot be confused again.
+
+    notional   NVDAc->USDC    USDC->NVDAc    NVDAc->ETH        ETH->NVDAc
+    $50           32 bps         32 bps         31 bps           31 bps
+    $100          34 bps         34 bps         33 bps           33 bps
+    $500          56 bps         48 bps         44 bps           44 bps
+    $1,000        87 bps         66 bps         58 bps           58 bps
+    $5,000       369 bps        294 bps        191 bps          166 bps
+    $10,000      791 bps        639 bps    564 bps / 91.0%      304 bps
+    $50,000     7833 bps       7688 bps    564 bps / 18.2%   513 bps / 24.6%
+
+  THE CELLS WITH A PERCENTAGE ARE PARTIAL FILLS. NVDAc->ETH at $50,000 spends
+  18.2% of the offer - a $9,102 trade - and THAT trade costs 564 bps. The
+  $10,000 row is the same swap, so it costs the same. The shortfall against the
+  whole offer is 8282 bps and 1412 bps respectively, and an earlier version of
+  this file printed THOSE as the cost, charging the trader for money that never
+  left their wallet.
+
+  THE 100% ROWS AT $50,000 ARE STILL BAD. The input is consumed in full and 77%
+  of the value does not come back.
+
+  THE USDC POOL IS NOT SIMPLY BETTER - IT IS WORSE WHEREVER BOTH FILL FULLY.
+      selling NVDAc   56 / 87 / 369 bps through USDC
+                      44 / 58 / 191 bps through ETH     at $500 / $1k / $5k
+      buying NVDAc    48 / 66 / 294 bps through USDC
+                      44 / 58 / 166 bps through ETH     at $500 / $1k / $5k
+  A higher balance does not mean a better price at any given size.
+
+--------------------------------------------------------------------------------
+1.5  DEPTH AT A COST - the figure "42,000 USD" was pretending to be
+--------------------------------------------------------------------------------
+  The largest notional that is BOTH fully consumed AND under a stated cost.
+  Both halves come from ONE probe call - the measured spend and the measured
+  output - and a quoter that disagrees with it abandons the search rather than
+  supplying a second opinion nobody reads.
+
+    leg             under 50 bps   under 100 bps   under 300 bps
+    NVDAc -> USDC        $388          $1,189          $4,052
+    USDC  -> NVDAc       $562          $1,810          $5,090
+    NVDAc -> ETH         $713          $2,434          $7,188
+    ETH   -> NVDAc       $725          $2,554          $9,875
+
+  SO: about $1,200-$2,600 moves at under 1%, and about $4,000-$9,900 at under
+  3%. The most any single trade was seen to return is ~$8,600-$11,700 depending
+  on the leg. Retail is nearly free of impact - at $50-$500 most of the 31-56
+  bps is the LP fee itself.
+
+  EVERY ROW IN THIS SECTION IS READ FROM THE SAME UNTOUCHED STATE. They are
+  alternatives, not a sequence: seven $500 trades do not cost 48 bps each,
+  because each one moves the price for the next.
+
+  ROADMAP PHASE 0 B ASKED FOR $1K / $10K / $50K / $100K / $250K / $500K.
+  $10,000 already fills only 91% through the ETH pool and costs over 6% through
+  the USDC pool; the last three sizes have no answer here at all. That is
+  ROADMAP 7.1's "hard scaling ceiling", with the qualification that it is a
+  ceiling ON THESE POOLS and not on NVDAc.
+
+
+================================================================================
+2. OUR OWN POOL - a graduated CURB launch
+================================================================================
+  MEASURED ON THE PINNED FORK, block 51171034, hash 0x7bfea0b6...b35f. The
+  pinned block is correct here and is NOT a staleness problem: a graduated
+  pool's depth is whatever the threshold put into it, so these figures follow
+  from our parameters and not from anyone else's liquidity.
+
+  THE TAX IN THIS TABLE IS 3% - TOTAL_TAX_BPS, the middle of the 1-5% band -
+  AND THE LP TIER IS 0.30%. Both are in every number below. The previous
+  version of this file never said so, and the test's own comment still claimed
+  "the 1% hook fee ... roughly 130 bps", left from when the tax was fixed at 1%.
+  At a 3% tax the fee part is 329 bps, so that comment understated every row by
+  about 200 bps of pure fee.
+
+  BOTH DIRECTIONS, SAME ABSOLUTE SIZE, THREE THRESHOLDS, ONE DEFINITION
+  (shortfall; the price-over-mid figure for the same buy is in brackets)
+
+    threshold   size       buy              sell
+    2 NVDAc     0.05       557 bps  ( 590)   564 bps
+                0.25      1372 bps  (1590)  1400 bps
+                1.00      3481 bps  (5340)  3546 bps
+    4 NVDAc     0.05       444 bps  ( 465)   448 bps
+                0.25       880 bps  ( 965)   896 bps
+                1.00      2212 bps  (2840)  2258 bps
+    8 NVDAc     0.05       387 bps  ( 402)   388 bps
+                0.25       612 bps  ( 652)   621 bps
+                1.00      1372 bps  (1590)  1400 bps
+
+  A SELL COSTS SLIGHTLY MORE THAN A BUY OF THE SAME SIZE, at every row.
+  The previous version said the opposite, and said it "consistently". It was
+  comparing the bracketed column against the sell column - two definitions. Its
+  EXPLANATION was right and its conclusion was the wrong way round: the tax
+  comes off a buy's input BEFORE the pool sees it, so less of the trade moves
+  the price, while a sell's whole position hits the pool and the tax comes off
+  the output afterwards. That mechanism makes the buy cheaper, which is what
+  the corrected numbers show.
+
+  THE CLOSED FORM, EXACT under this definition, not an approximation
+      k = (1 - T)(1 - f)                 T = tax, f = LP fee
+      buy   cost = 1 - k / (1 + (S/Q) * k)
+      sell  cost = 1 - k / (1 + (S/Q) * (1 - f))
+    where S is the trade and Q the pool's quote depth. It reproduces all nine
+    buy rows and all nine sell rows above to the basis point - 3481 and 3546 at
+    2 NVDAc, 387 and 388 at 8 - and both costLimit depths as well: it gives
+    289.4 where the 60 NVDAc test measured 289, and 465.8 where the 28 NVDAc
+    test measured 465. TWENTY POINTS, NO MISMATCHES, so the model is checked
+    against the chain rather than fitted to it - and the inverse below is
+    algebra on a checked formula, not a second measurement.
+
+    THE FIRST TERM IS A FLOOR THAT DEPTH CANNOT TOUCH: 1 - (1-T)(1-f).
+      T = 1%   129.7 bps     T = 3%   329.1 bps     T = 5%   528.5 bps
+    A launch charging 5% can never cost a trader under 5.3%, at any depth.
+
+  SOLVED FOR DEPTH, which is what a threshold decision needs
+      Q  =  S * k * (1 - C) / (k - (1 - C))        C = the cost you will accept
+    For a 1 NVDAc trade at a 1% tax: 56.22 NVDAc for a 3% shortfall, 25.32 for 5%.
+
+  THE costLimit TESTS ASSERT ON PRICE-OVER-MID, NOT ON THIS, and they are at
+  the band's FLOOR - a 1% tax. Read together:
+      depth 60 NVDAc  ->  298 bps price over mid = 289 bps shortfall
+      depth 59        ->  300 bps                  (misses a 3% price limit)
+      depth 59.2      ->  300 bps rounded, over it unrounded
+      depth 28 NVDAc  ->  488 bps price over mid = 465 bps shortfall
+      depth 27        ->  501 bps                  (misses a 5% price limit)
+    60 and 28 are the depths a 3% and a 5% PRICE limit need. Under the
+    shortfall definition the same limits need 56.22 and 25.32. Neither is a
+    chosen product parameter.
+
+  AND THE TWO HALVES MEET HERE, NARROWLY
+    1 NVDAc is 211.78 USD at the block in section 1, so a 60 NVDAc threshold is
+    about 12,700 USD of quote depth. Compare that with 1.3: the most NVDAc a
+    single trade was OBSERVED to return is 54.59 from the USDC pool (~11,560
+    USD) or 55.03 from the WETH pool (~11,655 USD), and under 1% of cost about
+    1,200-2,600 USD moves at a time. Those ceilings are the highest seen over
+    the amounts tried, not proven maxima.
+    WHAT THAT DOES AND DOES NOT MEAN. IF the buyers filling a launch convert
+    into NVDAc through these two pools, then one launch needs more NVDAc than
+    either pool can produce in a single trade, and two launches filling at once
+    compete for the same liquidity. THEY ARE NOT OBLIGED TO. NVDAc can be held
+    already, bought at Coinbase, bridged in, or sourced from a venue this
+    measurement never looked at. This is a constraint on ONE ROUTE, measured;
+    it is not a constraint on the product, and no change to our code moves it
+    either way.
+
+
+================================================================================
+3. THE DECISION TABLE - measured, and still not a decision
+================================================================================
+Nothing in the code has been set to any of this. No product parameter has been
+chosen as part of this work.
+
+WHAT A THRESHOLD DECIDES, precisely: the quote depth Q of the graduated pool,
+and through that the cost of a trade of size S at the launch's tax T. The tax
+is the creator's, between 1% and 5%.
+
+THE FLOOR NO DEPTH CAN GET UNDER IS THE TAX AND THE LP FEE TOGETHER, as price
+impact goes to zero: 1 - (1-T)(1-f), with f the pool's tier. At the 0.30% tier
+that is 129.7 bps at a 1% tax, 329.1 at 3% and 528.5 at 5%. IT IS NOT THE TAX
+ALONE - the tax alone would be 100, 300 and 500 - and the conversion leg does
+not add to it either, it composes. A threshold cannot be chosen without both
+the tax and the tier.
+
+--------------------------------------------------------------------------------
+3.1  THE TWO LEGS, AND WHY THEY ARE PRINTED APART
+--------------------------------------------------------------------------------
+  EXTERNAL CONVERSION COST. Somebody arriving with ETH must trade it for NVDAc
+  on somebody else's liquidity, and selling out means trading back. BOTH
+  DIRECTIONS ARE MEASURED IN ONE RUN AT BLOCK 51359669, because a claim that
+  one direction costs a few bps more than the other cannot rest on two
+  measurements taken minutes apart.
+  OUR OWN POOL'S COST. The launch token against NVDAc. Measured on the pinned
+  fork at block 51171034, and it follows from OUR parameters, not the chain's.
+
+  BOTH ARE THE USER'S. A trader pressing our ETH button pays the conversion as
+  part of what that button costs them, whoever collects it. An earlier version
+  of this section called the conversion "not a cost of our product", which is
+  true about where the money goes and false about what the user pays. The split
+  that matters is WHO SETS IT: we set the pool leg, and the conversion is the
+  chain's. Somebody who already holds NVDAc pays only the pool leg.
+
+  THESE ARE STILL TWO MEASUREMENTS AT TWO BLOCKS - the conversions at 51359669
+  and our pool on the pinned fork. There is no end-to-end measurement of
+  ETH -> NVDAc -> launch token or of the way back, and 3.5 says so where the
+  totals are.
+
+--------------------------------------------------------------------------------
+3.2  THE CONVERSION, BOTH DIRECTIONS, measured
+--------------------------------------------------------------------------------
+  Shortfall against mid. Every one of these consumed its whole input.
+
+  ENTRY - buying NVDAc, at the notional the user arrives with. The last column
+  is the point of it: our pool is measured at THAT amount, not at the nominal.
+    size      via ETH     via USDC     net NVDAc via ETH / via USDC (raw)
+    $50        31 bps      32 bps      23495063 / 23493897
+    $100       33 bps      34 bps      46984062 / 46979400
+    $500       43 bps      48 bps      234677982 / 234561721
+    $1,000     56 bps      67 bps      468753107 / 468216524
+    $5,000    157 bps     306 bps      2319871193 / 2284798614
+
+  EXIT - selling NVDAc. THE AMOUNT IS NOT THE NOMINAL TRADE SIZE either.
+  Leaving a launch is MEME -> NVDAc -> ETH, and the second leg sells the NET
+  NVDAc the first returned, after our tax and impact. So the exit leg is
+  measured at the 42 amounts the grid in 3.3 actually produces, and the cost is
+  stated with the row that produced it in 3.5 rather than as a column of its
+  own. The entry leg is handled the same way, in the other order.
+  THE ENTRY TABLE CANNOT BE REUSED FOR THE EXIT. They are opposite sides of the
+  same pool and they do not cost the same: 0.218 NVDAc out costs 31 bps into
+  ETH, while 16.74 NVDAc out costs 124 - and into USDC the same two are 32 and
+  249 bps. Sizes in between are in 3.5.
+
+--------------------------------------------------------------------------------
+3.3  OUR OWN POOL, measured across every candidate
+--------------------------------------------------------------------------------
+  THE SAME ABSOLUTE TRADES against each candidate threshold at each corner of
+  the tax band. r = 0.5 throughout, so the pool's quote depth comes out equal
+  to the threshold. (The measured shape. Since 2026-10-03 r is about 0.27 -
+  a launch opens near $4,000 and graduates near $55,000 - and the pool's quote
+  depth is still the threshold; DeployCurb.quoteAssets.) Sizes are fixed in NVDAc - 0.236 / 0.472 / 2.361 / 4.722 /
+  23.609 - and labelled with their value at 211.7849 USD per NVDAc.
+
+  A BUY, shortfall against mid, in bps, at the 0.30% LP tier
+    size       tax      Q=10      Q=20      Q=60
+    $50        1%        354       243       167
+               3%        544       438       365
+               5%        735       633       563
+    $100       1%        569       354       205
+               3%        751       544       402
+               5%        933       735       598
+    $500       1%       1995      1159       498
+               3%       2126      1320       683
+               5%       2259      1480       868
+    $1,000     1%       3267      1995       841
+               3%       3360      2126      1013
+               5%       3455      2259      1185
+    $5,000     1%       7036      5441      2890
+               3%       7054      5484      2994
+               5%       7073      5528      3100
+
+  A SELL OF THE SAME SIZE COSTS MORE, in every one of the 42 measured cells:
+    size       tax      Q=10      Q=20      Q=60
+    $50        1%        356       244       168
+               3%        551       441       366
+               5%        746       638       565
+    $100       1%        573       356       206
+               3%        763       551       404
+               5%        954       746       602
+    $500       1%       2010      1169       502
+               3%       2171      1347       694
+               5%       2333      1525       886
+    $1,000     1%       3288      2010       847
+               3%       3424      2171      1032
+               5%       3560      2333      1217
+    $5,000     1%          -      5465      2910
+               3%          -      5557      3054
+               5%          -      5649      3197
+  The gap over a buy runs from 1 bps to 121 and widens with both size and tax.
+  The tax comes off a buy's input before the pool sees it, so less of the trade
+  moves the price.
+
+  THREE SELL CELLS ARE NOT MEASURED - $5,000 at Q=10, at each tax. That sale
+  asks for 59% of the supply from a holder with 50%. The test reports the
+  shortage rather than reverting and taking the row with it. That is the
+  fixture, not the pool.
+
+--------------------------------------------------------------------------------
+3.4  THE LP TIER - MEASURED AT BOTH SETTINGS, not subtracted
+--------------------------------------------------------------------------------
+  AN EARLIER VERSION OF THIS SECTION SAID "0.05% would take about 25 bps off
+  every cell". IT IS NOT A CONSTANT, and measuring both tiers at the same sizes
+  shows why: 25 bps is the difference in the FEE, which is nearly all of what a
+  tiny trade pays and a shrinking part of what a large one pays. A lower fee
+  also lets MORE of the input reach the pool, which moves the price further, so
+  the two effects work against each other.
+
+  0.30% -> 0.05%, a buy, in bps (87 cells measured across both directions)
+    size       tax      Q=10           Q=20           Q=60
+    $50        1%    354 -> 330     243 -> 219     167 -> 143
+               5%    735 -> 712     633 -> 610     563 -> 540
+    $100       1%    569 -> 546     354 -> 330     205 -> 181
+               5%    933 -> 912     735 -> 712     598 -> 575
+    $500       1%   1995 -> 1978   1159 -> 1139    498 -> 475
+               5%   2259 -> 2243   1480 -> 1461    868 -> 846
+    $1,000     1%   3267 -> 3255   1995 -> 1978    841 -> 819
+               5%   3455 -> 3444   2259 -> 2243   1185 -> 1164
+    $5,000     1%   7036 -> 7033   5441 -> 5436   2890 -> 2877
+               5%   7073 -> 7070   5528 -> 5522   3100 -> 3087
+
+  THE SAVING IS 24 bps AT THE SMALLEST TRADES AND 2 bps AT THE LARGEST.
+  Across all 87 cells it runs 2 to 24 bps on a buy and 5 to 25 on a sell. It is
+  worth most exactly where the total is already smallest, and nearly nothing
+  where the total is unusable - so the tier decides the RETAIL experience and
+  cannot rescue a thin pool.
+
+  AND IT IS NOT FREE. Our LP is the LOCKED position and its fees go to the
+  creator, so a lower tier moves that 24 bps from the trader to nobody: the
+  trader pays less and the creator earns less. That is a transfer, not an
+  improvement, and choosing it belongs with D1.
+
+--------------------------------------------------------------------------------
+3.5  BOTH LEGS TOGETHER - ARITHMETIC, NOT A MEASUREMENT
+--------------------------------------------------------------------------------
+  composed = 1 - (1 - legA)(1 - legB). It is NOT the two added: the second leg
+  only acts on what survived the first. The cells below are written
+  "legA / legB / composed" with slashes for that reason - an earlier version
+  wrote them with a plus sign, which contradicted the formula above it.
+
+  EACH LEG IS MEASURED AT THE AMOUNT THAT LEG ACTUALLY TRADES.
+    BUYING IN   the conversion trades the user's $X and returns a NET NVDAc
+                amount; our pool is then measured AT THAT NET, not at the
+                nominal $X. The net amounts come from the entry table and are
+                in the fork suite as NETE_* and NETU_*.
+    SELLING OUT our pool trades the nominal size and returns a NET NVDAc
+                amount; the conversion is then measured AT THAT NET.
+  An earlier version measured the sell this way and the buy at the nominal,
+  which overstated every buy - by 31 to 41 bps at $5,000 - and then compared
+  the two. See correction 19.
+
+  BOTH CONVERSION LEGS ARE READ AT ONE BLOCK, 51359669, so a difference between
+  the directions is not a difference between two afternoons.
+
+  WHAT THIS COMPOSITION IS STILL NOT:
+    - not measured end to end. The pool grid is on the pinned fork at block
+      51171034 and the conversions are at 51359669. Two measurements,
+      multiplied.
+    - no gas, no MEV, no price movement between the legs, and no assumption
+      that they happen atomically.
+    - NOT A ROUND TRIP. Buying moves the pool's price, so a sell that follows a
+      buy is quoted against a pool the buy already moved. Every row here is
+      read from the same untouched state.
+    - the two directions start from DIFFERENT ASSETS - $X of ETH one way, $X of
+      tokens the other - so their pool legs trade slightly different amounts.
+      That is what each direction really faces, and it is also why a few-bps
+      gap between the two tables is not a fact about direction.
+
+  BUYING IN, via ETH - conversion / pool / composed, bps
+    size      tax   Q=10                 Q=20                 Q=60
+    $50       1%    31 / 353 / 383       31 / 242 / 272       31 / 167 / 197
+              3%    31 / 543 / 572       31 / 437 / 467       31 / 365 / 395
+              5%    31 / 734 / 763       31 / 632 / 661       31 / 563 / 592
+    $100      1%    33 / 567 / 598       33 / 353 / 385       33 / 205 / 237
+              3%    33 / 749 / 780       33 / 543 / 574       33 / 401 / 433
+              5%    33 / 932 / 962       33 / 734 / 765       33 / 598 / 629
+    $500      1%    43 / 1986 / 2020     43 / 1154 / 1192     43 / 496 / 537
+              3%    43 / 2117 / 2151     43 / 1314 / 1351     43 / 681 / 721
+              5%    43 / 2250 / 2283     43 / 1475 / 1512     43 / 866 / 905
+    $1,000    1%    56 / 3251 / 3289     56 / 1984 / 2029     56 / 836 / 887
+              3%    56 / 3345 / 3382     56 / 2116 / 2160     56 / 1008 / 1058
+              5%    56 / 3440 / 3477     56 / 2249 / 2292     56 / 1181 / 1230
+    $5,000    1%    -                    157 / 5398 / 5470    157 / 2856 / 2968
+              3%    -                    157 / 5442 / 5514    157 / 2961 / 3072
+              5%    -                    157 / 5486 / 5557    157 / 3067 / 3176
+
+  SELLING OUT, via ETH - pool / conversion / composed, bps
+    size      tax   Q=10                 Q=20                 Q=60
+    $50       1%    356 / 31 / 386       244 / 31 / 274       168 / 31 / 198
+              3%    551 / 31 / 580       441 / 31 / 471       366 / 31 / 396
+              5%    746 / 31 / 775       638 / 31 / 667       565 / 31 / 594
+    $100      1%    573 / 32 / 603       356 / 32 / 387       206 / 33 / 238
+              3%    763 / 32 / 793       551 / 32 / 581       404 / 32 / 435
+              5%    954 / 32 / 983       746 / 32 / 776       602 / 32 / 632
+    $500      1%    2010 / 40 / 2042     1169 / 41 / 1205     502 / 42 / 542
+              3%    2171 / 40 / 2202     1347 / 41 / 1382     694 / 42 / 733
+              5%    2333 / 40 / 2364     1525 / 41 / 1560     886 / 42 / 924
+    $1,000    1%    3288 / 47 / 3320     2010 / 51 / 2051     847 / 54 / 896
+              3%    3424 / 47 / 3455     2171 / 50 / 2210     1032 / 53 / 1080
+              5%    3560 / 47 / 3590     2333 / 50 / 2371     1217 / 53 / 1264
+    $5,000    1%    -                    5465 / 89 / 5505     2910 / 124 / 2998
+              3%    -                    5557 / 88 / 5596     3054 / 122 / 3139
+              5%    -                    5649 / 87 / 5687     3197 / 120 / 3279
+
+  THE SAME TWO TABLES VIA USDC are worse in both directions, and the gap grows
+  with size. The extremes: $50 differs by 1 bps either way, and $5,000 at a 1%
+  tax and Q=60 is 3046 buying and 3086 selling against 2968 and 2998 via ETH.
+  The full USDC tables are the same shape and are reproduced by the same two
+  commands; they are not repeated here.
+
+  THE SELL IS NEVER CHEAPER, in any of the 84 cells where both directions are
+  measured: 0 to 130 bps worse, widening with size and tax. An earlier version
+  of this file claimed the opposite at $5,000 and a 1% tax. That claim came
+  entirely from measuring the buy's pool leg at a size the user never held.
+
+--------------------------------------------------------------------------------
+3.6  HOW TO READ A DECISION OFF THIS - the two inputs nobody has chosen
+--------------------------------------------------------------------------------
+  S, the trade size the pool should serve, and C, the cost it may carry. With
+  both, 3.5 answers directly. Some readings, on the BUY side via ETH:
+
+    TARGET $100 AT UNDER 3% ALL-IN
+        Only Q=60, and only at a 1% tax: 237 bps. At a 3% tax it is 433 and at
+        5% it is 629, and no threshold fixes that - the tax-and-LP-fee floor
+        is 329 and 528 bps before any impact at all, and the conversion
+        composes on top of it.
+    TARGET $100 AT UNDER 5% ALL-IN
+        1% tax: Q=20 (385) or Q=60 (237)
+        3% tax: Q=60 only (433)
+        5% tax: nothing here
+    TARGET $500 AT UNDER 5% ALL-IN
+        Nothing here. Q=60 at a 1% tax is 537 bps, which just misses.
+    TARGET $500 AT UNDER 10% ALL-IN
+        Q=60 at any tax: 537 / 721 / 905. Q=20 misses at every tax.
+
+  READ THE SELL TABLE IF THE LIMIT IS MEANT TO DESCRIBE GETTING OUT. $500 at
+  Q=60 and a 1% tax is 537 bps buying and 542 selling; at a 5% tax it is 905
+  and 924. A limit that only just passes on the way in can fail on the way out.
+
+  WHAT THE TABLE DOES NOT CONTAIN, and a decision needs:
+    - how easily each threshold FILLS. That is demand, not depth, and nothing
+      here measures it.
+    - what a creator will actually pick for T. The grid spans the band because
+      the answer is not ours to make.
+    - Aerodrome, and any other venue holding NVDAc. If NVDAc is materially
+      deeper elsewhere, both conversion legs are cheaper than this.
+    - a round trip, and gas.
+
+  AND ONE THING AN EARLIER VERSION CLAIMED THAT THIS DOES NOT: "a threshold
+  small enough to fill easily makes a pool too thin to trade, and a threshold
+  deep enough to trade well is hard to fill". The first half is measured now -
+  Q=10 costs 2020 bps on a $500 buy at a 1% tax, all-in - and the second half
+  is still not, because nothing here measures filling at all.
+
+
+--------------------------------------------------------------------------------
+3.7  THE SCENARIO - one user story, priced both ways at both tiers
+--------------------------------------------------------------------------------
+  THE USER THIS IS BUILT AROUND arrives with ETH and leaves for ETH.
+
+  IT IS A SCENARIO, NOT A MEASURED USER PROFILE. Nothing in this repository
+  observes who trades or how much. An earlier summary asserted a median trade
+  size of about $50 and guessed that NVDAc holders would trade $500-$1,000;
+  both were invention. $100 is the size the design is being judged at and $500
+  is a second point to look at because those are the two the founder named -
+  not because anything here says either is typical. A claim about typical sizes
+  needs user research, and there has been none.
+
+  WHERE THE NUMBERS COME FROM
+    conversion   block 51360335, both directions in one run. $100 of ETH buys
+                 0.46984101 NVDAc at 33 bps; $500 buys 2.34678951 at 43 bps.
+                 The exit leg is measured at the 36 net amounts the pool rows
+                 below actually return.
+    our pool     the pinned fork, block 51171034, measured at those net amounts
+                 on the way in and at the nominal size on the way out.
+  Still two measurements composed, not one route measured end to end.
+
+  $100, LP TIER 0.30% - buy conv/pool/all | sell pool/conv/all, bps
+    tax    Q=10                        Q=20                        Q=60
+    1%     33/567/598 | 573/32/603     33/353/385 | 356/32/387     33/205/237 | 206/33/238
+    3%     33/749/780 | 763/32/793     33/543/574 | 551/32/581     33/401/433 | 404/32/435
+    5%     33/932/962 | 954/32/983     33/734/765 | 746/32/776     33/598/629 | 602/32/632
+
+  $100, LP TIER 0.05%
+    tax    Q=10                        Q=20                        Q=60
+    1%     33/544/575 | 550/32/580     33/329/361 | 333/32/364     33/181/213 | 182/33/214
+    3%     33/727/758 | 741/32/771     33/520/551 | 528/32/558     33/377/409 | 380/32/411
+    5%     33/910/940 | 932/32/961     33/711/742 | 723/32/753     33/574/605 | 578/32/608
+
+  $500, LP TIER 0.30%
+    tax    Q=10                        Q=20                        Q=60
+    1%     43/1986/2020 | 2010/40/2042 43/1154/1192 | 1169/41/1205 43/496/537 | 502/42/542
+    3%     43/2117/2151 | 2171/40/2202 43/1314/1351 | 1347/41/1382 43/681/721 | 694/42/733
+    5%     43/2250/2283 | 2333/40/2364 43/1475/1512 | 1525/41/1560 43/866/905 | 886/42/924
+
+  $500, LP TIER 0.05%
+    tax    Q=10                        Q=20                        Q=60
+    1%     43/1969/2004 | 1994/40/2026 43/1134/1172 | 1149/41/1185 43/473/514 | 479/42/519
+    3%     43/2101/2135 | 2155/40/2186 43/1295/1332 | 1328/41/1364 43/659/699 | 671/42/710
+    5%     43/2235/2268 | 2317/40/2348 43/1456/1493 | 1506/41/1541 43/844/883 | 864/42/902
+
+  WHAT THE 36 CELLS SAY, without choosing anything
+
+    AT $100, ONLY Q=60 IS EVER UNDER 3% ALL-IN, and only at a 1% tax: 237 bps
+    buying and 238 selling at the 0.30% tier, 213 and 214 at 0.05%. Q=20 at a
+    1% tax is 385/387 and 361/364 - over 3%, under 4%.
+
+    AT $100 UNDER 5% ALL-IN: Q=60 at 1% and 3% tax, and Q=20 at a 1% tax. NO
+    CELL AT A 5% TAX PASSES, at either tier. That is not about depth: the
+    tax-and-fee floor at a 5% tax is 528.5 bps at the 0.30% tier and 504.7 at
+    0.05%, and composing the cheapest conversion measured anywhere here (31
+    bps) onto those gives 558 and 534 before a single basis point of impact.
+
+    TO COVER THE WHOLE 1-5% BAND AT $100, ONLY Q=60 IS IN RANGE AT ALL. Its
+    worst measured cell is 608 bps at the 0.05% tier and 632 at 0.30% - both at
+    a 5% tax, selling. Q=20's worst is 776.
+    THE MEASUREMENT DOES NOT SET A LIMIT HERE. 608 and 632 are what Q=60 costs
+    at its worst; any product limit above them covers the band and any limit
+    below them does not. An earlier version of this line said the limit "has to
+    be about 6.5%", which turned a number somebody could choose into one the
+    table forces. 6.5% is a choice that clears both tiers with room; 6.2% is a
+    choice that clears one and not the other - see the tier note below.
+
+    AT $500 NOTHING IS UNDER 5% ALL-IN. The best cell in the table is Q=60, a
+    1% tax, the 0.05% tier: 514 buying and 519 selling. At the 0.30% tier the
+    same cell is 537 and 542. Under 10% all-in, Q=60 works at every tax and
+    both tiers (max 924); Q=20 fails at every tax (min 1185).
+
+    THE TIER IS WORTH 15 TO 24 bps ACROSS THESE 36 CELLS - smallest on a $500
+    buy at Q=10 and a 5% tax, largest on a $100 sell at Q=60 and a 5% tax. An
+    earlier version said "23-24", which was reading two cells and calling it
+    the range.
+    WHETHER IT CHANGES AN OUTCOME DEPENDS ON THE LIMIT, and saying it never
+    does was also too wide. At a $100 limit of 6.2%, Q=60 at a 5% tax PASSES at
+    the 0.05% tier (608) and FAILS at 0.30% (632). At a limit of 6.5% both
+    pass; at 6.0% neither does. The tier decides outcomes exactly when a limit
+    lands between the two columns.
+    IT IS STILL A TRANSFER, NOT NEW ROOM: our LP is the locked position and its
+    fees go to the creator, so the trader's 15-24 bps comes out of the
+    creator's income.
+
+  THE TWO CANDIDATES WORTH PUTTING SIDE BY SIDE, both at Q=60 because nothing
+  smaller is in range for either size. The figure is the WORST measured cell
+  for that candidate - across all three taxes and both directions, so it is
+  what the candidate costs at its least flattering:
+
+    candidate                  worst at $100      worst at $500
+    Q=60, LP tier 0.05%          6.08%              9.02%
+    Q=60, LP tier 0.30%          6.32%              9.24%
+
+  BOTH WORST CELLS ARE THE SAME CELL TYPE: a 5% tax, selling out. At a 1% tax
+  and buying in, the same two candidates are 2.13% / 5.14% and 2.37% / 5.37%.
+
+  THESE ARE MEASURED OPENING SCENARIOS, NOT A GUARANTEE ABOUT LATER. They are
+  the cost of trading a pool AS IT OPENS, at one block's conversion prices, with
+  the depth the threshold put there. A pool that has traded is not this pool:
+  its price has moved, its depth is whatever the LP position is worth then, and
+  the conversion legs are whatever the chain is doing that day. Nothing here
+  measures a pool after its first trade.
+
+  WHAT THIS STILL DOES NOT SETTLE: the three choices. A target size, an
+  accepted cost, and which taxes the target has to hold for. The table answers
+  once those are named, and nothing in it can name them.
+
+
+================================================================================
+4. CORRECTIONS - TWO ROUNDS OF THEM
+================================================================================
+Kept rather than quietly overwritten, because each one is a way a measurement
+can be right and still say something false.
+  1-7    the first round: what the write-up claimed that the numbers did not
+         support.
+  8-11   the second: what the measuring TOOL did - reading its own failures
+         as data, and naming a probe as an enumeration.
+  12-15  the third: an ESTIMATE printed as a measurement, a partial fill
+         called a refusal, a finite sweep stated as a universal, and a
+         search that never checked the trade it was sizing would fill.
+  16-18  the fourth: a partial fill's cost charged on money the trader still
+         had, a cost and a fill taken from two simulations that were never
+         compared, and an RPC failure ending in a stack trace.
+  19-20  the fifth: a conclusion about DIRECTION drawn by comparing two
+         differently-computed totals, when this file had already written
+         down that one of them was overstated by more than the difference
+         being claimed - and a composed cell printed with a plus sign over
+         a multiplicative formula.
+  21-23  the sixth, all in prose rather than in a table: a median trade
+         size invented out of nothing, a cost floor quoted as if the LP
+         tier were already decided when it is one of the open choices, and
+         two readings of the scenario that claimed more than its cells do.
+  These get worse down the list. A wrong write-up can be re-read; a tool that
+  launders an inference into a measurement produces new wrong write-ups.
+
+  1. THE LOCK. script/b20/measure-depth.sh installed its EXIT trap before it
+     claimed the port and then ran an unconditional rm -rf on the lock, so a
+     run REFUSED because somebody else held the claim deleted that claim on the
+     way out. Same bug stop-node.sh was fixed for twice.
+     MUTATION-TESTED, and the first result was not the expected one.
+     script/b20/mutate-depth-lock.sh deletes each guard in turn:
+       - deleting the HELD flag changed NOTHING against a foreign lock. The
+         owner comparison alone already refuses. HELD is only reachable when a
+         STALE lock carries the same id this run computes for itself - which
+         "depth-$$" allowed, because pids get reused. The id now carries the
+         process start time as well, the way start-node.sh already did, and the
+         harness forces the case by pinning the id: guard deleted, the lock is
+         destroyed; guard present, it survives.
+       - deleting the owner comparison DOES break it, against a lock this run
+         took and somebody else then overwrote.
+       - and the lock is still released on a clean exit, or the next run could
+         never start.
+
+  2. TWO COST DEFINITIONS UNDER ONE HEADING - and inside a single table, where
+     the buy leg was price-over-mid and the sell leg was the shortfall. The
+     table's headline, "a buy costs more than a sell, consistently", was that
+     gap and nothing else. Under one definition the sell is dearer, every row.
+
+  3. "ALL OF NVDAc'S UNISWAP v3 DEPTH ON BASE IS ABOUT 42,000 USD" was wrong
+     twice over: the figure is the pools' combined BALANCE, not a trade depth -
+     one trade can extract at most ~12,800 USD - and the scan behind it covered
+     four of seven enabled tiers and two of seven candidate quote tokens.
+
+  4. THE $10,000 NVDAc->ETH CELL never measured a $10,000 trade. QuoterV2 does
+     not check that an exact-input swap consumed its input; it reports whatever
+     came out when the swap stopped at the price bound. 78.7% of that input was
+     spent. Every cell now carries the share actually spent, from a second
+     quote, cross-checked against the returned sqrtPrice.
+
+  5. "THE USDC POOL IS DEEPER SO IT IS BETTER" - the table itself showed the
+     WETH route cheaper for several sizes then, and the re-measurement makes it
+     stronger: the WETH pool is cheaper or exactly equal at EVERY size where
+     both pools fill the whole input, while holding less.
+
+  6. THE OWN-POOL TABLE NEVER STATED ITS TAX (3%) and was missing five of its
+     nine rows. Both fixed; the tax and the LP fee are now emitted by the test
+     itself rather than left in a constant a reader has to go and find.
+
+  7. "FILLING A LAUNCH IN $500 PIECES COSTS ABOUT 48 BPS EACH" - every quote in
+     section 1 is read from the same starting state, so they are alternatives,
+     not a sequence. Doing them one after another costs more each time.
+
+  8. RPC FAILURES WERE BEING READ AS DATA, in four places. Every call ran as
+     `base-cast call ... 2>/dev/null` and the empty output was taken for an
+     answer: a failed tier query became "that tier is not enabled", a failed
+     symbol() became "not a token", a failed getPool became "no pool".
+     THE DANGEROUS ONE WAS THE COST-LIMIT SEARCH. A failed quote became zero
+     output, zero output reads as infinite cost, and infinite cost drove the
+     bisection DOWNWARDS - so a network fault produced a low depth figure that
+     looked entirely plausible.
+     EVERY CALL NOW HAS THREE OUTCOMES, not two: answered, REVERTED (which is
+     data - a pool that does not exist, a token with no symbol), or FAILED
+     (transport, timeout, an unrecognised error - which is ours and is never
+     data). Only "execution reverted" counts as a revert; anything unrecognised
+     is treated as our failure, because the safe direction is to report less.
+     A structural read that fails stops the run; a ladder row that fails prints
+     as failed; a search that fails is ABANDONED and prints no number; and the
+     tool exits non-zero either way.
+     TESTED, NOT ASSERTED. script/b20/faultinject-depth.sh puts a proxy in
+     front of the fork and breaks exactly what it is told to break - a dead
+     node, the tier probe, a balance read, a batch, and quotes failing every
+     fifth call partway through. Eight cases.
+     AND MUTATION-TESTED, which is the part that matters. Put the old
+     behaviour back - a failed quote read as zero output - and under the same
+     intermittent fault the search stops abandoning and starts answering:
+         true            420 / 1,231 / 4,103    (NVDAc->USDC, 50/100/300 bps)
+         old behaviour   419 / 1,159 / 3,024
+         true            601 / 2,126 / 8,971    (ETH->NVDAc)
+         old behaviour   579 / 1,511 / 8,839
+     Plausible, quiet, and understating depth by up to 37%. That is what the
+     rule is for.
+
+  9. THE EXACT-OUTPUT QUOTE IS NOT THE SAME SWAP, and the "78.7% of the input
+     was really spent" figure leaned on it as though it were. It is a second
+     simulation of a different question - "what input buys exactly this
+     output" - and rounding and the path the price takes need not agree.
+     WHAT IS USED NOW: a swap that did not end on QuoterV2's price bound
+     stopped because its input ran out, so "consumed in full" is read off the
+     very call being reported. For the rows that DID hit the bound, the amount
+     consumed is the bisected input bound - the same call, the same state - and
+     the exact-output quote is kept as a cross-check, labelled as one. On the
+     two WETH legs it agrees to 0.0000%; on the USDC legs it is not comparable
+     and the tool says so instead of reporting a disagreement.
+     QuoterV2 does not return the input an exact-input swap consumed, so no
+     single call yields it. That limit is stated rather than worked around.
+
+ 10. "THE LARGEST TRADE THE POOL WILL ACCEPT" WAS NOT MEASURED, it was one
+     absurd quote plus an exact-output round trip. Measuring it showed the two
+     pools do not even have the same KIND of limit: the WETH pool stops taking
+     input partway, while the USDC pool spent every amount that could be put to
+     it and stopped increasing its output. The old table's "max input it
+     accepts: 46,601 NVDAc (~9.87M USD)" was neither pool's behaviour.
+     THE WORDING OF THAT FIX WAS ALSO WRONG, twice, and 13 and 14 below are
+     what it took to say it correctly.
+
+ 11. "THE ENABLED FEE TIERS" WAS 12 HAND-WRITTEN CANDIDATES. It is now a
+     probed domain of 2,907 values, named as a probe. The complete answer is
+     the factory's FeeAmountEnabled logs and this upstream refuses to serve
+     them - eth_getLogs is capped at a 2,000-block range - so the limit is
+     recorded with the refusal rather than left implied. Both scans find the
+     same seven tiers; the difference is what may honestly be claimed.
+
+ 12. THE CONSUMED SHARE WAS AN ESTIMATE PRINTED AS A MEASUREMENT. Bisecting
+     QuoterV2's price bound asks many simulations of DIFFERENT amounts from the
+     same state and infers a boundary. It is a good estimate of a boundary and
+     it is not the input the swap in front of you spent - which QuoterV2 does
+     not return at all.
+     script/b20/SwapDeltaProbe.sol reads the pool's own returned deltas for
+     THAT swap. Its bytecode is installed for the duration of one eth_call by
+     that call's state override, at the v4 PoolManager - an address that
+     already holds NVDAc, WETH and USDC, because NVDAc cannot be minted into a
+     fresh address. Nothing is mined and no transaction exists. The callback
+     pays for real, which is what makes it evidence: an unpaid pool reverts.
+     THE ESTIMATE TURNED OUT TO BE RIGHT, to 0.0000% on both WETH legs, and the
+     exact-output quote agrees as well. That is worth knowing and it is not a
+     reason to have printed it as a measurement.
+     THE PROBE IS ASKED FOR THE MOST THE HOST CAN PAY, so a revert means the
+     POOL stopped, never that funding ran out.
+
+ 13. "THE POOL REFUSES AN INPUT OVER ~36.6 NVDAc" DESCRIBED A REVERT. Nothing
+     reverts. The swap fills PARTIALLY: the call succeeds, the pool takes what
+     it can and pays for it, and the remaining input is simply never spent. A
+     partial fill and a failed transaction are different things for anyone
+     building on top of this, so the word was wrong and not just loose.
+
+ 14. "THE USDC POOL CONSUMES ANY INPUT HOWEVER LARGE" WENT PAST THE SWEEP. The
+     code tries a finite range; not finding a bound below 2^200 is not a proof
+     that none exists, and a plateau observed over the amounts tried is not a
+     proven capacity. Both now read as what they are: "every amount tried was
+     consumed in full, up to X - the most the probe could fund" and "the
+     highest output OBSERVED over inputs up to Y".
+
+ 15. AND THE COST-LIMIT SEARCH DID NOT REQUIRE FULL CONSUMPTION. It compared
+     cost alone, so a partially filled quote could answer "this whole amount
+     trades at this cost" for a size the pool only partly fills. The condition
+     now includes the measured spend. On this run it moved the ETH legs - the
+     $50/100/300 bps figures went from 601/1,965/5,791 to 759/2,449/6,965 -
+     though that is across different blocks, so it is not a clean before/after
+     of the fix alone.
+
+ 16. THE COST OF A PARTIAL FILL WAS CHARGED ON MONEY THE TRADER STILL HAD.
+     cost = 1 - out/expected, with `expected` the mid value of the WHOLE offer.
+     On a partial fill the unspent input never leaves the wallet, so counting
+     it as a shortfall reports a loss nobody took. AT THE BLOCK IN SECTION 1,
+     both numbers are on the table: the $50,000 NVDAc->ETH row's shortfall is
+     8282 bps, and the trade that actually happened there - $9,102 of NVDAc -
+     costs 564 bps. A factor of fifteen, in the direction that makes the venue
+     look unusable. (The run before this one printed 8246 as the cost; that is
+     the same mistake at a different block, and the two are not compared here
+     because they are not the same state.)
+     THE COST IS NOW AGAINST THE INPUT REALLY SPENT, and the fill is a separate
+     column. The old figure is still printed, as "shortfall", explicitly not a
+     trade cost, so the two cannot be merged again by accident.
+     AND THE $10,000 AND $50,000 ETH ROWS NOW READ THE SAME 564 bps, which is
+     right: both fill to the same boundary, so both are the same swap.
+
+ 17. THE COST AND THE FILL CAME FROM DIFFERENT SIMULATIONS. The search took the
+     cost from the quoter and the fill from the probe and threw the probe's
+     output away (`spent, _`), so the answer was assembled from two runs of the
+     same swap that were never compared - and a disagreement could not have
+     been noticed. Both halves come from one probe call now, and a quoter that
+     disagrees ABANDONS the search instead of being ignored.
+     TESTED: script/b20/faultproxy.py gained a `skew` mode that forwards the
+     call and then changes the answer by one unit. Nothing errors; the two
+     simulations simply stop agreeing. The tool prints DISAGREE and produces no
+     bound. Ten fault cases now.
+
+ 18. AND ONE IN THE ORCHESTRATION, found by this work rather than reviewed for.
+     measure-depth.sh read the block hash with `base-cast block N --json`,
+     which asks for the FULL block; the public endpoint answered "backend
+     response too large", the hash came back empty, and the run died on a
+     python traceback. Right outcome, wrong mechanism - an RPC problem has to
+     end in a clear statement that the measurement did not happen, not in a
+     stack trace. It fetches the header without transactions now and validates
+     the hash before using it.
+
+ 19. "THE SELL IS 10-12 bps CHEAPER AT $5,000" WAS AN ARTIFACT OF COMPARING TWO
+     DIFFERENT METHODS. The sell total composed our pool's cost with a
+     conversion measured at the REAL net NVDAc the pool returned. The buy total
+     composed the conversion with our pool's cost at the NOMINAL size - an
+     amount the user never held, because the conversion had already taken 157
+     bps out of it. This file said in the same section that the buy was
+     therefore overstated by 31 to 41 bps at $5,000, and then compared the two
+     anyway. The error was larger than the advantage being claimed.
+     THE FIX IS TO MEASURE THE BUY THE SAME WAY. The entry leg's net NVDAc is
+     measured (NETE_* and NETU_* in the fork suite) and our pool is run at
+     those amounts.
+     THE CONCLUSION REVERSES. In all 84 cells where both directions are
+     measured the sell is 0 to 130 bps WORSE, and in none of them is it
+     cheaper. It was not a small correction to a true statement; the statement
+     was false.
+     THAT IS A FACT ABOUT THESE CELLS, NOT A RULE ABOUT MARKETS. It holds for
+     three thresholds, three taxes, five sizes, two routes, at these blocks.
+     Nothing here says a sell must cost more than a buy in general, and the
+     mechanism it rests on - the tax coming off a buy's input before the pool
+     sees it - is ours, not the market's.
+     AND BOTH CONVERSION LEGS ARE NOW READ AT ONE BLOCK, 51359669. They were at
+     51357412 and 51359362 before, which is not a basis for a few-bps claim
+     about direction either.
+
+ 20. THE COMPOSED CELLS WERE WRITTEN "2010+40=2042" while the formula above
+     them was 1-(1-a)(1-b). The plus sign says the legs add, which is exactly
+     the mistake the formula exists to prevent. They read "pool / conversion /
+     composed" now, with slashes.
+
+ 21. A MEDIAN TRADE SIZE WAS ASSERTED WITH NO DATA BEHIND IT. A summary put the
+     typical trade at about $50 and guessed that NVDAc holders would trade
+     $500-$1,000. Nothing in this repository observes who trades or how much,
+     and neither figure came from anywhere. Section 3.7 is a SCENARIO now, with
+     its sizes attributed to the founder naming them rather than to evidence.
+
+ 22. AND THE FLOOR WAS QUOTED AS IF THE TIER WERE FIXED. "A 5% tax cannot go
+     under 558 bps" is true at the 0.30% LP tier and false at 0.05%, where the
+     same floor composes to 534 - and the tier is one of the things being
+     chosen. Any floor stated while the tier is open has to carry the tier with
+     it.
+
+ 23. TWO READINGS OF 3.7 WERE WIDER THAN 3.7 ITSELF.
+     "The whole band at $100 needs about 6.5%" turned a limit somebody chooses
+     into one the table forces. What is measured is that Q=60's worst cell is
+     608 bps at the 0.05% tier and 632 at 0.30%; any limit above those covers
+     the band and any below does not. 6.5% is a choice, not a consequence.
+     "The tier is worth 23-24 bps and never changes which cells pass" was two
+     cells read as a range - it is 15 to 24 across the 36 - and the conclusion
+     went past it too: the tier changes outcomes whenever a limit lands between
+     the columns. At a $100 limit of 6.2%, Q=60 at a 5% tax passes at the 0.05%
+     tier (608) and fails at 0.30% (632).

@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<script>
+  // ONE PAGE, TWO ADDRESSES: app.html, and /token/0x… - the same file, in its
+  // token view (the host rewrites the path to it). Under /token/ every relative
+  // URL on the page - scripts, styles, the bar's links - would resolve inside
+  // /token/; a <base> at the site's root puts them back, and it has to exist
+  // before any of them is read, hence here, first in <head>.
+  (function () {
+    var m = /^(.*\/)token\/(0x[0-9a-fA-F]{40})\/?$/.exec(location.pathname);
+    if (!m) return;
+    var b = document.createElement("base");
+    b.href = m[1];
+    document.head.appendChild(b);
+    document.documentElement.classList.add("tokenView");
+  })();
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Launch a token · Curb</title>
+<!-- WHAT A LINK SHOWS WHERE IT IS POSTED (X, Telegram): static, since their
+     crawlers run no script - a token's own page gets its name in the tab
+     from token.js, and this card everywhere. The image is the site's own,
+     1200 by 630. -->
+<meta name="description" content="Launch a coin paired with ETH, a stock or another crypto asset in one transaction, and trade it from the first block. Liquidity locked forever." />
+<meta property="og:site_name" content="Curb" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Launch a token on Curb" />
+<meta property="og:description" content="Launch a coin paired with ETH, a stock or another crypto asset in one transaction, and trade it from the first block. Liquidity locked forever." />
+<meta property="og:image" content="https://curb.fun/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Curb: launch coins paired with ETH, stocks and more" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@curbfun" />
+<!-- THE DEPLOYMENT AND THE INCIDENT SWITCHES, before any script reads them
+     (topbar.js, app.js). -->
+<script src="/config.js"></script>
+<!-- FROM THE SITE'S ROOT, NOT RELATIVE: this file is also served at
+     /token/0x..., where the browser's preloader fetches what it sees
+     before the <base> above exists - relative, every one of these was
+     asked for twice, once inside /token/. The site is served from a
+     domain's root (web/_redirects says the same). -->
+<link rel="icon" href="/curb-mark.svg" />
+<link rel="stylesheet" href="/topbar.css" />
+<link rel="stylesheet" href="/sharing.css" />
+<style>
+  /* DARK, THE WAY THE VENUES DOING THIS ARE, WITH BASE BLUE AS THE ONE ACCENT.
+     Measured off the two references rather than guessed: StonkFun sits on
+     #071013 with a single light CTA, pons on #0d0d0d with pill buttons. Ours
+     is Base's own blue on a near-black that carries a little of its hue, one
+     text colour, two greys, and green only where something genuinely
+     succeeded. Same values as browse.html - one palette, three pages. */
+  :root {
+    color-scheme: dark;
+    --bg: #080b11; --panel: #0e131b; --panel2: #131a24; --line: #1d2633;
+    --ink: #eef2f7; --dim: #94a0b0; --dimmer: #5f6b7c;
+    --paint: #0052ff; --paint-hi: #2a6dff; --good: #3ddc97; --bad: #ff6b6b;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); }
+  /* ONE GUTTER ACROSS THE FOUR PAGES. They were 20, 22, 20 and 20 at the
+     sides and 80, 90, 64 and 80 at the foot, which reads as a wobble when
+     you move between them. */
+  /* ONE CONTAINER WIDTH FOR EVERY PAGE, AND IT IS NINE TENTHS OF WHAT IT WAS.
+     calc(50% + 600px) ran to 1400px on a 1600 window - edge to edge, which is
+     what made the site read as too wide the moment it opened. 45% + 540px is
+     exactly 0.9 of that at every width, so it still grows with the screen
+     and still stays centred; the bar uses the same expression. The side
+     gutter grows too, from 24px on a phone to 40px on a desktop. */
+  main { max-width: calc(45% + 540px); margin: 0 auto; padding: 0 clamp(24px, 3vw, 40px) 96px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 14px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+  p.note { font-size: 12.5px; line-height: 1.6; color: var(--dim); margin: 8px 0 0; }
+  p.lede { font-size: 13.5px; line-height: 1.65; color: var(--dim); margin: 0 0 22px; max-width: 68ch; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 28px; margin: 0 0 28px; }
+  label { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dimmer); margin: 0 0 5px; }
+  input, select { width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); font: inherit; font-size: 13px; }
+  input:focus, select:focus { outline: none; border-color: var(--paint-hi); }
+  input[readonly] { color: var(--dimmer); }
+  .grid { display: grid; gap: 12px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 2fr 1fr 1fr; }
+  @media (max-width: 620px) { .g2, .g3 { grid-template-columns: 1fr; } }
+  button { font: inherit; font-size: 13px; font-weight: 600; padding: 10px 16px; border-radius: 8px;
+    border: 1px solid var(--paint); background: var(--paint); color: #ffffff; cursor: pointer; }
+  button:hover { background: #0043d1; border-color: #0043d1; }
+  button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  /* A DARK PAGE'S HOVER: a light tint over the panel. It was #f5f6f8 - a light
+     theme's grey under this theme's near-white text, which vanished on hover. */
+  button.ghost:hover { background: rgba(255, 255, 255, 0.07); border-color: var(--dim); }
+  button.ghost:disabled:hover { background: transparent; border-color: var(--line); }
+  /* THE WHERE PANEL, CLOSED: one quiet line to open it by. */
+  details.wherePanel { padding-top: 18px; padding-bottom: 18px; }
+  details.wherePanel > summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+  details.wherePanel > summary::-webkit-details-marker { display: none; }
+  details.wherePanel > summary h2 { margin: 0; }
+  details.wherePanel > summary::before { content: "▸"; color: var(--dim); font-size: 12px; transition: transform .15s ease; }
+  details.wherePanel[open] > summary::before { transform: rotate(90deg); }
+  details.wherePanel[open] > summary { margin-bottom: 16px; }
+  details.wherePanel > summary .whereHint { font-size: 11px; color: var(--dimmer); text-transform: uppercase; letter-spacing: 0.06em; }
+  details.wherePanel > summary:hover h2 { color: var(--ink); }
+  /* IN PRODUCTION THE PANEL IS "YOUR FEES" (app.js initFeesPanel): the endpoint,
+     the contracts, the wallet and the issuer are config.js's and the bar's.
+     !important because the button row sets its display inline. */
+  details.wherePanel.feesOnly .whereSetup { display: none !important; }
+  p.policyNote { margin: 0 0 28px; padding: 12px 14px 12px 12px; background: var(--panel); border-radius: 8px; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+  /* THE AMOUNT AS THE CHAIN HOLDS IT. The readable form above it is truncated
+     to six decimals, which is not a number anyone can check against a receipt. */
+  .exact { display: inline-block; margin-top: 6px; font-size: 11px; opacity: .65; }
+  #msg, #readmsg { border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.6; margin: 0 0 16px; border: 1px solid var(--line); }
+  /* The three states carry colour, so they are the palette's own green and red
+     plus the accent - not three more shades nobody defined. The fills are the
+     same colours at low alpha, which is what keeps them readable on dark. */
+  #msg.ok { border-color: rgba(61,220,151,.45); background: rgba(61,220,151,.08); }
+  #msg.err { border-color: rgba(255,107,107,.45); background: rgba(255,107,107,.08); }
+  #msg.wait { border-color: rgba(0,82,255,.5); background: rgba(0,82,255,.10); }
+  #readmsg { border-style: dashed; color: var(--dim); }
+  .row { display: flex; justify-content: space-between; gap: 14px; padding: 5px 0; font-size: 13px; border-bottom: 1px dashed var(--line); }
+  .row:last-child { border-bottom: 0; }
+  /* THE hidden ATTRIBUTE HIDES A ROW. `display: flex` above outranks the
+     browser's own [hidden] rule, so a row marked hidden stayed on screen. */
+  .row[hidden] { display: none; }
+  .row span:first-child { color: var(--dim); }
+  .status { font-size: 17px; font-weight: 700; }
+  .status.s1 { color: var(--paint); } .status.s2 { color: #e0b341; } .status.s3 { color: var(--good); } .status.s0 { color: var(--bad); }
+  .bar { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 10px 0 6px; }
+  .bar i { display: block; height: 100%; background: var(--paint); }
+  .tag { display: inline-block; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase;
+    border: 1px solid var(--paint); color: var(--paint); border-radius: 4px; padding: 2px 6px; margin-left: 8px; }
+  .warn { border-left: 3px solid var(--paint); padding-left: 10px; }
+  /* A TRADE WITH NO FLOOR UNDER IT is not a note, so it does not look
+     like one. See AUDIT.txt E-3 for what it costs. */
+  /* THE FORM AND WHAT IT ADDS UP TO, SIDE BY SIDE. One column at phone
+     width, because a summary card below a form is still a summary card. */
+  .launchGrid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+  /* BELOW THE STICKY BAR, whatever height it has at this width. */
+  .launchAside { position: sticky; top: calc(var(--cb-bar-h, 72px) + 16px); }
+  @media (max-width: 860px) {
+    .launchGrid { grid-template-columns: 1fr; }
+    .launchAside { position: static; }
+  }
+  /* A SECTION IS A LABEL, A FIELD AND ONE LINE. The paragraphs that used to
+     sit between fields are in the details block at the end. */
+  /* THE GAP BETWEEN TWO FIELDS, on the same 28px unit as everything else.
+     It was 18 while the panels around it moved to 28, which made it the one
+     spacing on the page that had not grown - and it is the one there is most
+     of, so it is the one that reads as unchanged. */
+  .fset { margin: 0 0 28px; }
+  .flabel { font-size: 12px; font-weight: 650; letter-spacing: 0.01em; margin: 0 0 6px; }
+  .fhint { font-size: 11.5px; line-height: 1.5; color: var(--dim); margin: 6px 0 0; }
+  /* THE SECTION BREAK IS DELIBERATELY BIGGER THAN A FIELD GAP - there is a
+     rule and a heading inside it - but it is built from the same 28px unit
+     rather than from 6 and 12, which is what made it read as an accident. */
+  .fmore { margin: 28px 0 0; border-top: 1px solid var(--line); padding-top: 28px; }
+  textarea { width: 100%; font: inherit; font-size: 13px; padding: 9px 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink); resize: vertical; }
+  /* THE FILE INPUT IS HIDDEN, NOT ABSENT: the label below is its control, so
+     keyboard focus and the picker still work through it. */
+  .fileHidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  /* THE SELECT IS THE CONTROL AND THE CARDS ARE ITS FACE. Hidden the same way
+     the file input is: still focusable, still the one piece of state. */
+  .pickHidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .quoteTabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+  .qtab { font: inherit; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em;
+    padding: 5px 10px; border-radius: 7px; border: 1px solid var(--line);
+    background: transparent; color: var(--dim); cursor: pointer; }
+  .qtab:hover { color: var(--ink); }
+  .qtab[aria-selected="true"] { color: var(--paint); border-color: var(--paint); }
+  .qtab i { font-style: normal; opacity: 0.55; margin-left: 5px; }
+  .quoteGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+  .qcard { display: flex; align-items: center; gap: 9px; text-align: left;
+    font: inherit; padding: 9px 10px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .qcard:hover { border-color: var(--dim); }
+  .qcard[aria-pressed="true"] { border-color: var(--paint); }
+  .qmark { display: grid; place-items: center; width: 28px; height: 28px; flex: none;
+    border-radius: 8px; border: 1px solid var(--line); font-size: 11px; font-weight: 800;
+    color: var(--dim); }
+  .qcard[aria-pressed="true"] .qmark { color: var(--paint); border-color: var(--paint); }
+  .qsym { font-size: 12.5px; font-weight: 650; letter-spacing: -0.01em; }
+  /* TWO FACTORIES FOR ONE ASSET: the symbol, and under it which factory this
+     is (app.js describeTwins). */
+  .qtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .qtwin { font-size: 10.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* A DRAWN MARK, NOT A LOGO. There are no image files here and no network
+     to fetch any from on a local fork, so the tile is coloured from the
+     asset's own address - the same asset is the same colour everywhere. */
+  .qmark { position: relative; color: #fff; border: 0; font-size: 10.5px; letter-spacing: -0.02em; }
+  /* THE ARTWORK COVERS THE TILE RATHER THAN REPLACING IT, so the letters
+     underneath are what shows while it loads and what comes back if it
+     never does. Its own background, because a logo drawn for a dark
+     surface on top of a coloured tile is neither. */
+  /* ROUND BADGES, EDGE TO EDGE (the owner's call, after PONS). Each file in
+     assets/ is its own disc in the brand's colour with the mark centred on it
+     (assets/README.txt), so the tile is round and the artwork fills it - the
+     white square it used to sit in framed the dark discs. */
+  .qmark { border-radius: 50%; }
+  .qmarkImg { position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; padding: 0; border-radius: 50%; background: transparent; }
+  .qcard[aria-pressed="true"] .qmark { color: #fff; }
+  /* A LABEL, SO IT INHERITED THE FORM-LABEL RULE ABOVE: uppercase, letter-spaced
+     and dim. That is right for "TOKEN NAME" and wrong for a control whose own
+     words are the button, so this one opts out. */
+  .filePick { display: flex; align-items: center; gap: 12px; cursor: pointer;
+    border: 1px dashed var(--line); border-radius: 10px; padding: 14px 16px;
+    text-transform: none; letter-spacing: normal; color: var(--ink); margin: 0; }
+  .filePick:hover { border-color: var(--dim); }
+  .fileHidden:focus-visible + .filePick { outline: 2px solid var(--paint); outline-offset: 2px; }
+  .filePickIcon { display: grid; place-items: center; width: 34px; height: 34px; flex: none;
+    border: 1px solid var(--line); border-radius: 8px; color: var(--dim); }
+  /* THE CHOSEN IMAGE, SHOWN IN PLACE OF THE ICON (the owner's call), at the
+     size it will have in the token: square, cropped like a card's picture. */
+  .filePickIcon img { display: none; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+  .filePick.hasImage .filePickIcon { width: 64px; height: 64px; border-radius: 12px; overflow: hidden; border-style: solid; }
+  .filePick.hasImage .filePickIcon img { display: block; }
+  .filePick.hasImage .filePickIcon svg { display: none; }
+  .filePickTitle { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .filePickSub { display: block; font-size: 11.5px; color: var(--dim); margin-top: 2px; }
+  .fmore > summary { font-size: 12px; color: var(--dim); cursor: pointer; }
+  .fmore > summary:hover { color: var(--ink); }
+  .summary { margin-top: 0; border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; background: var(--bg); }
+  .summaryAvatar { width: 56px; height: 56px; border-radius: 14px;
+    display: grid; place-items: center; border: 1px solid var(--line);
+    font-size: 15px; font-weight: 800; overflow: hidden; position: relative;
+    color: var(--dim); margin-bottom: 16px; }
+  .summaryAvatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  /* ANYTHING TYPED IN HERE HAS TO FIT. The card is a fixed 320px column and
+     a name is a stranger's string: without this, one long word draws
+     straight over the edge of the card and out of the panel. */
+  .summaryName { font-size: 19px; font-weight: 600; letter-spacing: -0.02em;
+    overflow-wrap: anywhere; }
+  .summaryTicker { font-size: 12px; color: var(--dim); margin-bottom: 16px;
+    overflow-wrap: anywhere; }
+  /* CLAMPED, because the card has to stay a card. Five lines is enough to
+     recognise what was written and not enough to push the terms below it
+     off the screen. */
+  .summaryDesc { font-size: 12px; line-height: 1.55; color: var(--dim);
+    margin: -8px 0 16px; overflow-wrap: anywhere; display: -webkit-box;
+    -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+  /* A VALUE COLUMN THAT HOLDS VALUES. These rows carried sentences - "network
+     gas only - no platform fee" - which is what made the card read as dense
+     rather than as a summary. The explanations are on terms.html, linked
+     from Advanced; the card keeps three short notes under its button. */
+  .summary .row { padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .summary .row:last-of-type { border-bottom: 0; }
+  .summary .row > span:first-child { font-size: 12px; color: var(--dim); }
+  .summary .row > span:last-child { font-size: 12.5px; font-weight: 650;
+    overflow-wrap: anywhere; text-align: right; }
+  .unbounded { border-left-color: var(--bad); }
+  .unbounded strong { color: var(--bad); }
+  #policyRow.ok { color: var(--good); }
+  #policyRow.bad { color: var(--bad); font-weight: 600; }
+  /* THE LAUNCH FORM, LAID OUT THE WAY A LAUNCH PAGE IS. Measured off
+     StonkFun's: a heading with one sentence under it and a rule, each
+     decision in a card of its own, segmented presets rather than bare
+     fields, and the summary in a column beside them with the button at its
+     foot. The cards sit on the page colour inside the panel, so the panel
+     still reads as one step of this page's flow. */
+  .launchHead { border-bottom: 1px solid var(--line); padding: 0 0 22px; margin: 0 0 24px; }
+  .launchTitle { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; text-transform: none;
+    color: var(--ink); margin: 0 0 8px; }
+  .launchLede { font-size: 13.5px; line-height: 1.6; color: var(--dim); margin: 0; max-width: 72ch; }
+  .fcard { background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px; margin: 0 0 16px; }
+  .fcardTop { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap; margin: 0 0 6px; }
+  .fcardTop .flabel { margin: 0; }
+  .fhint.fhintTop { margin: 0 0 12px; }
+  .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; border: 1px solid var(--line);
+    border-radius: 9px; background: var(--panel); }
+  .seg .segBtn { font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 6px;
+    border: 0; background: transparent; color: var(--dim); }
+  .seg .segBtn:hover { background: rgba(255, 255, 255, 0.05); color: var(--ink); }
+  .seg .segBtn[aria-pressed="true"] { background: rgba(0, 82, 255, 0.18); color: var(--ink); }
+  .segSm .segBtn { font-size: 11.5px; padding: 5px 10px; }
+  /* A NUMBER WITH ITS UNIT BESIDE IT, inside one border - so "%" and the
+     ticker are part of the field instead of a word somewhere under it. */
+  .numField { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel); }
+  .numField:focus-within { border-color: var(--paint-hi); }
+  .numField[hidden] { display: none; }
+  /* A FIELD HOLDING A COMMA IS MARKED - see numericOnly in app.js. */
+  .numField:has(input.numBad) { border-color: var(--bad); }
+  .numField input.numBad { color: var(--bad); }
+  .numField input { border: 0; background: transparent; font-size: 15px; font-weight: 600;
+    font-variant-numeric: tabular-nums; padding: 11px 12px; min-width: 0; }
+  .numUnit { padding: 0 12px; font-size: 12px; font-weight: 600; color: var(--dim); white-space: nowrap; }
+  .slider { width: 100%; padding: 0; margin: 16px 0 4px; border: 0; background: transparent;
+    accent-color: var(--paint); height: 18px; }
+  .slider:disabled { opacity: 0.4; }
+  .sliderEnds { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--dimmer); }
+  .devOut { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--panel);
+    border: 1px solid var(--line); font-size: 12.5px; line-height: 1.55; color: var(--ink); }
+  .summaryHead { font-size: 11.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--dim); margin: 0 0 14px; }
+  .createBtn { width: 100%; margin: 16px 0 0; padding: 12px 16px; font-size: 14px; }
+  .summaryNotes { margin: 14px 0 0; padding: 0 0 0 16px; font-size: 11.5px; line-height: 1.55; color: var(--dim); }
+  .summaryNotes li { margin: 0 0 6px; }
+  /* AT PHONE WIDTH THE PRESETS SHARE THE ROW instead of wrapping one button
+     onto a line of its own, and a card gives back some of its padding. */
+  @media (max-width: 620px) {
+    .fcard { padding: 16px; }
+    .seg { display: flex; width: 100%; flex-wrap: nowrap; }
+    .seg .segBtn { flex: 1 1 0; padding: 7px 4px; }
+  }
+  /* THE BAR'S BUTTON JUMPS HERE. Without this the panel lands hard against
+     the top edge of the window. */
+  #create-launch { scroll-margin-top: calc(var(--cb-bar-h, 72px) + 18px); }
+
+  /* ---------------------------------------------------------- a token's page
+     /token/0x... is this file with html.tokenView (the <head> script). The
+     token view shows; the form, the settings and the long flow below hide -
+     they stay in the page, because every button of the view presses one of
+     theirs (token.js). Laid out the way the owner asked: About, the creator's
+     fees, the swap beside the chart, the trades under both. */
+  #tokenView { display: none; }
+  /* hidden MEANS HIDDEN in the view: its rows and boxes set display, which
+     outranks the browser's own [hidden] rule. */
+  #tokenView [hidden] { display: none !important; }
+  html.tokenView #tokenView { display: block; }
+  html.tokenView main > h1, html.tokenView main > .lede,
+  html.tokenView #wherePanel, html.tokenView #create-launch, html.tokenView #launchPanel, html.tokenView #policyNote { display: none; }
+  html.tokenView #readmsg { margin-bottom: 14px; }
+
+  .tvBack { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 14px; padding: 7px 14px;
+    border: 1px solid var(--line); border-radius: 999px; color: var(--ink); text-decoration: none; font-size: 13px; font-weight: 600; }
+  .tvBack:hover { border-color: var(--dim); }
+  .tvCard { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 20px 22px; margin: 0 0 14px; }
+  .tvCard h2, .tvCard h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--ink); }
+
+  .tvAbout { display: flex; gap: 18px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .tvAboutMain { min-width: 0; flex: 1 1 260px; }
+  .tvDesc { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+  .tvLinks { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tvLinks a, .tvLinks button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
+    background: var(--panel2); border: 1px solid var(--line); color: var(--ink); font: inherit; font-size: 12.5px;
+    font-weight: 600; text-decoration: none; cursor: pointer; }
+  .tvLinks a:hover, .tvLinks button:hover { border-color: var(--dim); }
+
+  .tvFeeGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 6px 0 12px; }
+  .tvClaimTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .tvClaimTop > div { min-width: 0; }
+  .tvClaimAct { flex: none; padding: 8px 16px; border-radius: 10px; font-size: 13px; }
+  .tvFeeBox span.tvUnswept { margin-top: 8px; color: var(--dimmer); }
+  /* THE CLAIM IS IN THE CARD NOW (#tvClaimAct); app.js's owed panel, with its
+     three buttons, stays for the long page. */
+  html.tokenView #owedBox { display: none !important; }
+  /* THE QUOTE SIDE'S CHIP OPENS A CHOICE (ETH, or the pair's asset), as PONS's
+     does: a caret on the chip, and a small list under it. */
+  .tvAsset.tvPick { cursor: pointer; }
+  .tvAsset.tvPick::after { content: "▾"; font-size: 11px; color: var(--dim); margin-left: 2px; }
+  .tvAsset.tvPick:hover { border-color: var(--dim); }
+  .tvMenu { position: absolute; z-index: 60; min-width: 150px; padding: 6px; border-radius: 12px; background: var(--panel);
+    border: 1px solid var(--line); box-shadow: 0 18px 50px rgba(0, 0, 0, .55); display: flex; flex-direction: column; gap: 2px; }
+  .tvMenu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 650; text-align: left; cursor: pointer; }
+  .tvMenu button:hover, .tvMenu button.on { background: rgba(255, 255, 255, 0.07); }
+  .tvMenu img { width: 20px; height: 20px; border-radius: 50%; }
+  /* AN ASSET'S LOGO BESIDE ITS NAME, wherever the swap card names what moves. */
+  .tvAsset img, .tvPair img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex: none; }
+  .tvPair img { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
+  .tvFeeBox { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+  .tvFeeBox b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .tvFeeBox span { display: block; margin-top: 3px; font-size: 11.5px; color: var(--dim); }
+  .tvFeeWho { margin: 0; font-size: 13px; color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+  .tvFees #owedBox { margin-top: 12px; }
+
+  .tvGrid { display: grid; grid-template-columns: minmax(280px, 330px) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .tvGrid > .tvCard { margin: 0; }
+  .tvHead { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .tvImg { flex: none; width: 44px; height: 44px; border-radius: 12px; overflow: hidden; background: var(--panel2);
+    border: 1px solid var(--line); display: grid; place-items: center; }
+  .tvImg img { width: 100%; height: 100%; object-fit: cover; }
+  .tvImg i { font-style: normal; font-weight: 800; color: var(--dim); }
+  .tvWho { min-width: 0; flex: 1; }
+  /* TWO LINES, NOT ONE CUT SHORT: the card is narrow and names are the creator's. */
+  .tvName { font-weight: 700; font-size: 16px; line-height: 1.25; overflow: hidden; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  /* THE BADGE IS ONE PIECE: "Paired: NVDAc" broke over two lines beside a
+     longer name. It keeps to one line and moves under the symbol when the
+     row has no room for it. */
+  .tvSymRow { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12px; color: var(--dim); }
+  .tvPair:empty { display: none; }
+  .tvPair { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); color: var(--dim);
+    white-space: nowrap; }
+  .tvStatus { flex: none; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: 4px 9px;
+    border-radius: 7px; border: 1px solid var(--line); color: var(--dim); }
+  .tvStatus.selling { border-color: rgba(0,82,255,.55); color: var(--paint-hi); background: rgba(0,82,255,.10); }
+  .tvStatus.waiting { border-color: rgba(255,196,0,.5); color: #ffc400; background: rgba(255,196,0,.08); }
+  .tvStatus.graduated { border-color: rgba(61,220,151,.45); color: var(--good); background: rgba(61,220,151,.08); }
+
+  .tvBox { background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .tvBoxTop { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); }
+  .tvAvail { font-variant-numeric: tabular-nums; }
+  .tvBox input, .tvGet { display: block; width: 100%; margin: 6px 0; border: 0; outline: 0; background: transparent; padding: 0;
+    color: var(--ink); font: inherit; font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .tvGet { color: var(--dim); }
+  .tvBoxFoot { display: flex; align-items: center; justify-content: space-between; }
+  .tvAsset { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; background: var(--panel);
+    border: 1px solid var(--line); font-size: 13px; font-weight: 700; }
+  .tvFlip { display: block; margin: -8px auto; position: relative; z-index: 1; width: 34px; height: 34px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: 16px; cursor: pointer; padding: 0; }
+  .tvFlip:hover { border-color: var(--dim); }
+  .tvPcts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0 10px; }
+  .tvPcts button { padding: 7px 0; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--dim);
+    font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .tvPcts button:hover:not(:disabled) { color: var(--ink); border-color: var(--dim); }
+  .tvRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; font-size: 13px; color: var(--dim); }
+  .tvRow select { max-width: 60%; }
+  .tvSlipWrap { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  .tvSlipWrap input { width: 44px; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px;
+    font-weight: 600; text-align: right; padding: 0; }
+  .tvSlipWrap i { font-style: normal; color: var(--dim); }
+  .tvQuote { font-size: 12px; color: var(--dim); line-height: 1.65; min-height: 8px; overflow-wrap: anywhere; }
+  .tvQuote .bad { color: var(--bad); }
+  /* THE TRADE'S PRICE IMPACT: warned above 5%, strongly above 15%. */
+  .tvQuote .tvImpact { color: var(--ink); font-weight: 600; }
+  .tvQuote .tvImpact.warn, .impact.warn { color: #ffc400; }
+  .tvQuote .tvImpact.strong, .impact.strong { color: var(--bad); }
+  .tvQuote .tvImpactWarn { margin: 4px 0; padding: 7px 10px; border-radius: 9px; color: var(--ink);
+    border: 1px solid rgba(255,196,0,.5); background: rgba(255,196,0,.08); }
+  .tvQuote .tvImpactWarn.strong { border-color: rgba(255,107,107,.6); background: rgba(255,107,107,.10); font-weight: 600; }
+  .tvQuote .tvClamp { color: var(--ink); }
+  .note.impactWarn.strong { border-color: rgba(255,107,107,.6); font-weight: 600; }
+  .tvAct { display: block; width: 100%; margin-top: 10px; padding: 14px; border-radius: 14px; border: 0; background: var(--paint);
+    color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .tvAct:hover:not(:disabled) { background: var(--paint-hi); }
+  .tvAct:disabled { background: var(--panel2); color: var(--dim); cursor: not-allowed; border: 1px solid var(--line); }
+  .tvActNote { margin: 8px 0 0; font-size: 11.5px; color: var(--dimmer); line-height: 1.5; }
+  /* WETH HELD ON A WETH PAIR, offered as ether (app.js unwrapWeth). */
+  .unwrapBox { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    margin: 10px 0 0; font-size: 12.5px; color: var(--dim); }
+  .unwrapBox[hidden] { display: none; }
+  .unwrapBox button { padding: 6px 12px; font-size: 12.5px; }
+
+  .tvStats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 12px; }
+  .tvStats > div { padding: 10px 14px; min-width: 0; }
+  .tvStats > div + div { border-left: 1px solid var(--line); }
+  .tvStats span { display: block; font-size: 11px; color: var(--dim); }
+  .tvStats b { display: block; margin-top: 2px; font-size: 14px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tvBigRow { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 16px 0 10px; flex-wrap: wrap; }
+  .tvBig b { display: block; font-size: 30px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .tvBig span { font-size: 12px; color: var(--dim); }
+  .tvRanges { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; }
+  .tvRanges button { padding: 5px 11px; border-radius: 999px; border: 0; background: transparent; color: var(--dim); font: inherit;
+    font-size: 11.5px; font-weight: 700; cursor: pointer; }
+  .tvRanges button.on { background: var(--panel2); color: var(--ink); }
+  .tvChart { position: relative; height: 300px; border-radius: 12px; background: var(--bg); overflow: hidden; }
+  .tvChart svg { display: block; width: 100%; height: 100%; }
+  .tvChart .tvEmpty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--dim); font-size: 13px; text-align: center; padding: 0 20px; }
+  .tvProgress { margin-top: 12px; display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--dim); }
+  .tvBar { flex: 1; height: 8px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
+  .tvBar i { display: block; height: 100%; width: 0; background: var(--paint); border-radius: 999px; }
+
+  .tvTradesCard { margin-top: 14px; }
+  .tvTabs { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
+  .tvTabs button { padding: 7px 14px; border-radius: 999px; border: 0; background: transparent; color: var(--dim); font: inherit;
+    font-size: 13px; font-weight: 600; cursor: pointer; }
+  .tvTabs button.on { background: var(--panel2); color: var(--ink); }
+  .tvCount { margin-left: auto; font-size: 11px; color: var(--dim); padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; }
+  .tvList .tvLine { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 60px; align-items: center; gap: 10px;
+    padding: 10px 4px; border-top: 1px solid var(--line); font-size: 13px; }
+  .tvList .tvLine:first-child { border-top: 0; }
+  .tvList .tvArrow { font-weight: 800; }
+  .tvList .tvArrow.buy { color: var(--good); }
+  .tvList .tvArrow.sell { color: var(--bad); }
+  .tvList .tvMain b { display: block; font-variant-numeric: tabular-nums; }
+  .tvList .tvMain a, .tvList .tvMain span { font-size: 11.5px; color: var(--dim); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-decoration: none; }
+  .tvList .tvRight { text-align: right; font-variant-numeric: tabular-nums; }
+  .tvList .tvRight span { display: block; font-size: 11px; color: var(--dim); }
+  .tvList .tvAgo { text-align: right; font-size: 11.5px; color: var(--dim); }
+  .tvList .tvLine.holder { grid-template-columns: 30px minmax(0, 1fr) auto 70px; }
+  .tvList .tvEmptyList { padding: 22px 4px; color: var(--dim); font-size: 13px; text-align: center; }
+  .tvHistNote { margin: 10px 0 0; font-size: 11.5px; color: var(--dimmer); }
+
+  @media (max-width: 900px) {
+    /* ON A PHONE THE SWAP COMES FIRST. The fees card is long, and above the
+       swap it pushed the one thing most people came for a screen down. */
+    html.tokenView #tokenView { display: flex; flex-direction: column; }
+    #tokenView > .tvGrid { order: 2; }
+    #tokenView > #tvFees { order: 3; }
+    #tokenView > #tvShare { order: 3; }
+    #tokenView > .tvTradesCard { order: 4; }
+    .tvGrid { grid-template-columns: minmax(0, 1fr); }
+    .tvFeeGrid { grid-template-columns: minmax(0, 1fr); }
+    .tvStats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tvStats > div:nth-child(3) { border-left: 0; }
+    .tvStats > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+    .tvChart { height: 240px; }
+  }
+</style>
+</head>
+<body>
+<header id="siteBar" data-page="app"></header>
+<script src="/topbar.js"></script>
+<main>
+  <h1>Curb — the whole flow</h1>
+  <p class="lede">
+    Create a launch, trade it on the curve, cross the threshold, complete the move into the pool, then trade the
+    pool. Every number here is read from the chain and every button sends a transaction that is mined; results are
+    taken from the receipt and from balances before and after, never from what was asked for.
+  </p>
+
+  <!-- TWO AREAS, ON PURPOSE. What a transaction did is not the same kind of
+       thing as a complaint about what is in the form, and a page with one line
+       lets the second overwrite the first - which is how the address of a
+       launch a user had just created could disappear behind "that is not a
+       factory". -->
+  <div id="msg" hidden></div>
+  <div id="readmsg" hidden></div>
+  <!-- A FACT ABOUT THE LINK, NOT A RESULT OF A READ, so it has an element of
+       its own: readmsg is cleared every time a refresh finishes with nothing
+       to report, and this has to outlive that. -->
+  <div id="linkWarn" class="warn" hidden></div>
+
+  <!-- A TOKEN'S OWN PAGE (/token/0x…). The same page, its token view: shown
+       only under html.tokenView (the <head> script), laid out the way the
+       owner asked - About, the creator's fees, the swap beside the chart, the
+       trades under both. token.js fills it from what app.js has read and from
+       the chain's own records; every button in it presses one of app.js's own
+       (#curveAct, #poolAct, #complete, the claims), so a trade made here goes
+       through exactly the checks and records a trade made below does. -->
+  <section id="tokenView" aria-label="This launch">
+    <a class="tvBack" id="tvBack" href="browse.html">‹ All launches</a>
+
+    <div class="tvCard tvAbout">
+      <div class="tvAboutMain">
+        <h2>About</h2>
+        <p class="tvDesc" id="tvDesc">—</p>
+      </div>
+      <div class="tvLinks" id="tvLinks"></div>
+    </div>
+
+    <!-- CREATOR FEES, TWO FIGURES AND ONE BUTTON (the owner's call, after PONS):
+         what the launch has earned its creator, and what that address can
+         claim now. Claim presses app.js's #claimAll, which sweeps the curve,
+         then claims the escrow and the hook - wherever the fees are. -->
+    <div class="tvCard tvFees" id="tvFees">
+      <h3>Creator fees</h3>
+      <div class="tvFeeGrid">
+        <div class="tvFeeBox"><b id="tvEarned">—</b><span id="tvEarnedNote">earned by this launch's creator</span></div>
+        <div class="tvFeeBox tvClaimBox">
+          <div class="tvClaimTop">
+            <div><b id="tvClaimable">—</b><span id="tvClaimableNote">claimable now</span></div>
+            <button type="button" class="tvClaimAct" id="tvClaimAct" hidden>Claim</button>
+          </div>
+          <span class="tvUnswept" id="tvUnswept" hidden></span>
+        </div>
+      </div>
+      <p class="tvFeeWho" id="tvFeeWho"></p>
+      <div id="tvOwedSlot"></div>
+      <!-- THE CREATOR'S HOLDER SHARING: the switch before it is thrown, the
+           lock's held fees and the principal's exit after. sharing-token.js. -->
+      <div id="tvCreatorShare"></div>
+    </div>
+
+
+    <div class="tvGrid">
+      <div class="tvCard tvSwap">
+        <div class="tvHead">
+          <span class="tvImg" id="tvImgWrap"><img id="tvImg" alt="" hidden /><i id="tvImgLetter">?</i></span>
+          <div class="tvWho">
+            <div class="tvName" id="tvName">—</div>
+            <div class="tvSymRow"><span id="tvSym">—</span><span class="tvPair" id="tvPair"></span></div>
+          </div>
+          <span class="tvStatus" id="tvStatus">—</span>
+        </div>
+
+        <div class="tvBox">
+          <div class="tvBoxTop"><span id="tvPayLabel">Sell</span><span class="tvAvail" id="tvPayAvail"></span></div>
+          <input id="tvPay" inputmode="decimal" placeholder="0" autocomplete="off" spellcheck="false" aria-label="Amount you pay" />
+          <div class="tvBoxFoot"><span class="tvAsset" id="tvPayAsset">—</span></div>
+        </div>
+        <button class="tvFlip" id="tvFlip" type="button" aria-label="Switch buying and selling">⇅</button>
+        <div class="tvBox">
+          <div class="tvBoxTop"><span>Buy</span><span class="tvAvail" id="tvGetAvail"></span></div>
+          <div class="tvGet" id="tvGet">0</div>
+          <div class="tvBoxFoot"><span class="tvAsset" id="tvGetAsset">—</span></div>
+        </div>
+
+        <div class="tvPcts" id="tvPcts">
+          <button type="button" data-pct="25">25%</button><button type="button" data-pct="50">50%</button>
+          <button type="button" data-pct="75">75%</button><button type="button" data-pct="100">100%</button>
+        </div>
+        <div class="tvRow" id="tvViaRow" hidden><span>Pay with</span><select id="tvVia"></select></div>
+        <div class="tvRow"><span>Slippage</span>
+          <span class="tvSlipWrap"><input id="tvSlip" value="1" inputmode="decimal" aria-label="Slippage percent" /><i>%</i></span>
+        </div>
+        <div class="tvQuote" id="tvQuote"></div>
+        <button class="tvAct" id="tvAct" type="button" disabled>Enter an amount</button>
+        <p class="tvActNote" id="tvActNote"></p>
+        <div id="tvUnwrapSlot"></div>
+      </div>
+
+      <div class="tvCard tvChartCard">
+        <div class="tvStats">
+          <div><span>Price</span><b id="tvPrice">—</b></div>
+          <div><span>Market cap</span><b id="tvMcap">—</b></div>
+          <div><span id="tvThirdLabel">To graduation</span><b id="tvThird">—</b></div>
+          <div><span>Trades</span><b id="tvTradeCount">—</b></div>
+        </div>
+        <div class="tvBigRow">
+          <div class="tvBig"><b id="tvBigMcap">—</b><span id="tvBigNote"></span></div>
+          <div class="tvRanges" id="tvRanges">
+            <button type="button" data-r="3600">1H</button><button type="button" data-r="21600">6H</button>
+            <button type="button" data-r="86400">1D</button><button type="button" data-r="0" class="on">ALL</button>
+          </div>
+        </div>
+        <div class="tvChart" id="tvChart"><p class="tvEmpty">Reading this launch's trades…</p></div>
+        <div class="tvProgress" id="tvProgressWrap" hidden>
+          <div class="tvBar"><i id="tvBar"></i></div><span id="tvProgressText"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- HOLDERS EARN THIS LAUNCH'S FEES: shown once its holder sharing is on,
+         to everyone - the distributor, its figures, the payout in force, every
+         announced change, the holder's own share, and the check of each
+         payout's file. Under the swap and the chart, so neither moves down for
+         it. Drawn by sharing-token.js from web/sharing.js. -->
+    <div class="tvCard tvShare" id="tvShare" hidden></div>
+
+    <div class="tvCard tvTradesCard">
+      <div class="tvTabs">
+        <button type="button" id="tvTabTrades" class="on">Recent trades</button>
+        <button type="button" id="tvTabHolders">Holders</button>
+        <span class="tvCount" id="tvListCount"></span>
+      </div>
+      <div class="tvList" id="tvList"></div>
+      <p class="tvHistNote" id="tvHistNote"></p>
+    </div>
+  </section>
+
+  <!-- WHERE THE PAGE READS: the endpoint, the contracts, the wallet and what it
+       is owed. For whoever sets up or checks a deployment, not for someone
+       launching a token, so it starts CLOSED - open when the link names an
+       endpoint or a contract (a fork, a test, a deployment being checked),
+       and as its reader left it once they have opened or closed it (app.js
+       initWherePanel). The issuer's refusal is said outside it (#policyNote).
+       IN PRODUCTION (config.js names a lens) it is only "Your fees": the
+       .whereSetup parts are hidden, and the panel shows only while the wallet
+       is owed something (app.js initFeesPanel). -->
+  <details class="panel wherePanel" id="wherePanel">
+    <summary><h2>Network and contracts</h2><span class="whereHint">advanced</span></summary>
+    <div class="grid g2 whereSetup">
+      <div><label for="rpc">RPC endpoint</label><input id="rpc" spellcheck="false" /></div>
+      <div><label for="factory">CurbLaunchFactory</label><input id="factory" spellcheck="false" placeholder="0x…" /></div>
+      <div><label for="lens">LaunchLens</label><input id="lens" spellcheck="false" placeholder="0x…" /></div>
+      <div><label for="token">Launch token (or create one below)</label><input id="token" spellcheck="false" placeholder="0x…" /></div>
+    </div>
+    <div class="whereSetup" style="margin-top:28px; display:flex; gap:10px; flex-wrap:wrap">
+      <button id="connect" class="ghost">Connect wallet</button>
+      <button id="refresh" class="ghost">Refresh</button>
+    </div>
+    <p class="note whereSetup" id="wallet">No wallet connected. Reading works without one; every action needs one.</p>
+    <div class="row whereSetup"><span>quote asset</span><span><code id="quoteAddr">—</code></span></div>
+    <div class="row whereSetup"><span>your <span id="quoteSymA">quote asset</span></span><span id="quoteBal">—</span></div>
+    <!-- THE ISSUER'S ANSWER, ASKED BEFORE A TRADE. C1 established that B20
+         can be asked in advance: the asset names a policy, the PolicyRegistry
+         says who it admits. Without this a restricted account meets the
+         refusal as a failed transaction with a four-byte error in it. -->
+    <div class="row whereSetup"><span>issuer policy</span><span id="policyRow">connect a wallet to check</span></div>
+    <!-- WHAT THIS ACCOUNT IS OWED, AND THE BUTTONS THAT TAKE IT. A curve's
+         fees stay in the curve until its creator sweeps them (or it
+         graduates), then wait in the factory's escrow; the pool's wait in the
+         hook when they could not be paid straight out - which, on an ETH
+         pair, is every time. -->
+    <div id="owedBox" hidden>
+      <div class="row"><span>owed to you from curve trading</span><span id="owedEscrow">—</span></div>
+      <div class="row"><span>owed to you from pool trading</span><span id="owedHook">—</span></div>
+      <div class="row" id="owedCurveRow" hidden><span>on this launch's curve, not yet swept</span><span id="owedCurve">—</span></div>
+      <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
+        <button id="claimAll" class="ghost">Claim everything</button>
+        <button id="claimEscrow" class="ghost" disabled>Claim curve fees</button>
+        <button id="claimHook" class="ghost" disabled>Claim pool fees</button>
+        <button id="sweepCurve" class="ghost" disabled hidden>Sweep curve fees to the escrow</button>
+      </div>
+      <p class="note" id="owedNote"></p>
+    </div>
+    <p class="note">
+      <strong>Anyone can create a launch.</strong> There is no owner and no allowlist. The creator - the wallet
+      named in the form, or whoever sends the transaction if none is - receives that launch's creator fees and
+      its locked LP position.
+    </p>
+  </details>
+
+  <!-- THE ISSUER'S REFUSAL, where it is seen whether or not the panel above is
+       open. It needs its own element: it first went through showRead(), which
+       the rest of refresh() owns and overwrites - so the warning appeared and
+       was gone before anyone could read it. -->
+  <p class="note warn policyNote" id="policyNote" hidden></p>
+
+  <div class="panel" id="create-launch">
+    <!-- A LAUNCH PAGE OPENS WITH WHAT IT MAKES. The heading was a numbered
+         step with a "candidate parameters" tag, which described this page's
+         history rather than what a creator is about to do. The layout under
+         it is StonkFun's launch page, measured: one card per decision, the
+         summary in a column beside them, the button at the foot of the
+         summary. -->
+    <div class="launchHead">
+      <h2 class="launchTitle">Launch a token</h2>
+      </div>
+
+    <div class="launchGrid">
+      <div class="launchMain">
+
+        <section class="fset fcard">
+          <div class="grid g2">
+            <div>
+              <div class="flabel">Token name</div>
+              <input id="nName" value="Curb Demo" maxlength="32" placeholder="e.g. Na&#39;vidia" />
+              <p class="fhint">Maximum 32 characters</p>
+            </div>
+            <div>
+              <div class="flabel">Symbol</div>
+              <input id="nSymbol" value="DEMO" maxlength="10" placeholder="e.g. NAVIDIA" />
+              <p class="fhint">Maximum 10 characters</p>
+            </div>
+          </div>
+          <div class="flabel" style="margin-top:18px">Description</div>
+          <textarea id="nDesc" rows="3" maxlength="300"
+                    placeholder="A short description of the token"></textarea>
+          <p class="fhint">Maximum 300 characters</p>
+        </section>
+
+        <section class="fset fcard">
+          <div class="flabel">Token image</div>
+          <!-- THE NATIVE INPUT IS HIDDEN BEHIND THIS LABEL. A file input draws
+               its own "no file chosen" text in the browser's language and no
+               attribute changes it; a label is a real control we write the
+               words on. -->
+          <input id="nImageFile" type="file" class="fileHidden"
+                 accept="image/png,image/jpeg,image/webp,image/gif" />
+          <label class="filePick" for="nImageFile">
+            <span class="filePickIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                   stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <circle cx="8.5" cy="8.5" r="1.6" />
+                <path d="M21 15l-5-5L5 21" />
+              </svg>
+              <img id="nImagePreview" alt="" />
+            </span>
+            <span>
+              <span class="filePickTitle" id="nImageName">Choose image</span>
+              <!-- EMPTY UNTIL THERE IS SOMETHING TO SAY. It carries the size
+                   once a file is chosen, and the reason if one is refused.
+                   What happens to the image afterwards is on the terms page,
+                   not standing between two fields. -->
+              <span class="filePickSub" id="nImageNote"></span>
+            </span>
+          </label>
+        </section>
+
+        <section class="fset fcard">
+          <div class="flabel">Project links</div>
+                    <p class="fhint" style="margin:0 0 10px">Optional.</p>
+          <div class="flabel" style="font-weight:500;color:var(--dim)">Website</div>
+          <input id="nSite" placeholder="https://your-site.xyz" />
+          <div class="grid g2" style="margin-top:8px">
+            <div>
+              <div class="flabel" style="font-weight:500;color:var(--dim)">X / Twitter</div>
+              <input id="nX" placeholder="https://x.com/project" />
+            </div>
+            <div>
+              <div class="flabel" style="font-weight:500;color:var(--dim)">Telegram</div>
+              <input id="nTg" placeholder="https://t.me/project" />
+            </div>
+          </div>
+        </section>
+
+        <!-- THE CREATOR TAX, OUT FROM UNDER "ADVANCED". It is the one number
+             that decides what a creator earns, and it sat behind a disclosure
+             beside the creator wallet. The presets are the usual choices; the
+             field takes anything in the band, and takes only a number. -->
+        <section class="fset fcard">
+          <div class="fcardTop">
+            <div class="flabel">Creator tax</div>
+            <div class="seg" id="taxPresets" role="group" aria-label="Creator tax presets">
+              <button type="button" class="segBtn" data-tax="1" aria-pressed="true">1%</button>
+              <button type="button" class="segBtn" data-tax="2" aria-pressed="false">2%</button>
+              <button type="button" class="segBtn" data-tax="3" aria-pressed="false">3%</button>
+              <button type="button" class="segBtn" data-tax="4" aria-pressed="false">4%</button>
+              <button type="button" class="segBtn" data-tax="5" aria-pressed="false">5%</button>
+            </div>
+          </div>
+          <div class="numField">
+            <input id="nTax" value="1" placeholder="1" inputmode="decimal" autocomplete="off" spellcheck="false"
+                   aria-label="Creator tax, in percent" />
+            <span class="numUnit">%</span>
+          </div>
+          <p class="fhint" id="taxSplit"></p>
+        </section>
+
+        <!-- THE FIRST BUY, IN EITHER UNIT. A creator thinks in "how much of the
+             supply", the contract in "how much of the quote asset". The page
+             converts between them with the curve's own arithmetic - a new
+             curve holds the whole supply against phantomQuote - and the AMOUNT
+             is still the only thing that is sent. -->
+        <section class="fset fcard">
+          <div class="fcardTop">
+            <div class="flabel">Dev buy</div>
+            <div class="seg segSm" id="devMode" role="group" aria-label="Enter the dev buy as">
+              <button type="button" class="segBtn" data-mode="amount" aria-pressed="true"><span class="qs">the quote asset</span> amount</button>
+              <button type="button" class="segBtn" data-mode="pct" aria-pressed="false">% of supply</button>
+            </div>
+          </div>
+                    <p class="fhint fhintTop">Optional.</p>
+          <div class="numField" id="devAmountField">
+            <input id="nDevBuy" placeholder="0" inputmode="decimal" autocomplete="off" spellcheck="false"
+                   aria-label="Dev buy, in the quote asset" />
+            <span class="numUnit qs">the quote asset</span>
+          </div>
+          <div class="numField" id="devPctField" hidden>
+            <input id="nDevPct" placeholder="0" inputmode="decimal" autocomplete="off" spellcheck="false"
+                   aria-label="Dev buy, in percent of the supply" />
+            <span class="numUnit">% of supply</span>
+          </div>
+          <input id="nDevSlider" class="slider" type="range" min="0" max="1000" step="1" value="0"
+                 aria-label="Dev buy, from none to the most this launch allows" />
+          <div class="sliderEnds"><span>None</span><span id="devSliderMax">Max</span></div>
+          <div class="devOut" id="devBuyOut">No dev buy.</div>
+          <p class="fhint" id="devBuyCap"></p>
+        </section>
+
+        <section class="fset fcard">
+          <div class="flabel">Paired asset</div>
+          <!-- FILLED FROM THE REGISTRY, not from a list in this file: it reads
+               launcherCount()/launcherAt() and asks each factory which asset it
+               prices against, then groups them. An asset that was never
+               admitted cannot be offered by editing this page. -->
+          <select id="quotePick" class="pickHidden"><option value="">— read from the lens —</option></select>
+          <div class="quoteTabs" id="quoteTabs"></div>
+          <div class="quoteGrid" id="quoteGrid"></div>
+          <p class="fhint" id="quoteLiquidity" hidden></p>
+          </section>
+
+        <!-- HOLDER SHARING, OFF UNTIL THE CREATOR TURNS IT ON. On, the launch
+             goes out with the catalog's recommended distributor version in its
+             last field and its creator income goes to its holders from the
+             first trade, for good. What that means is said here in full, at
+             the moment of deciding - not behind a link. app.js renderShare. -->
+        <section class="fset fcard" id="shareCard">
+          <label class="shareToggle" for="nShare">
+            <input type="checkbox" id="nShare" />
+            <span class="shareKnob" aria-hidden="true"></span>
+            <span class="shareTitle">Share fees with holders</span>
+          </label>
+                    <p class="fhint" id="shareOff">Off: you keep the creator share.</p>
+          <div id="shareTerms" hidden>
+            <ul class="shareList" id="shareList">
+              <li id="shareZero">Your creator share becomes 0%, permanently.</li>
+              <li id="shareWhat">Holders receive your tax share, before and after graduation, plus the locked
+                position's LP fees.</li>
+              <li id="sharePrincipal">The LP principal stays locked forever; nobody can withdraw it.</li>
+              <li id="shareHow">Shares are time-weighted and paid about hourly. At most 2% of each payout covers
+                gas. Every payout is public and can be stopped by the CURB multisig or an independent vetoer
+                for 1 hour.</li>
+              <li id="sharePublisher">Payouts need CURB's keeper to keep publishing them; unpaid shares wait in the
+                distributor.</li>
+              <li id="shareNever">Unclaimed shares never expire.</li>
+            </ul>
+            <p class="fhint" id="shareVersion"></p>
+          </div>
+          <p class="fhint warn" id="shareUnavailable" hidden></p>
+        </section>
+
+        <details class="fmore" id="advanced">
+          <summary>Advanced</summary>
+
+          <!-- ONE UNIT UNDER THE HEADING. Without it the first field is glued
+               to the word "Advanced". -->
+          <section class="fset" style="margin-top:28px">
+            <div class="flabel">Creator wallet</div>
+            <input id="nCreator" placeholder="0x… — blank to use your connected wallet" />
+                        <p class="fhint">Receives the creator fees.</p>
+          </section>
+        </details>
+      </div>
+
+      <aside class="launchAside">
+        <!-- WHAT THE CREATOR IS ABOUT TO FIX FOREVER, beside the decision
+             rather than under six paragraphs of it - and the button that fixes
+             it at the foot of the list, where the decision ends. -->
+        <div class="summary" id="launchSummary">
+          <div class="summaryHead">Launch summary</div>
+          <div class="summaryAvatar" id="sumAvatar">—</div>
+          <div class="summaryName" id="sumName">Your token</div>
+          <div class="summaryTicker" id="sumTicker">ticker</div>
+          <p class="summaryDesc" id="sumDesc" hidden></p>
+          <!-- "OF THAT, YOURS" IS THE CREATOR'S SHARE OF THE TRADE FEE, so it
+               sits directly under it, with the token it is claimed in. Under
+               "liquidity: Locked" it read as a share of the locked liquidity. -->
+          <div class="row"><span>paired with</span><span id="sumPaired">—</span></div>
+          <div class="row"><span>trade fee</span><span id="sumFee">—</span></div>
+          <div class="row"><span>of that, yours</span><span id="sumYours">—</span></div>
+          <div class="row"><span>you claim it as</span><span id="sumPaidIn">—</span></div>
+          <div class="row"><span>graduation</span><span id="sumGrad">—</span></div>
+          <div class="row"><span>liquidity</span><span id="sumLock">—</span></div>
+          <div class="row"><span>supply</span><span id="sumSupply">—</span></div>
+          <div class="row"><span>dev buy</span><span id="sumDevBuy">None</span></div>
+          <button id="create" class="createBtn">Create the launch</button>
+                    <p class="fhint" style="margin:12px 0 0">Permanent once created. <a href="terms.html" target="_blank" rel="noopener">What it fixes</a> ·
+            <a href="docs.html" data-carry>Docs</a></p>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="panel" id="launchPanel" hidden>
+    <h2>2 · This launch</h2>
+    <div id="status" class="status">—</div>
+    <div class="bar"><i id="progress" style="width:0%"></i></div>
+    <p class="note" id="progressText"></p>
+    <div class="row"><span>curve</span><span><code id="curveAddr">—</code></span></div>
+    <div class="row"><span>supply</span><span id="supply">—</span></div>
+    <p class="note" id="balances"></p>
+    <!-- WETH HELD ON A WETH PAIR, offered as ether: what a curve sale paid when
+         its unwrap was declined, or anything held from before. token.js moves
+         it into the swap card. -->
+    <div id="unwrapBox" class="unwrapBox" hidden>
+      <span id="unwrapText"></span>
+      <button id="unwrap" class="ghost" type="button">Unwrap to ETH</button>
+    </div>
+
+    <div id="curveBox" hidden style="margin-top:28px; border-top:1px solid var(--line); padding-top:28px">
+      <h2>Trade the curve</h2>
+      <div class="grid g3">
+        <div><label for="curveAmount">Amount</label><input id="curveAmount" value="10" /></div>
+        <div><label for="curveSide">Side</label>
+          <select id="curveSide"><option value="buy">Buy tokens</option><option value="sell">Sell tokens</option></select>
+        </div>
+        <div><label for="slippage">Slippage %</label><input id="slippage" value="1" /></div>
+      </div>
+      <!-- ETH ON EITHER SIDE OF ANY CURVE (the owner's call: everyone holds
+           ether). Through the CURB router it is one transaction: a buy is
+           swapped (or wrapped) and bought, a sale sold and paid in ETH. Where
+           the router cannot be used, a buy swaps first and buys after
+           (app.js curveBuyWithEth) and the WETH pair wraps and unwraps. -->
+      <div class="grid g3" id="curveViaRow">
+        <div><label for="curveVia" id="curveViaLabel">Pay with</label>
+          <select id="curveVia"><option value="quote">The quote asset</option><option value="eth">ETH</option></select>
+        </div>
+      </div>
+      <div id="curveQuote" style="margin-top:12px"></div>
+      <div style="margin-top:28px"><button id="curveAct">Buy on the curve</button></div>
+      </div>
+
+    <div id="waitBox" hidden style="margin-top:28px; border-top:1px solid var(--line); padding-top:28px">
+      <h2>Complete the move into the pool</h2>
+            <p class="note">Trading is shut until this is sent. Anyone can send it.</p>
+      <div style="margin-top:28px"><button id="complete">Complete the move</button></div>
+      <!-- SHOWN ONLY WHEN COMPLETING WOULD REVERT. The usual cause is an issuer
+           blocklist on the fee escrow; Graduator.rescueCurveFees is the exit,
+           open to the curve's two payees at any time and to anyone else an
+           hour after the launch is noted stuck (Graduator.noteReady), and was
+           reachable from nowhere on this site. -->
+      <div id="rescueBox" hidden style="margin-top:16px">
+        <p class="note warn">Completing the move would revert. If the issuer has blocked the fee escrow, rescuing
+        the curve's fees pays them straight to their recipients, and the move can then complete. Its creator-fee
+        recipient and the platform's recipient may rescue them now. Anyone else: the first press notes the launch
+        as stuck, and the rescue opens to you an hour later if the move has still not completed.</p>
+        <button id="rescue" class="ghost">Rescue the curve's fees</button>
+      </div>
+    </div>
+
+    <div id="poolBox" hidden style="margin-top:28px; border-top:1px solid var(--line); padding-top:28px">
+      <h2>Trade the pool</h2>
+      <div class="grid g3">
+        <div><label for="poolAmount">Amount</label><input id="poolAmount" value="1" /></div>
+        <div><label for="poolSide">Side</label>
+          <select id="poolSide"><option value="buy">Buy</option><option value="sell">Sell</option></select>
+        </div>
+        <div><label for="poolVia">Pay / receive with</label>
+          <select id="poolVia"><option value="nvdac">Quote asset (direct)</option><option value="eth">ETH (routed)</option></select>
+        </div>
+      </div>
+      <div class="grid g3">
+        <div><label for="poolSlippage">Slippage %</label><input id="poolSlippage" value="1" /></div>
+      </div>
+      <div id="poolQuote" style="margin-top:12px"></div>
+      <div class="row"><span>pool id</span><span><code id="poolId">—</code></span></div>
+      <div style="margin-top:28px"><button id="poolAct">Buy in the pool</button></div>
+      </div>
+
+    <div id="lockBox" hidden style="margin-top:28px; border-top:1px solid var(--line); padding-top:28px">
+      <h2>The LP lock, and what was burned</h2>
+      <div id="lockFacts"></div>
+      </div>
+  </div>
+</main>
+
+<script src="/tx-core.js"></script>
+<script src="/abi.js"></script>
+<script src="/keccak.js"></script>
+<script src="/token-meta.js"></script>
+<script src="/prices.js"></script>
+<script src="/app.js"></script>
+<script src="/token.js"></script>
+<script src="/sharing.js"></script>
+<script src="/sharing-token.js"></script>
+</body>
+</html>

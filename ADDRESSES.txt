@@ -1,0 +1,356 @@
+================================================================================
+CURB - THE ADDRESS BOOK
+================================================================================
+STATUS: EMPTY. Nothing is deployed. Every line below is a blank to be filled in
+        from the deployment's own output, not from anybody's memory.
+
+        Filling this in is step 5 of DEPLOY.txt and is part of A1, not an
+        afterthought: an address book written later from recollection is how a
+        project ends up unable to say which commit its live code came from.
+
+HOW TO FILL IT
+  Take every address from the script's console output - it prints all of them:
+  the shared contracts, the hook's salt, the deployer, the recipient, the
+  policy owner, the sharing roles, the opt-ins, and a block per asset under "=== each asset's
+  stack, read back from its factory ===". Cross-check them against
+  deployments/base-mainnet/run.json, the committed copy of the broadcast
+  record (DEPLOY.txt step 5), which records what was actually sent. Where the
+  two disagree, that record is the truth.
+  NOT broadcast/DeployCurb.s.sol/8453/run-latest.json directly: broadcast/ is
+  gitignored, and the next forge run against any node serving chain 8453
+  overwrites it. Copy it first, then read the copy.
+  Then let the chain answer: script/b20/check-deployment.sh reads the RECORD
+  (deployments/base-mainnet/run.json) back from the chain (DEPLOY.txt STEP
+  5, and again with --accepted after STEP 4B) - it never reads this file -
+  so compare every address written here with the record and the script's
+  output before copying any into web/config.js or docs.md. Nothing else
+  does: a LaunchLens or factory mistyped here and copied the same way into
+  config.js passes both checks. script/b20/check-publish-set.sh --addresses
+  ADDRESSES.txt then holds web/config.js to the LaunchRegistry, LaunchLens
+  and CurbLaunchFactory lines below - so keep those three names at the start
+  of their lines, as written here.
+
+
+================================================================================
+THE DEPLOYMENT
+================================================================================
+  chain                 Base mainnet, chain id 8453
+  commit                ................................................
+                        (git rev-parse HEAD, step 0 of DEPLOY.txt)
+  block                 ..........
+  date                  ..........
+  deployer              0x............................................
+  platform recipient    0x............................................
+                        code at deploy time:  ....... bytes
+                        (0 bytes, or 23 starting 0xef0100, means one key -
+                         see A6. Not in the script's output: section 3 of
+                         the preflight prints it for both addresses)
+  policy owner          0x............................................
+                        (the hook's owner: the key that moves the platform's
+                         share and recipient for future launches)
+                        code at deploy time:  ....... bytes
+  opt-ins set           CURB_ALLOW_EOA_RECIPIENT            ......
+                        CURB_ALLOW_NON_SAFE_RECIPIENT       ......
+                        CURB_ALLOW_EOA_POLICY_OWNER         ......
+                        CURB_ALLOW_NON_SAFE_POLICY_OWNER    ......
+                        CURB_ALLOW_SAME_RECIPIENT_AND_OWNER ......
+                        CURB_ALLOW_EOA_CREATOR              ......
+                        (the script prints each as an "opt-in" line; every
+                         true is a recorded decision - say which one here)
+  sharing publisher     0x............................................
+  sharing keeper payee  0x............................................
+  sharing vetoers       0x............................................
+                        (one line each, as the script prints them; the
+                         policy owner is the last, and is one of them)
+  demo launch           NONE. CURB_DEMO_LAUNCH must not be set on a real chain.
+  registry handover     transferOwnership sent by the run to  0x............
+                        (the policy owner; "none" only if the policy owner is
+                         the deployer, a recorded opt-in. The output's
+                         "registry owner" line is the deployer and its
+                         "registry pending owner" line this address.)
+                        accepted by the Safe in tx  0x....................
+                        at block  ..........   (DEPLOY.txt STEP 4B)
+  platform terms        none changed yet
+  changed since the run (each change the policy Safe EXECUTES on the hook -
+                         a new recipient or share - with its tx, block and
+                         value. check-deployment.sh then runs with
+                         CURB_HOOK_RECIPIENT and CURB_HOOK_SHARE_BPS set to
+                         the latest; CURB_PLATFORM_RECIPIENT above stays the
+                         run's, since every factory, policy and $CURB froze
+                         it - DEPLOY.txt, ADDING A QUOTE ASSET, step 7)
+
+  toolchain             base-forge 1.6.0-v1.1.0, solc 0.8.30, cancun,
+                        optimizer on, 200 runs, via-IR on
+                        (foundry.toml [profile.default] is the source; via-IR
+                         was missing here, and a by-hand verification without
+                         it compiles different bytecode - PonsV2BondingCurve
+                         does not compile at all on the legacy pipeline)
+
+
+================================================================================
+SHARED - ONE OF EACH, FOR THE WHOLE PRODUCT
+================================================================================
+  LaunchRegistry        0x............................................
+  SharingCatalog        0x............................................
+                        (owner: the policy owner; bootstrapper: the deployer)
+  Graduator             0x............................................
+  HolderDistributorFactory
+                        0x............................................
+  HolderFeeDistributor implementation
+                        0x............................................
+                        (built by the factory's constructor; each launch's
+                         distributor is a clone of it)
+  LaunchLens            0x............................................
+  FeeHook               0x............................................
+                        salt .......................................
+                        (mined: a v4 hook's permissions are encoded in its
+                         address, so this one is not arbitrary)
+  CurbRouter            0xEa20C3266229a01cd0f45D9c7921a45d5b359561
+                        runtime code hash
+                        0x25814dde01efddddcc582ba476471c80ce6de85154d1ee6a357f28cb67b37c5e
+                        deployed in tx  0x....................  block ..........
+                        (DEPLOY.txt STEP 4A. Its address and hash are fixed
+                         by its code - script/DeployRouter.s.sol pins both,
+                         web/app.js and docs.md carry them - so these two
+                         lines are filled in already; the check is that
+                         keccak(eth_getCode) at that address on Base is that
+                         hash, read back after it lands. Its record, when
+                         this deployment sent it, is
+                         deployments/base-mainnet/router-run.json; when
+                         somebody else sent it first, the tx above is theirs,
+                         from Basescan, and there is no record.)
+
+
+================================================================================
+$CURB - THE FIRST LAUNCH, MADE INSIDE THE RUN
+================================================================================
+  registry.launchAt(0) IS $CURB, ON THE WETH FACTORY, launched in the
+  transaction right after that factory's admission - the run's first; every
+  stack was built before it and every other factory is admitted after $CURB
+  (check-deployment.sh reads the record's order). The
+  Launches page's hero features the registry's first ETH-paired launch, so
+  this is what the plain front page shows for good (DEPLOY.txt decision 6).
+
+  FROM check-deployment.sh (DEPLOY.txt STEP 5), its line "$CURB token ...,
+  curve ... - from its launch's receipt" - what landed. NOT the script's own
+  "$CURB token" and "$CURB curve" lines: those are its simulation's, and a
+  launch landing in the one receipt before $CURB's would have moved both:
+  $CURB token           0x............................................
+  $CURB curve           0x............................................
+  $CURB is launch       ......   (0; anything else is DEPLOY.txt, $CURB IS NOT
+                         LAUNCH ZERO - then the launch(es) ahead of it, and
+                         CURB_FIRST_INDEX, which check-deployment.sh is run
+                         with from then on: ......)
+
+  FROM THE SCRIPT'S OUTPUT - the block "=== $CURB, the first launch, as
+  simulated (registry.launchAt(0)) ===", line by line:
+  $CURB factory         0x............................................
+                        (the WETH factory: the WETH line of the list below)
+  $CURB creator         0x............................................
+  $CURB tax bps         ......
+  $CURB dev buy wei     ......
+  $CURB shares with its holders   ......   (true or false)
+  and the line after it: "NO DEMO LAUNCH WAS CREATED. The registry holds
+  $CURB alone, as launch 0."
+
+  FROM THE SETTINGS THE RUN WAS MADE WITH (decision 6; the preflight's
+  section 3 prints the first three):
+  CURB_FIRST_NAME       ..........
+  CURB_FIRST_SYMBOL     ..........
+  CURB_FIRST_URI        the file it was read from, and its sha256:
+                        ..........
+  CURB_FIRST_TAX_BPS    ......   (the "$CURB tax bps" line above)
+  CURB_FIRST_CREATOR    0x............................................
+                        (the creator wallet: never zero, never the deployer;
+                         who holds it follows the $CURB treasury policy.
+                         The "$CURB creator" line above.)
+  CURB_FIRST_DEV_BUY    ...... wei of ETH   (the "$CURB dev buy wei" line)
+  CURB_FIRST_SHARE      ......   (1: holder sharing on from its first trade)
+
+  NOT IN THE OUTPUT, from the record or the chain:
+  launched in tx        0x....................   block ..........
+  distributor           0x............................................
+                        (only with CURB_FIRST_SHARE=1:
+                         Graduator.holderDistributorOf(<token>))
+
+  check-deployment.sh reads each of these back - which launch the token its
+  launch's receipt names is, its record's curve, quote asset, beneficiary,
+  refund address, tax and platform terms, the token's name, symbol and
+  tokenURI, the distributor's presence against CURB_FIRST_SHARE, and the dev
+  buy's tokens at the creator - with the CURB_FIRST_* settings exported as
+  DEPLOY.txt STEP 2 exports them (in a new shell, export the values above
+  again first).
+  [ ] registry.launchAt(0) is the token above
+  [ ] its record's quoteToken is WETH (0x4200...0006) - the WETH factory - and
+      its beneficiary is CURB_FIRST_CREATOR
+  [ ] registry.launcherAt(0) is the WETH factory, and check-deployment.sh did
+      not say "the record admits ... before $CURB's launch"
+  [ ] /token/<token> on the live site shows the name, image and links meant
+  IF launchAt(0) IS NOT $CURB: DEPLOY.txt, IF SOMETHING GOES WRONG, "$CURB IS
+  NOT LAUNCH ZERO" - and record here which launch is first, and why.
+
+
+================================================================================
+PER QUOTE ASSET - ONE STACK EACH
+================================================================================
+  THE LIST IS DeployCurb.quoteAssets() AND NOTHING ELSE COPIES IT.
+  Three assets were written out here by hand and the deployment grew to eleven
+  (fourteen since 2026-10-15), which turned this section into a checklist a
+  correct run would fail. Take one
+  block per asset from the run's own output - the "=== each asset's stack,
+  read back from its factory ===" section prints exactly these four lines per
+  asset - in the order the script printed them, and check the count against
+  the "=== one factory per quote asset ===" list above it.
+  (The script used to print one line per asset, the factory alone, while this
+  asked for four addresses "from the script's output"; the other three had to
+  be pieced together from the broadcast file by transaction order.)
+
+  For each asset the script reports, fill in:
+
+  <SYMBOL>  <address>   threshold <as printed>
+    CurbLaunchFactory   0x............................................
+    FeeEscrow           0x............................................
+    FeePolicy           0x............................................
+    PonsV2BuybackVault  0x............................................
+
+  Four contracts per asset, plus the seven shared ones the run deployed above
+  (CurbRouter comes from its own script and is not one of them). If the number of
+  blocks you end up with is not the number of assets the script listed, stop:
+  something was not deployed, and an address book with a hole in it is worse
+  than none.
+
+  AN ASSET ADDED AFTER LAUNCH (DEPLOY.txt, ADDING A QUOTE ASSET AFTER LAUNCH)
+  gets a block here in the same form, from DeployAssetStack's output, with
+  its record, deployments/base-mainnet/asset-<label>.json, named under it,
+  and the Safe's addLauncher transaction and block.
+
+
+================================================================================
+EXPLORER VERIFICATION
+================================================================================
+  Tick each one only when the explorer shows the source, not when the request
+  was submitted. The Uniswap hook allowlist requires this and will not take a
+  hook that is not verified [PRE_MAINNET C7].
+
+  [ ] LaunchRegistry      [ ] Graduator        [ ] LaunchLens     [ ] FeeHook
+  [ ] SharingCatalog      [ ] HolderDistributorFactory
+  [ ] HolderFeeDistributor implementation
+  [ ] CurbRouter (verified by hand with --compilation-profile router, DEPLOY.txt
+      STEP 4A: --verify does not see a contract created through the proxy)
+  [ ] one line per asset in the run's output: factory / escrow / policy / vault
+      Three symbols used to be named here; the list is fourteen now and naming
+      them twice is how the two fall out of step.
+  ONCE THE FIRST LAUNCH GRADUATES (DEPLOY.txt, IMMEDIATELY AFTER, 4) - one of
+  each per-launch contract, so the explorer matches every later copy:
+  [ ] CurbLaunchToken     [ ] PonsV2BondingCurve    [ ] PositionLock
+  [ ] HolderFeeDistributor clone (a launch that shares)
+
+
+================================================================================
+WHAT TO CHECK ONCE, ON CHAIN, BEFORE ANYONE LAUNCHES
+================================================================================
+  The script asserts hook.owner() == CURB_POLICY_OWNER, refuses an owner
+  equal to the recipient unless CURB_ALLOW_SAME_RECIPIENT_AND_OWNER was set,
+  and refuses an owner that is one key or a contract that is not Safe-shaped
+  unless CURB_ALLOW_EOA_POLICY_OWNER or CURB_ALLOW_NON_SAFE_POLICY_OWNER was.
+  Everything else here holds because the wiring calls succeeded, and is read
+  back here only: wired(), requiredHook(), poolOpener(), the policy pair, the
+  counts and pendingOwner(). Reading it all back is cheap and catches a run
+  that reported success into a void.
+  THE COMMAND THAT READS IT, from the deployment's commit, in the STEP 2
+  shell with its CURB_* settings still exported - in a new shell, export the
+  same CURB_* values again first, as STEP 2 writes them (this file records
+  them):
+    bash script/b20/check-deployment.sh <a Base RPC> deployments/base-mainnet/run.json
+  It names every failure and exits 1 on any, or ends "check-deployment: ok".
+  Run it at DEPLOY.txt STEP 5 - where a registry still waiting for the Safe
+  is printed as a PENDING line and passes - and again after STEP 4B with
+  --accepted at the end, which fails while the deployer still owns the
+  registry and must end ok. An asset added later is read by passing its
+  DeployAssetStack record after the first (DEPLOY.txt, ADDING A QUOTE ASSET
+  AFTER LAUNCH). Use the keyed endpoint: some four hundred reads, and a
+  refused one counts as a failure. It ends by printing the size-gate.sh
+  --deployed command for every escrow, policy and vault, addresses filled
+  in (THE CODE THAT LANDED, below). Tick the lines below from its output,
+  not from memory.
+
+  [ ] registry.wired() is true, and registry.launcherCount() equals the number
+      of assets the run reported - not a number written here. It was 3 in this
+      file while the deployment made 11.
+  [ ] registry.requiredHook() is the FeeHook above
+  [ ] hook.poolOpener() is the Graduator
+  [ ] hook.platformRecipient() == each factory's protocolFeeRecipient() - true
+      at deployment only. The factory's copy is the recipient AT DEPLOYMENT; a
+      launch is stamped from the hook, which currentPlatformPolicy() returns.
+  [ ] hook.platformFeeBps() is the share you intend to launch with, and each
+      factory's currentPlatformPolicy() returns the same pair (check-deployment.sh
+      reads it per asset: "<asset>: factory.currentPlatformPolicy()")
+      This used to read "== 50 == factory.PLATFORM_FEE_BPS()". That constant is
+      the FLOOR the tax band is checked against, not the share a launch is built
+      from - launch() reads the share off the hook and freezes it into the
+      record. The two were equal and were never the same thing.
+  [ ] each factory's quoteToken() is the asset it is listed under
+  [ ] each escrow's quoteToken() matches its factory's
+  [ ] registry.launchCount() was 1 when the run ended - $CURB, and nothing
+      else, unless a launch landed in the one receipt before $CURB's - and
+      registry.launchAt(0) is $CURB (the section above says what if not). It
+      said "is 0" until $CURB moved into the run; later it is whatever has
+      launched since, and only launchAt(0) is fixed.
+  [ ] each factory's launchFee() is 0 - launching costs gas only, the figure
+      DEPLOY.txt records - immutable per factory
+  [ ] hook.owner() is the CURB_POLICY_OWNER you chose - and is NOT the platform
+      recipient. The deploy script defaults it to the deployer when the
+      variable is unset - which then needed CURB_ALLOW_EOA_POLICY_OWNER=true,
+      since a deployer is one key - and every other line here still passes if
+      it was.
+  [ ] hook.pendingOwner() is the zero address: the hook is born owned by the
+      policy owner, so nothing is handed over and nothing may be pending (an
+      offer there would be a move nobody planned - the keeper pages it)
+
+  WHO OWNS WHAT, ONCE THE SAFE HAS ACCEPTED (DEPLOY.txt STEP 4B)
+  [ ] registry.owner() is the policy Safe, and registry.pendingOwner() is the
+      zero address. Before STEP 4B: owner() is the deployer and
+      pendingOwner() the Safe - the deployer's one key can then still admit
+      launchers, so this line is not ticked until the Safe has executed
+      acceptOwnership().
+  [ ] hook.owner(), catalog.owner() and factory.owner() (the
+      HolderDistributorFactory) are the policy Safe, and pendingOwner() is the
+      zero address on all three - they are born owned by it, so nothing was
+      handed over and nothing may be pending
+  [ ] every PonsV2BuybackVault's owner() is the deployer - permanent and
+      worthless (DEPLOY.txt decision 2), and the one owner left on the key.
+      An asset added later by DeployAssetStack: its vault's owner is that
+      run's sender, the deployer again when DEPLOY.txt's command is used
+
+  HOLDER SHARING. DeployCurb reads each of these back before it prints
+  anything (requireSharingWiring); reading them again here is the record.
+  [ ] graduator.sharingCatalog() is the SharingCatalog above
+  [ ] catalog.owner() is the policy owner, catalog.bootstrapper() the deployer,
+      catalog.bootstrapped() is true
+  [ ] catalog.isApproved(<HolderDistributorFactory>) is true and
+      catalog.recommended() is that factory
+  [ ] factory.owner() is the policy owner; factory.publisher() and
+      factory.keeperPayee() are the ones recorded above; factory.isVetoer() is
+      true for each vetoer recorded above, the policy owner included;
+      factory.frozen() is false
+  [ ] factory.implementation() is the implementation above, and its factory()
+      and graduator() are this factory and the Graduator
+  [ ] lens.graduator() is the Graduator
+
+  THE CODE THAT LANDED. For each contract core v2 leaves unchanged, the code at
+  its address, with its immutables zeroed and its metadata trailer cut, must
+  be the identity pinned in DeployCurb.s.sol (IDENTITY_*). From the deployment's
+  commit, after a build:
+    bash script/b20/size-gate.sh --deployed <rpc> <address> FeeEscrow
+    bash script/b20/size-gate.sh --deployed <rpc> <address> FeePolicy
+    bash script/b20/size-gate.sh --deployed <rpc> <address> PonsV2BuybackVault
+  [ ] every escrow, policy and buyback vault prints ok
+  [ ] and the same for the curve and the token of the first launch made -
+      $CURB's, from the section above (PonsV2BondingCurve, CurbLaunchToken)
+  For any other contract it prints whether the code there is what this build
+  would deploy (Graduator, FeeHook, ...).
+  THE ROUTER, which the page pins by code hash:
+    ~/.foundry/bin/base-cast keccak "$(~/.foundry/bin/base-cast code 0xEa20C3266229a01cd0f45D9c7921a45d5b359561 --rpc-url <rpc>)"
+  [ ] prints 0x25814dde01efddddcc582ba476471c80ce6de85154d1ee6a357f28cb67b37c5e
+  [ ] and size-gate.sh --deployed <rpc> 0xEa20C3266229a01cd0f45D9c7921a45d5b359561
+      CurbRouter prints ok

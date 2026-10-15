@@ -1,0 +1,1855 @@
+================================================================================
+CURB - THE MAINNET DEPLOYMENT RUNBOOK (A1)
+================================================================================
+Written   21 September 2026
+Revised   8 October 2026: the asset list is re-priced ahead of the day
+          (PREP 1), the signing shell is named (PREP 2), $CURB is launched
+          inside the run (decision 6), the router (STEP 4A) and the registry
+          handover (STEP 4B) are numbered steps, STEP 5 fills web/config.js,
+          and hosting (STEP 8) and holder sharing's services (STEP 9) hand
+          off to their own checks.
+          9 October 2026: every stack is built before any is admitted, the
+          WETH factory is admitted first with $CURB the next transaction,
+          and every other factory after $CURB (decision 6); the curve-fee
+          rescue opens to strangers an hour after a launch is noted stuck
+          (A LAUNCH STRANDED BY THE ISSUER); every address is held to its
+          checksum and a one-key $CURB creator needs its own opt-in; the
+          guardian starts at the head of STEP 5; the resume checks the
+          record's cache half; check-deployment.sh survives a change of the
+          platform's terms; an asset is added through its own preflight.
+          15 October 2026: the list is fourteen assets - USDC, VIRTUAL and
+          AERO added - every one re-priced that day at Chainlink's answer
+          on live Base (PREP 1, PRE_MAINNET decision 1a); NVDAc is listed
+          thin now, as SPCXc already was.
+Status    NOT RUN. Nothing of ours exists on Base.
+
+WHAT THIS IS
+  The exact sequence for A1, written so the only judgement left in it is the
+  one that cannot be delegated: signing. Everything else is a command with a
+  known answer and a check that either passes or stops you.
+
+THE ORDER, ON ONE SCREEN
+  days ahead   PREP 1 re-price the asset list (a commit of its own): points 1-4
+               PREP 2 the signing shell: WSL, the hardware wallet, the signer
+               PREP 3 the Safes, the accounts, the host, the keeper's groundwork
+               PREP 1 points 5-6 and its CHECK: STEP 1, and the keyless STEP 2,
+                      which needs PREP 2's shell and PREP 3's Safe, keys and
+                      $CURB settings, and the deployer holding $CURB's dev buy
+  the day      STEP 0  the tree          STEP 4A the router
+               STEP 1  the suites        STEP 4B the Safe accepts the registry
+               STEP 2  the preflight     STEP 5  the guardian first, then the
+                                                 address book and web/config.js
+               STEP 3  funding           STEP 6  explorer verification
+               STEP 4  the broadcast,    STEP 7  links
+                       $CURB inside it   STEP 8  the host and the live site
+                                         STEP 9  holder sharing's services
+  after        IMMEDIATELY AFTER, then INCIDENT.txt and SAFE_OPS.txt for good;
+               ADDING A QUOTE ASSET AFTER LAUNCH, whenever one is added
+
+WHAT IS ALREADY PROVEN, so you know what this rests on
+  - the script runs MOCKLESS and was SIMULATED AGAINST LIVE BASE (chain 8453),
+    not only against the pinned fork. No reverts, and the preflight counts
+    the contracts out of the run rather than repeating a number: seven
+    shared (registry, sharing catalog, Graduator, hook, holder distributor
+    factory and the distributor implementation it builds, lens) and four per
+    quote asset. This line said 16 while the list had grown to eleven
+    assets, and four shared until core v2 added the sharing contracts.
+  - the cost is whatever the simulation prints on the day - about 0.0015 ETH
+    for fourteen assets when last measured (15 October 2026, simulated
+    against live Base without $CURB: 150,933,500 gas at ~0.0103 gwei,
+    0.00155 ETH; it was 0.0011 ETH for eleven). No fixed figure here:
+    this line said 0.00033 ETH, which was the THREE-asset run, and an operator
+    who funded to it was stopped by the preflight.
+  - every suite - non-fork, fork and browser - passes on the code being
+    deployed, with nothing failed and nothing skipped. No counts here: this
+    line said "61, 255 and 54" and every correct tree failed it once tests
+    were added. The counts are printed by the run; read them there.
+  - a real 2-of-3 Safe can receive the quote asset and claim from the escrow,
+    so the recipient may be either kind of address [A6].
+
+================================================================================
+BEFORE YOU RUN ANYTHING - SIX DECISIONS
+================================================================================
+
+  1. THE PLATFORM RECIPIENT.   CURB_PLATFORM_RECIPIENT
+     The address the hook starts with. EACH LAUNCH copies the recipient in
+     force when it is created into its own record, and that copy is permanent:
+     the curve and the pool both pay it for as long as the launch exists. The
+     hook's own recipient is NOT permanent - the policy owner (3) can announce
+     a new one and execute it 24 hours later, and launches created after that
+     are stamped with the new address. So a wrong address here is correctable
+     for the future and never for the past: every launch made before the
+     correction pays the old address forever.
+     This paragraph used to call the recipient "immutable on the hook". It has
+     been settable since the announce/execute policy landed.
+     RECORDED CHOICE (A6): 0x52483b53c8C08Ece00932A65DaE70487dcCD21E0, an EOA.
+     It has no code, no balance and no nonce on Base - it has never been used.
+     An EOA means ONE KEY: whoever holds it takes every fee the protocol earns,
+     and losing it loses them all. The script refuses a code-less address
+     unless you also set CURB_ALLOW_EOA_RECIPIENT=true, which is deliberate:
+     accepting it has to be an act, not a default.
+     A SAFE IS CHEAPEST NOW. Afterwards it is a policy change - announce, wait
+     24 hours, execute - and it reaches only launches created after it.
+     CUSTODY IS WRITTEN DOWN EITHER WAY. SAFE_OPS.txt, PLATFORM RECIPIENT,
+     holds the choice - keep the recorded EOA with its custody written out
+     (device, seed backups, who claims), or switch to a treasury Safe before
+     STEP 2. The owner ticks one in SAFE_OPS.txt, with the Safe's address if
+     that is the choice, and commits it before STEP 0; the custody goes in
+     SAFE_OPS.txt's private copy, kept outside the repository (its Status
+     says why: the repository is public, and an uncommitted edit stops STEP
+     0). Nothing in this runbook decides it.
+
+  NO LAUNCH FEE. DeployCurb sets launchFee 0 for every factory: launching
+  costs gas only, and a launch that sends ether is refused. Immutable per
+  factory - charging one would be a new factory. Read it back (ADDRESSES.txt).
+  The platform's income is its share of the trading tax, unchanged.
+
+  THE LP LOCK IS FOREVER. A graduated launch's position goes into a
+  PositionLock that has no unlock time and no withdrawal - nobody, the
+  creator or the platform included, can ever take the liquidity out. Its LP
+  fees still go to the creator wallet, or to the launch's holders once its
+  sharing is on. There is no lock duration to choose: the factory terms have
+  none, and the registry refuses a record whose old lock-duration word
+  (reservedZero) is not zero.
+
+  2. THE DEPLOYER.   whatever key you sign with
+     It becomes:
+       - UNTIL THE SAFE ACCEPTS AT STEP 4B, the registry's owner (deployer()
+         returns owner()), the only address that may wire() once and
+         addLauncher() afterwards. A launcher it admits cannot touch an
+         EXISTING launch - its record, its curve's reserve, its creator's or
+         holders' income: LaunchRegistry.register accepts a record only for a
+         curve whose token() is the record's launch token, whose pairToken()
+         is its quote asset and whose factory() is that launcher's own
+         Graduator, and each curve only once; and the Graduator refuses to
+         graduate, switch holder sharing on or rescue fees for a record whose
+         curve does not name its launch token. Before those checks (the
+         internal audit of 9 October 2026, finding 1) this line said the same
+         and was false: an admitted launcher could register a live launch's
+         curve under a token of its own, then drain that curve's whole
+         reserve through graduate() or point its creator income at a
+         distributor of its own. What an admitted launcher still can do is
+         make launches of its own, on its own terms, which the site would
+         list. And admitting is not harmless either: a launcher it never
+         admits can never exist, and every admitted launcher - none can be
+         removed - adds gas to every launch on every factory and to every
+         platform-recipient change. The list is capped at MAX_LAUNCHERS = 32 (fourteen used
+         today; measured on the fork on 15 October, each real launcher costs
+         a launch about 6,000 gas - 2,839,518 for a launch with eleven
+         admitted, 2,857,539 with fourteen, DeployCurbRun's
+         test_threeMoreLaunchersCostEachLaunchLittle_fourteenAgainstEleven),
+         and the cap bounds a list of junk launchers at about 2M gas per launch; within the cap,
+         a stolen key can still fill the remaining slots for good and leave
+         no room for a real asset. So THE REGISTRY GOES TO THE POLICY SAFE.
+         DeployCurb starts the handover itself: when CURB_POLICY_OWNER is not
+         the deployer, the last thing the run does is
+         registry.transferOwnership(<CURB_POLICY_OWNER>), and it reads
+         pendingOwner() back. The registry is Ownable2Step, so NOTHING HAS
+         MOVED until the Safe calls registry.acceptOwnership() - STEP 4B,
+         with the exact payload. Until then the deployer's one key can still
+         admit launchers, at once and for good. Later assets are admitted by
+         the Safe (script/DeployAssetStack.s.sol prints its call).
+       - the sender of $CURB's launch, which is made inside the same run
+         (decision 6) - but NOT its creator: $CURB's creator wallet is
+         CURB_FIRST_CREATOR, which the script refuses to be zero or the
+         deployer.
+       - PERMANENTLY, the owner of every PonsV2BuybackVault, one per quote
+         asset - fourteen today, from the run's own list [AUDIT A-9]. That role has
+         one write-once setter which nothing ever calls, on contracts that hold
+         nothing, and renounceOwnership is disabled - so it is permanent and
+         worth nothing. Named because "this protocol has no owner" would be
+         false.
+     IT DOES NOT HAVE TO BE THE PLATFORM RECIPIENT and there is an argument it
+     should not be: the recipient holds money, the deployer holds a wiring
+     privilege, and they have different reasons to be kept separate.
+
+  3. THE POLICY OWNER.   CURB_POLICY_OWNER   (defaults to the deployer, which
+                                             is one key - refused unless said)
+     Added 2026-09-21 with the settable fee policy. This key can change the
+     platform's rate and recipient FOR LAUNCHES CREATED AFTER THE CHANGE, and
+     nothing else: each launch's share and recipient are frozen into its
+     record when it is created, and the pool reads that record, not the hook.
+     It cannot touch an existing launch, a creator's share, a registry record,
+     a locked position or anybody's balance. (This used to say it could
+     redirect the recipient on pools that already exist - true until the
+     per-launch snapshot, and not since.)
+     AND IT IS BOUNDED, not just owned: a change must be ANNOUNCED on chain,
+     waits 24 hours, then executes inside a seven-day window, and can never
+     take a launch's creator below a fifth of their own tax. thestonks'
+     arrangement, adopted deliberately over PONS's one-transaction setters.
+     THE KEY ITSELF CAN BE HANDED ON - ownership transfers in two steps, and
+     renouncing works, which freezes the policy for good. That is also the
+     argument
+     for making it a Safe now rather than later: it is cheap either way, and it
+     is the key that can move money for every future launch.
+     It should NOT be the same address as the platform recipient. One holds
+     revenue, the other decides where revenue goes.
+
+     THE SCRIPT CHECKS WHAT KIND OF ADDRESS IT IS, as it does the recipient's
+     [checkPolicyOwner in script/DeployCurb.s.sol]. One key - no code, or only
+     an EIP-7702 delegation - is refused unless CURB_ALLOW_EOA_POLICY_OWNER=true,
+     and a contract that does not answer getOwners/getThreshold is refused
+     unless CURB_ALLOW_NON_SAFE_POLICY_OWNER=true. A Safe needs neither. This
+     used to be checked only for zero, so a mistyped owner - a code-less address
+     nobody controls - became the hook's owner silently, and the platform's
+     share and recipient could never be moved again
+     [test_theDeploymentsPolicyOwnerCheckKnowsAKeyFromASafe].
+
+     MAKE IT A SAFE, AND MAKE IT BEFORE STEP 2 - the preflight simulates with
+     it and prints it into the STEP 4 command. The whole path is measured on
+     the fork and works - a real 2-of-3 from Base's own factory takes ownership,
+     accepts it, announces, cancels, waits and executes, each step relayed by
+     somebody who is not an owner
+     [test_aSafeCanTakeOverAndOperateTheFeePolicy]. What that test also shows is
+     the step people miss:
+
+       OWNABLE2STEP DOES NOT HAND OVER UNTIL THE NEW OWNER ACCEPTS. A Safe
+       cannot simply call acceptOwnership - it has to clear its own threshold to
+       do it. A transfer to a Safe that never accepts leaves the OLD key
+       holding the policy while everybody believes it moved.
+
+     TWO WAYS TO GET ONE, and the first is the one to use:
+       a) app.safe.global, "Create new Safe", network Base. Pick the signers and
+          the threshold, sign the creation with one of them, note the address.
+          2-of-3 across separately-held keys is what A6 suggests; a 1-of-1 Safe
+          is a plain account with extra steps.
+       b) the same factory the test uses, if you would rather not use a UI:
+          SafeProxyFactory 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
+          singleton        0x29fcB43b46531BcA003ddC8FCB67FFE91900C762
+          createProxyWithNonce(singleton, setup(...), saltNonce)
+
+     THEN EITHER:
+       pass it as CURB_POLICY_OWNER at STEP 2, so the hook is born owned by it
+       - simplest, and nothing has to be accepted afterwards; or
+       deploy with a plain key - which the script refuses unless
+       CURB_ALLOW_EOA_POLICY_OWNER=true is set - then transferOwnership(safe)
+       and have the SAFE execute acceptOwnership(). Do not stop after the
+       transfer.
+
+     I CANNOT CREATE THIS FOR YOU. It needs a funded key to sign with and a
+     decision about who the signers are, and neither is mine to make.
+
+  4. WHETHER TO CREATE THE DEMO LAUNCH.   CURB_DEMO_LAUNCH
+     LEAVE IT UNSET. A demo launch on mainnet is written into the registry as
+     launch number one, permanently - the record is write-once and the list is
+     append-only, so there is no removing or renaming it. The flag exists for
+     the fork, where the runner scripts need it.
+
+  5. THE HOLDER SHARING ROLES.   CURB_SHARING_PUBLISHER
+                                 CURB_SHARING_KEEPER_PAYEE
+                                 CURB_SHARING_VETOERS
+     A launch whose creator switches holder sharing on pays its creator income
+     to a distributor of its own, and the distributor pays its holders against
+     roots the HolderDistributorFactory relays. These three are that factory's
+     roles from the moment it is deployed:
+       - the PUBLISHER proposes each payout root. A hot key: it can propose
+         one root per distributor at a time, inside the distributor's on-chain
+         caps (never more than it received, keeper fee at most 2%), and
+         nothing else. A root waits an hour before it pays.
+       - the KEEPER PAYEE receives the keeper's gas fee out of each payout.
+         A cold address, or the account that pays the keeper's gas.
+       - the VETOERS, comma-separated, besides the policy owner (3), which is
+         always one: each can stop a pending root inside its hour, and freeze
+         the factory. At least one, held apart from the publisher - none may
+         be the publisher, and the policy owner is not listed here.
+     The policy owner owns the factory and the SharingCatalog. At once it can
+     only stop things: revoke the publisher, freeze, add a vetoer. Everything
+     that could let a payout through is announced and waits 48 hours: a new
+     publisher, a new payee, removing a vetoer, ending a freeze. A removal
+     also waits until no root published in the last hour can still be vetoed,
+     so a vetoer keeps its veto over every root published while it is one. A
+     freeze holds every pending root - none becomes payable, each can be
+     vetoed whatever its hour - while active roots keep paying, and holds a
+     publisher rotation too. The owner cannot publish, pay, or change a cap.
+     WHY THE SEPARATE VETOER MATTERS. A root decides how much each holder is
+     owed; the distributor checks its totals, not each holder's line. A vetoer
+     held apart from the publisher is what stops a wrong split, and the owner
+     can take such a vetoer away only in public, 48 hours ahead - in which
+     time holders can claim what the active root already gives them.
+     Removing a vetoer needs an hour with no root published: pause the keeper
+     for that hour when you execute one.
+     HOLDERS DEPEND ON THE PUBLISHER FOR GOOD. A launch that switches sharing
+     on is paid out only against the publisher's roots; if the platform ever
+     stops publishing - the key lost and not rotated, the keeper shut down -
+     what its distributor receives after the last activated root stays there
+     for good, where without the switch it would have stayed the creator's.
+     No fallback publisher exists, by the owner's decision of 9 October 2026
+     (PRE_MAINNET C9): keeping the publisher alive, and rotating it through
+     the Safe when needed, is part of running the platform.
+     The deployer admits the factory into the catalog in the same run - the
+     catalog's one-day bootstrap - so launches can switch sharing on from the
+     start. A later version waits out the catalog's seven days in public.
+     The script refuses a real run without all three, a vetoer that is the
+     publisher, the policy owner in the list and a vetoer named twice
+     [checkSharingRoles in script/DeployCurb.s.sol]; the preflight asks the
+     same before the suites run.
+     The keys behind these roles are made ahead of the day, as
+     services/sharer/RUNBOOK.md part 3 says (PREP 3).
+
+  6. $CURB, THE FIRST LAUNCH.   CURB_FIRST_LAUNCH=1
+                                CURB_FIRST_NAME, CURB_FIRST_SYMBOL,
+                                CURB_FIRST_URI, CURB_FIRST_TAX_BPS,
+                                CURB_FIRST_CREATOR, CURB_FIRST_DEV_BUY,
+                                CURB_FIRST_SHARE
+     WHY IT IS INSIDE THE RUN. The Launches page's hero features the
+     registry's first launch paired with ETH, and the registry is append-only:
+     whichever ETH launch is first stays first. launch() on a factory is open
+     to anyone from the receipt of that factory's admission - so a $CURB made
+     "straight after the run" by hand could be beaten, and the front page
+     would feature somebody else's coin for good. With CURB_FIRST_LAUNCH=1,
+     DeployCurb builds EVERY stack before it admits ANY factory, wraps and
+     approves the dev buy, admits the WETH factory FIRST (the registry's
+     wire()), and launches $CURB on it in the very next transaction - after
+     the catalog has admitted its first distributor version, so it may share
+     with holders, or the launch would revert FactoryNotApproved. Every other
+     factory is admitted only after $CURB: no launch on any of them can come
+     before it, however slow the run or wherever a broadcast died.
+     ONE RECEIPT IS LEFT OPEN, NOT NONE, AND ONLY ON THE WETH FACTORY.
+     Between its admission and $CURB's launch - the time the signer takes to
+     send one more transaction under --slow - somebody watching the chain
+     could launch on the WETH factory first. The run used to wire the WETH
+     factory first with some fifty-five transactions after it, and then to
+     admit it last while every factory before it stood open for those same
+     transactions; one receipt is as low as a run of separate transactions
+     goes. The script asserts that $CURB is registry.launchAt(0) in its
+     simulation only. On chain, check-deployment.sh (STEP 5) reads which
+     launch $CURB is - the token its launch's receipt names, not the
+     simulation's address, which a launch landing first would move - fails
+     if it is not launch 0, and fails if the record admitted any factory but
+     the WETH one before $CURB's launch. IF SOMETHING GOES WRONG, $CURB IS
+     NOT LAUNCH ZERO says what then.
+     WHAT EACH SETTING IS - all permanent once the run lands:
+       CURB_FIRST_NAME, CURB_FIRST_SYMBOL   the token's name and symbol
+       CURB_FIRST_URI      the token URI in the launch form's own format:
+                           data:application/json;base64, then the base64 of
+                           {name, symbol, description, image, website,
+                           twitter, telegram}, the image itself a small data:
+                           URL. Keep it in a file and pass
+                           CURB_FIRST_URI="$(cat <the file>)". It is written
+                           into the token and can never change.
+       CURB_FIRST_TAX_BPS  the total tax, 100 to 500
+       CURB_FIRST_CREATOR  the creator wallet: it receives the creator fees and
+                           the dev buy's tokens and owns the locked position.
+                           REQUIRED, never zero (zero would make the sender -
+                           the deployer, a hot key - $CURB's beneficiary for
+                           good) and never the deployer. A treasury Safe; who
+                           holds it follows the $CURB treasury policy. ONE
+                           KEY - no code, or only an EIP-7702 delegation - is
+                           refused unless CURB_ALLOW_EOA_CREATOR=true is set
+                           too: a code-less address is also what a mistyped
+                           one looks like, and the dev buy's tokens, the
+                           refund, the locked position and its LP fees would
+                           go to it for good.
+       CURB_FIRST_DEV_BUY  the dev buy in wei of ETH, paid by the deployer
+                           (0 for none), which must hold it before its first
+                           STEP 2: the preflight's simulation spends it from
+                           the deployer's real balance (STEP 2 says why).
+                           The tokens go to CURB_FIRST_CREATOR.
+                           The usual limits hold: below the threshold, and at
+                           most 20% of the supply in tokens received.
+       CURB_FIRST_SHARE    1 switches holder sharing on inside the launch (the
+                           creator share then goes to $CURB's holders, for
+                           good); 0 leaves it off, and the creator wallet can
+                           switch it on later, once.
+     REHEARSE IT ONCE with the same values on a node of your own (never the
+     suite's pinned node; see the header of script/DeployCurb.s.sol), and
+     open /token/<that token> on the local site: the name, image and links
+     you see there are the ones mainnet will keep.
+     The preflight simulates with these settings and prints them into the
+     STEP 4 command, each shell-quoted. ITS RULES, asked before the suites
+     run [first_launch_bad in script/b20/preflight-mainnet.sh]:
+       CURB_FIRST_LAUNCH   exactly 1 or 0. Unset, empty or anything else is
+                           refused rather than read as either. 0 deploys
+                           without $CURB, and then nothing stops another ETH
+                           launch from being the hero - it exists for the
+                           fork, not for this run.
+       with 1, EVERY ONE of the seven below must be set (an empty
+       CURB_FIRST_URI is allowed; an empty name or symbol is not), and:
+       CURB_FIRST_NAME, CURB_FIRST_SYMBOL, CURB_FIRST_URI
+                           printable ASCII only, and no leading or trailing
+                           space - forge trims those before the script reads
+                           the value, so the token would not hold what was
+                           checked
+       CURB_FIRST_TAX_BPS  plain digits, 100 to 500
+       CURB_FIRST_CREATOR  an address, never zero, never CURB_DEPLOYER, and
+                           not one key unless CURB_ALLOW_EOA_CREATOR=true
+                           (section 3 reads its code)
+       CURB_FIRST_DEV_BUY  plain digits: wei of ether, 0 for none
+       CURB_FIRST_SHARE    exactly 1 or 0
+     DeployCurb refuses again what it can see (an unset or malformed value, a
+     zero or deployer creator), and the factory decides the tax band and the
+     dev buy's cap in the simulation.
+
+================================================================================
+AHEAD OF THE DAY
+================================================================================
+  None of this is done on the day. Each part has a check at the end; do not
+  book the day until all three pass. They run in THE ORDER's sequence: PREP
+  1's points 1 to 4, then PREP 2 and PREP 3, and only then PREP 1's points 5
+  and 6 and its CHECK, because the preflight they run needs both.
+
+  PREP 1 - RE-PRICE THE ASSET LIST. DAYS AHEAD, ON A BRANCH, IN ONE COMMIT.
+    WHY. A factory's phantom and threshold are immutable, a launcher can never
+    be removed from the registry (32 at most), and quoteAssets() in
+    script/DeployCurb.s.sol carries the prices of the day it was last
+    re-priced - 15 October 2026 for the fourteen listed now (WETH at
+    $2,426.06; PRE_MAINNET decision 1a). Signed later, every launch - $CURB
+    included - starts and graduates wherever those prices have drifted to,
+    not at the decided ~$4,000 and ~$55,000, and every asset on the list is
+    listed for good. So this step runs again days ahead of the day, and the
+    preflight prices the list once more on the day (6 below). WHICH assets
+    to list is the owner's decision; this is how the
+    decision is written down without editing pinned tests under time
+    pressure. measure-thresholds.js says to run it immediately before
+    deploying, and this is where that happens: early enough to fix what it
+    finds, and again on the day (6 below).
+
+    1. MEASURE, against live Base:
+         RPC=<a Base RPC> node script/b20/measure-thresholds.js
+       For each asset it prints the price from the pool's own slot0, the most
+       held in any one pool, the threshold for $10,832 and the phantom for
+       $4,000, both in the asset's own units. A public endpoint refuses
+       often: the script retries, and a line saying it could not price an
+       asset means run it again, never guess.
+    2. CROSS-CHECK EVERY PRICE AGAINST CHAINLINK. The feeds are the quoteUsd
+       entries in services/sharer/deploy/sharer.example.json (sharing.feeds);
+       WETH's is ETH / USD, 0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70.
+       In a WSL shell (base-cast is WSL's, B20_ENVIRONMENT.txt section 2;
+       it goes on the PATH only at PREP 2, so name it in full here):
+         ~/.foundry/bin/base-cast call <feed> "latestRoundData()(uint80,int256,uint256,uint256,uint80)" --rpc-url <rpc>
+         ~/.foundry/bin/base-cast call <feed> "decimals()(uint8)" --rpc-url <rpc>
+       The second number divided by 10^decimals is the dollar price; the
+       fourth is when it was last updated. A stock feed holds its last close
+       outside US market hours, so measure while the market is open. A pool
+       price more than 3% from its feed stops this step until the reason is
+       known - a thin pool, a stale feed, a wrong address - whichever number
+       is then written.
+    3. CHOOSE THE LIST - the owner's call, made here and nowhere later. An
+       asset left out can be admitted after launch with
+       script/DeployAssetStack.s.sol and the Safe's addLauncher; an asset put
+       in can never be taken out. NVDAc carries the fork suites and the runner
+       scripts (DeployCurb resolves the "NVDAc" factory by name for the demo
+       and for the CurbLaunchFactory line the runner scripts read), so
+       dropping NVDAc is a code change with its own review, not an edit in
+       this step - thin or not: NVDAc has been listed thin since 15 October
+       2026. SPCXc and cbZEC are named by tests too (point 4 says which),
+       and so are USDC, VIRTUAL and AERO (test/fork/B20NewQuoteAssets.t.sol,
+       which trades each through CurbRouter by label): dropping any of them
+       changes those tests in the same commit.
+    4. WRITE IT, ALL IN ONE COMMIT, so no tree ever disagrees with itself:
+       - quoteAssets() in script/DeployCurb.s.sol: each asset's phantom and
+         threshold, its fillable flag as measured, and its comment's price,
+         date and the start and graduation in dollars the pair gives;
+       - the fixtures that copy the list or name its assets:
+           test/fork/B20MultiAsset.t.sol   _fixtures() fails the suites the
+                                           moment it and quoteAssets()
+                                           disagree
+                                           (test_theFixtureCarriesTheDeploymentsOwnThresholds,
+                                           with one named lifecycle test per
+                                           asset, by selector in a fixed
+                                           bytes4[13] array: resize it with
+                                           every test_lifecycleOn<asset>()
+                                           added or removed). Each fixture's
+                                           holder must still hold what one
+                                           lifecycle spends, which grows with
+                                           the threshold ("the recorded holder
+                                           no longer holds enough"); cbZEC's,
+                                           22.86 at the pinned block against
+                                           the 19.41 one lifecycle spends at
+                                           9.20, is the tightest.
+                                           test_theDeploymentPricesOneThresholdWhereTheMarketCan
+                                           and test_theDeploymentFindsNoRouteWhereThereIsNone
+                                           read NVDAc's and cbZEC's thresholds
+                                           by label. The second pins cbZEC's
+                                           at 9.20 and needs the pinned fork
+                                           NOT to price it - its deeper pool
+                                           holds 7.55 cbZEC there - while it
+                                           still prices 6.68. Dropping cbZEC
+                                           reverts it ("DeployCurb does not
+                                           ship cbZEC"), and a re-pricing that
+                                           moves cbZEC's threshold changes its
+                                           premise line; one under 7.55 would
+                                           be priced at the pin and fail it:
+                                           change it with the list;
+           test/fork/B20SafeERC20.t.sol    test_nonZeroOverNonZeroApproveWorksOnEveryEnabledAsset
+                                           pins the list's length
+                                           (assertEq(shipped.length, 14)): set
+                                           the new count when an asset is
+                                           added or dropped;
+           test/fork/DeployCurbRun.t.sol   test_threeMoreLaunchersCostEachLaunchLittle_fourteenAgainstEleven
+                                           pins the list at fourteen and
+                                           names USDC, VIRTUAL and AERO as
+                                           the three added on 15 October;
+           test/fork/DeployAssetStack.t.sol
+                                           deploys WETH and NVDAc by label,
+                                           then builds SPCXc as the asset
+                                           added after launch (its SPCXC
+                                           constant, and "SPCXc" passed by
+                                           label): if SPCXc is dropped, move
+                                           both tests to another listed asset;
+           test/fork/HolderSharing.t.sol   _assets() (and _weth, _nvdac),
+           test/fork/B20Router.t.sol       its WETH_ to GOOGLC_ PHANTOM and
+                                           THRESHOLD constants,
+           test/fork/B20Graduation.t.sol   PHANTOM_QUOTE and
+                                           GRADUATION_THRESHOLD (NVDAc's, with
+                                           the premise checks and dev-buy
+                                           bands written on them), and
+           test/fork/B20NewQuoteAssets.t.sol
+                                           reads the terms from DeployCurb
+                                           itself, but names USDC, VIRTUAL and
+                                           AERO and the shape of each one's
+                                           deepest route at the pin,
+           web/e2e/*.spec.js               every test that launches on an
+                                           asset dropped (grep for its symbol:
+                                           cbXRP is in router.spec.js), and
+                                           every one that reads NVDAc's terms
+                                           off the demo (its threshold is
+                                           written in app.spec.js and
+                                           records.spec.js; app.spec.js also
+                                           writes what follows from its
+                                           phantom - the dev buy cap at 1% and
+                                           4.5%, the slider's half-way stop,
+                                           the supply left and the burn) are
+                                           compared with nothing - update them
+                                           by hand in the same commit. On 15
+                                           October these were found only by
+                                           running app.spec.js past its first
+                                           failure, since the file is serial.
+                                           And an asset gaining a feed: browse
+                                           .spec.js's NO_FEED must be one no
+                                           table prices (it was USDC until
+                                           then);
+       - for an asset added to the list, its Chainlink feed in web/prices.js
+         USD_FEEDS and in services/sharer/deploy/sharer.example.json
+         sharing.feeds - the same feed in both (the preflight's section 6
+         stops on a listed asset with none, as ADDING A QUOTE ASSET step 1
+         says);
+       - web/docs.md: the Paired assets table, the sentence saying when the
+         thresholds were priced, the Paired-asset addresses table, and the dev
+         buy's cap in WETH, which is a quarter of WETH's phantom grossed up
+         by the tax (0.4125 before it at the 1.65 of 15 October; docs.md
+         writes "about 0.42 WETH", the cap at the lowest tax, 1%);
+       - the measure-thresholds output and the Chainlink answers, pasted into
+         the commit message.
+    5. Once PREP 2 and PREP 3 are done (the preflight needs the WSL shell,
+       the policy Safe on Base, the sharing keys and $CURB's settings; with
+       no code at CURB_POLICY_OWNER yet, the simulation reverts on the policy
+       owner), RUN STEP 1 ON THAT COMMIT (every suite, nothing skipped), then
+       STEP 2 WITH THE DEPLOYER HOLDING CURB_FIRST_DEV_BUY WEI AND NOTHING
+       MORE. The simulation wraps $CURB's dev buy out of the deployer's real
+       Base balance and reverts OutOfFunds without it, so the preflight asks
+       for it in section 4, before simulating; with CURB_FIRST_DEV_BUY=0 the
+       deployer may hold nothing. The preflight simulates the whole run
+       against live Base, then prices it (6 below), and only then reaches
+       the funding check and stops there - the cheapest way to meet a
+       live-market revert (requireDepthMatchesClaim, a pool that moved) or a
+       stale price while there is still time to change the list.
+    6. THE DOLLAR CHECK - the preflight's section 6, every time STEP 2 runs.
+       For each asset the simulation listed, it reads the Chainlink feed the
+       site prices it by (web/prices.js USD_FEEDS - the same feed the keeper's
+       sharing.feeds in services/sharer/deploy/sharer.example.json must name,
+       or it stops), and stops unless:
+         - the feed calls itself what the site expects (description()), and
+           its answer is a price no more than 96 hours old (a stock feed
+           holds Friday's close over a weekend);
+         - the phantom times that price - where the asset's launches start -
+           is within 5% of $4,000 ($3,800 to $4,200);
+         - the graduation, (phantom + threshold)^2 / phantom times that price,
+           is within 5% of $55,000.
+       It prints each asset's price, start and graduation either way. A
+       failure means the list is stale: stop, and repeat this step from 1 on
+       a new commit - never widen the band, and never edit quoteAssets() on
+       the day. On 8 October 2026 a read-only run against live Base put 9 of
+       the then 11 assets outside the band (WETH starting at $3,660, cbZEC
+       25% low; only AMZNc and AAPLc inside); the list was re-priced on 15
+       October, with the three added, and a read-only run of this section
+       against live Base that day put all fourteen inside (PRE_MAINNET
+       decision 1a). It is one day's prices: this step runs again before the
+       day.
+    CHECK, after PREP 3: the commit is on main, STEP 1 passed on it, and the
+    keyless STEP 2, the deployer holding the dev buy, passed section 6 and
+    reached the funding check.
+
+  PREP 2 - THE SIGNING SHELL
+    STEPS 0 TO 4B RUN IN WSL (Ubuntu), not in PowerShell or Git Bash - all
+    but STEP 1's browser suite, which runs from a Windows PowerShell (STEP 1
+    says why). base-forge and base-cast exist only in WSL
+    (B20_ENVIRONMENT.txt, section 2), and the preflight calls
+    $HOME/.foundry/bin/base-forge; the forge.exe on Windows is stock Foundry
+    and is not the tool of record. Open a WSL shell, cd to the checkout the
+    commit is in, and put the tools on the path so the commands below that
+    name base-cast find it:
+      export PATH="$HOME/.foundry/bin:$PATH"
+    Nothing else needs to be loaded: script/b20/env.sh is for the test node,
+    not for signing. But Node 22.18 or later (with npm) and python3 must also
+    run in this shell: the preflight runs test-all.sh, whose keeper suite
+    needs npm, and it and check-deployment.sh compute in python3. Both are
+    WSL's own installs: an npm that "command -v npm" finds under /mnt/c is
+    Windows' Node reached through WSL's PATH, which the suites are not run
+    with. Check:
+      node --version                 # v22.18 or later
+      npm --version
+      python3 --version
+      command -v node npm python3     # none of them under /mnt/
+    THE BROWSER SUITE'S WINDOWS SIDE, once. It drives Microsoft Edge, which
+    Windows has and a stock Ubuntu does not, with Windows' own Node: so the
+    checkout is on a Windows drive (/mnt/c/... in WSL - the suite's setup
+    turns its Windows path into that one), and in a Windows PowerShell, in
+    the same checkout:
+      node --version                 # v22.18 or later, as in WSL
+      cd web\e2e; npm ci --no-audit --no-fund
+    which installs Playwright from web/e2e/package-lock.json.
+    A HARDWARE WALLET REACHES WSL ONLY THROUGH usbipd-win.
+      Once, on Windows:  winget install usbipd
+      Then, in an administrator PowerShell:
+        usbipd list                      the Ledger shows as 2c97:..., a
+                                         Trezor as 1209:... or 534c:...
+        usbipd bind --busid <its BUSID>  once per device
+        usbipd attach --wsl --busid <its BUSID>
+      Attach again every time the device is plugged in or reconnects - a
+      Ledger re-enumerates when its Ethereum app opens, so open the app first,
+      then attach. In WSL, lsusb must list the device, and Linux must let your
+      user open it: install the vendor's udev rules (Ledger publishes them as
+      LedgerHQ/udev-rules) and reload udev. On a Ledger, turn on Blind signing
+      in the Ethereum app's settings; a contract deployment is not something
+      the device can display.
+    THE SIGNER CHECK, before STEP 2, in the same shell:
+        base-cast wallet address <your wallet option, in cast's spelling>
+    must print CURB_DEPLOYER. cast spells some of forge's options differently:
+        CURB_WALLET_OPTION (forge script)            base-cast wallet address
+        --ledger                                     --ledger
+        --ledger --mnemonic-indexes <n>              --ledger --mnemonic-index <n>
+        --ledger --mnemonic-derivation-paths <path>  --ledger --mnemonic-derivation-path <path>
+        --trezor, with the same selectors            --trezor, the same way
+        --account <name>                             --account <name>
+        --interactives 1                             --interactive
+    Another address, or an error, stops here. forge would also refuse a
+    --sender it holds no signer for, before sending anything - so this fails
+    safe either way, but found at STEP 4 it costs the day.
+    THE PREFLIGHT ASKS IT TOO. With CURB_WALLET_OPTION set to --ledger or
+    --trezor (with or without an account selector), STEP 2 asks the device
+    for its address in cast's spelling before anything else and stops unless
+    it is CURB_DEPLOYER - a device not attached to WSL, locked, or with its
+    Ethereum app closed stops it the same way [signer_check]. A keystore
+    (--account) would ask for its password and --interactives 1 for the key
+    itself, so for those it asks nothing and prints the line to run by hand;
+    run it. This by-hand check is still how to find the right account
+    selector before the first STEP 2.
+    CHECK: the signer check prints CURB_DEPLOYER on the machine and device
+    that will sign, node (22.18 or later), npm and python3 each answer
+    --version in that shell, and in a Windows PowerShell in the same
+    checkout node answers v22.18 or later and web\e2e's npm ci passed.
+
+  PREP 3 - WHAT HAS TO EXIST BEFORE THE DAY
+    - The policy Safe and the vetoer Safe, their signers on hardware wallets,
+      and their thresholds (decisions 3 and 5): SAFE_OPS.txt - each Safe's
+      address and threshold in the file, committed; who signs, where each
+      phrase copy is and who covers the veto hour in its private copy.
+    - The platform recipient's custody (decision 1): the choice ticked in
+      SAFE_OPS.txt and committed, the custody in its private copy.
+    - The account hardening in SAFE_OPS.txt, ACCOUNTS, done on every account
+      named there - GitHub, the host, the registrar, the pinning services, X
+      - and ticked in its private copy.
+    - INCIDENT.txt's WHO - names and phone numbers - in its private copy.
+    - Holder sharing's groundwork, services/sharer/RUNBOOK.md parts 2 to 6:
+      the keys of part 3 (their addresses are decision 5's settings), the
+      code repository, the data repo and its two tokens (part 4.1 and 4.2),
+      the three pinning services (part 5) and the RPC providers (part 6); the
+      keeper PC set up as parts 8.1, 8.2 and 8.6 say (the image, the folder
+      and its .env and secrets; its config/sharer.json comes from the run's
+      record at STEP 9, part 7). And the guardian's operator named
+      (part 10.1) - or, if there is nobody, a fallback guardian on a separate
+      server of its own, with its own key, RPC and alerts, never on the
+      keeper's machine (part 10.2) - AND ITS MACHINE SET UP AHEAD, as part 10
+      says, short only of its config/sharer.json: STEP 5 starts it from the
+      run's record within the hour after the broadcast, so on the day that
+      is copying one file and starting it. Its key holds about 0.02 ETH
+      (RUNBOOK part 3): one veto at its own gas cap (100 gwei,
+      guardian.maxGasPriceWei) costs up to about 0.015 ETH.
+    - The public code repository on GitHub, master pushed as main and main
+      its default branch (RUNBOOK part 4.1; the workflows of part 9 act on
+      the default branch only), with both sharing workflows disabled until
+      STEP 9 (part 4.1 says why), and the hosting project connected to it
+      (HOSTING, STEP 8), without the production domain yet.
+    - THE REHEARSAL, RUNBOOK part 16.1 to 16.4, with the developers: one
+      epoch on a fork through the real data repo, pins, site and alert
+      sinks, then the standby taking over. It shares the data repo's ops/
+      files with the real keeper, so it runs, and is cleaned up (16.4),
+      before the real keeper starts at STEP 9. Part 16.5 comes after the
+      deploy (STEP 9). It reads its files back through the site - the
+      hosting project's own address, since the production domain comes
+      only at STEP 8 (RUNBOOK 16.1) - so the /sharing/<chain>/ rewrite of
+      RUNBOOK 4.3 (it names only your GitHub organisation) is committed and
+      published on the hosting project first.
+    - The site's RPC endpoint, which goes into web/config.js at STEP 5 - the
+      owner's choice of provider (SITE RPC ENDPOINT, under HOSTING below).
+    - $CURB's settings (decision 6), rehearsed once.
+    - The security contact, for docs.md and security.txt (STEP 8).
+    CHECK: each line above has a name or an address written down for it -
+    in SAFE_OPS.txt for the Safes' addresses and thresholds and the
+    recipient's choice, committed; in the private copies of SAFE_OPS.txt and
+    INCIDENT.txt for the rest, outside the repository. Never in a tracked
+    file left uncommitted, this one included: STEP 0's status line and the
+    preflight stop on it. And the rest never committed: the repository is
+    public (RUNBOOK part 4.1), so a signer, a phrase copy's place, a phone
+    number or a custody detail committed is published at the next push.
+
+  HOSTING - THE SITE'S PROJECT, MADE AT PREP 3
+    The site is web/ as it is: no build step, no framework, no index.html (the
+    domain's root is rewritten to the Launches page).
+    VERCEL, the host the files are written for:
+      - Root Directory web/, Framework Preset "Other", no build command, no
+        install command, output directory the root itself (web/ as is).
+      - Production branch main, connected to the public code repository. A
+        Git-connected deploy only ever sees committed files.
+      - web/vercel.json carries the rewrites (/ -> /browse.html,
+        /token/:address -> /app.html, /sharing -> /sharing.html, and the
+        /sharing/<chain>/ rewrite to the data repo that RUNBOOK 4.3 adds) and
+        the response headers: the Content-Security-Policy, X-Frame-Options,
+        X-Content-Type-Options, Referrer-Policy and Permissions-Policy.
+      - web/.vercelignore keeps the test pages and the browser tests out of
+        the upload: one literal path per line, no wildcards.
+    NETLIFY works as well: publish directory web, no build command.
+      web/_redirects carries the same rewrites (the /sharing/<chain>/ rule
+      goes below its /sharing line, RUNBOOK 4.3) and answers every test page
+      with the site's 404 by forced rules (the ! makes a rule win over a file
+      that exists, since Netlify uploads the folder whole); web/_headers
+      carries the same five headers as vercel.json, value for value.
+    CLOUDFLARE PAGES IS NOT SUPPORTED AS IT IS. It has no ignore file, and its
+      _redirects has no 404 status, so the test pages - which take ?rpc= and
+      talk to a wallet - would be served on the production origin. Using it
+      means a build step that removes them first, and a check of its own.
+    BEFORE EVERY PUBLISH, from the commit being published:
+      bash script/b20/check-publish-set.sh
+    must print "publish set ok": no test page in what the host would serve,
+    the hosts' rules in place, the two hosts' five headers the same, value
+    for value (the policy compared between them, the other four each read
+    as the exact text both must send), and every
+    inline script named by the policy (app.html's <base> script is pinned by
+    its sha256 in both vercel.json and _headers: whoever edits that script
+    updates both, or this check and the browser suite fail). On deploy day
+    it runs with --addresses (STEP 5).
+    THE DOMAIN. The pages' link previews name https://curb.fun/og.png, and
+    og.png itself shows curb.fun. If the domain is another one, change every
+    page that names it (grep -rln 'curb.fun/og.png' web - seven today) and
+    the image in one commit.
+    THE CHECKS, once the domain points at the project - STEP 8 runs them.
+  SITE RPC ENDPOINT - THE OWNER'S CHOICE OF PROVIDER
+    web/config.js rpc is the endpoint every visitor's browser reads the chain
+    through, so whatever is in it is public:
+      - a provider key restricted by the provider to the site's origin (the
+        production domain) and to reads - never a key with write or admin
+        scope, and never the keyed endpoint STEP 4 broadcast through;
+      - Base's public endpoint, https://mainnet.base.org, rate-limits and is
+        not meant for a production site's traffic;
+      - any https provider works: the policy's connect-src allows https:.
+        check-publish-set.sh --addresses refuses http and a local address.
+    The built-in endpoint is never carried in a link and never saved for a
+    visitor unless they typed it, so rotating it is: edit config.js, check,
+    redeploy. Links shared before still work, and do not pin the old one.
+
+================================================================================
+THE RUN
+================================================================================
+
+  STEP 0 - CONFIRM YOU ARE DEPLOYING WHAT YOU THINK YOU ARE
+    env | grep -Ei '^GIT_' \
+      | grep -Ev '^GIT_(ASKPASS|EDITOR|SEQUENCE_EDITOR|PAGER|TERMINAL_PROMPT|SSH|SSH_COMMAND|SSH_VARIANT|AUTHOR_(NAME|EMAIL|DATE)|COMMITTER_(NAME|EMAIL|DATE))='
+                                    # must print nothing - run this line FIRST
+    git rev-parse --show-toplevel   # must print the directory you are in
+    git config --get core.worktree  # must print nothing
+    git checkout -- out/            # puts back the build artifacts git tracks
+                                    # under out/, which builds rewrite
+    git -c core.fsmonitor=false status --porcelain --untracked-files=all --ignore-submodules=none \
+      -- . ':(exclude)reference'    # must be empty, except untracked files OUTSIDE
+                                    # src/, script/ and lib/ (the preflight checks)
+    ( export GIT_INDEX_FILE="$(mktemp -u)"; git read-tree HEAD && git -c core.fsmonitor=false \
+      status --porcelain --untracked-files=no -- src lib script test web foundry.toml remappings.txt; \
+      rm -f "$GIT_INDEX_FILE" )     # must print nothing (it reads every file: slow on a Windows drive)
+    git ls-files -- src lib script test web foundry.toml remappings.txt \
+      | git check-attr --stdin filter ident working-tree-encoding | grep -Ev ': (unspecified|unset)$'
+                                    # must print nothing
+    git ls-files -v | grep '^[[:lower:]S] '   # must print nothing
+    git -c core.quotePath=false ls-files -z --others --ignored --exclude-standard -- src lib script test web \
+      | tr '\0' '\n' | grep -E '^(src|lib|script)/|\.[sS][oO][lL]$' \
+      | grep -Ev '\.pyc$|^script/b20/\.wallet-session\.json$'   # must print nothing
+    git replace -l                  # must print nothing
+    git rev-parse HEAD              # write this down, it goes in the address book
+    env | grep -Ei '^(FOUNDRY|DAPP)_'   # must print nothing, whatever the case
+    env | grep -E '^(ETH|ETHERSCAN|VERIFIER)_' | grep -v '^ETHERSCAN_API_KEY='
+                                    # must print nothing
+    ls .env                         # must not exist
+    ls ~/.foundry/foundry.toml      # must not exist
+    The first three lines make sure git reads the checkout forge builds.
+    GIT_WORK_TREE (alone or with GIT_DIR) or core.worktree in git's config
+    points every git command below at another checkout - a clean copy of the
+    same commit reads clean while forge compiles the edited files where you
+    are - and GIT_CONFIG_COUNT/GIT_CONFIG_PARAMETERS hand git settings that
+    exist nowhere on disk. What an editor's terminal exports to talk to you or
+    to a remote (VS Code's GIT_ASKPASS, GIT_EDITOR, GIT_PAGER, the author's
+    name) changes nothing git compares and may stay.
+    The checkout -- out/ line comes next because out/ is in .gitignore and
+    yet 33 build artifacts under it are tracked (git ls-files out), and a
+    build rewrites them - STEP 1's and STEP 2's, run at PREP 1 days ahead,
+    included. git status would list them as modified (" M out/...json"),
+    and the status line would stop you over files a build rewrites without
+    changing their bytecode (source ids move), none of them a contract the
+    run deploys (forge-std's, test harnesses, libraries, the src/Curb.sol
+    placeholder), and which the preflight does not look at. For the same
+    reason every commit this runbook asks for - PREP 1's, STEP 5's, A
+    PARTIAL DEPLOYMENT's, ADDING A QUOTE ASSET's - names its files: git add
+    <those paths>, then git commit. Never git commit -a or git add -A, which
+    carry the rewritten artifacts in; a resume refuses a commit that changes
+    anything outside deployments/.
+    The status line reads the whole tree but reference/. That directory holds
+    reference/ponsfamily, a third-party repository nested in this one (a
+    gitlink, mode 160000, with no .gitmodules), outside every path forge
+    reads. Windows git checked it out with CRLF line endings
+    (core.autocrlf=true), so WSL's git, which this step runs in, reads it as
+    modified (" M reference/ponsfamily") on a correct tree, while Windows git
+    reads it clean. Neither answer is about the code deployed, and the
+    preflight never looks there.
+    The line with GIT_INDEX_FILE compares every file of the commit under src,
+    lib, script, test and web, and foundry.toml and remappings.txt, with the
+    commit itself, in an index of its own that holds no stat data, so git
+    has to read each file. git status alone trusts the size and times its
+    index recorded: under core.trustctime=false or core.checkStat=minimal, a
+    same-size edit whose mtime was put back (one address constant for
+    another) never shows. The check-attr line lists files git would rewrite
+    before comparing them - a clean filter can hand git the committed bytes
+    for an edited file, and ident and working-tree-encoding rewrite content
+    too - named in .git/info/attributes, a .gitattributes (an uncommitted one
+    included) or a core.attributesFile. The line endings git converts
+    (* text=auto eol=lf) are the exception: a CRLF checkout of LF files, as
+    Windows git writes one, reads as the commit.
+    The flags on git status and the ls-files lines are there because git's own
+    settings can hide a change: status.showUntrackedFiles=no leaves untracked
+    files out, a submodule can be set to be ignored, a file watcher
+    (core.fsmonitor) that missed an edit leaves it out, and a file marked
+    assume-unchanged or skip-worktree (what the ls-files -v line finds) is
+    never compared at all - it is listed whether or not it was edited, and
+    git update-index --no-assume-unchanged / --no-skip-worktree clears the
+    mark. The ls-files --ignored line lists what git IGNORES and forge would
+    still compile: .gitignore's cache/, out/ and broadcast/ match inside src/
+    and lib/ too, and .git/info/exclude or a global core.excludesFile can hide
+    anything, so an ignored src/.../cache/X.sol that committed code imports
+    would be deployed while git status reads clean. It prints any ignored
+    .sol, and anything ignored under src/, lib/ or script/ except python's
+    .pyc files and script/b20/.wallet-session.json, which the runbook's own
+    tools leave there; the build's out/, cache/ and broadcast/ at the root
+    never show. It asks git for names as they are (-z, core.quotePath=false):
+    git otherwise quotes a non-ASCII name ("src/.../\303\226deme.sol", quotes
+    included), and neither pattern then matched it, so the line printed
+    nothing for exactly the name it exists to show. git replace -l lists
+    objects git reads another object in place of: a replaced commit shows
+    you, in git log and git show, files it does not hold.
+    The FOUNDRY/DAPP line, .env and the global foundry.toml change the build
+    without git seeing them - the optimizer, via-IR, the profile, or any key
+    foundry.toml leaves unset, which forge takes from the global file - so the
+    recorded commit would not reproduce the bytecode. forge reads FOUNDRY_ and
+    DAPP_ in any case (foundry_optimizer_runs=1 and dapp_optimizer_runs=1 work
+    as well as the capitals), hence grep -i. The ETH/ETHERSCAN/VERIFIER line is
+    about what forge SENDS, and
+    those three families are refused as a whole. Some of them forge script
+    reads wherever the command passes no flag - the gas price (ETH_GAS_PRICE,
+    ETH_PRIORITY_GAS_PRICE), the verifier (VERIFIER_URL, VERIFIER_API_KEY), a
+    keystore signer (ETH_KEYSTORE, ETH_KEYSTORE_ACCOUNT, ETH_PASSWORD). Others,
+    such as the ETH_RPC_URL and ETH_FROM that cast users export, it does not
+    read at all; the shell you sign from should simply hold none of them.
+    ETHERSCAN_API_KEY is the one exception: the STEP 4 command sets it itself.
+    The preflight refuses each, and the STEP 4 command asks all of this again
+    in the shell that signs (STEP 4 says how).
+
+  STEP 1 - THE FULL SUITE, ON THE COMMIT YOU ARE ABOUT TO DEPLOY
+    bash script/b20/start-node.sh   # in a SECOND WSL terminal, if no fork node
+                                    # is running: it stays in the foreground,
+                                    # and must keep running through STEP 2
+                                    # (the preflight runs test-all.sh again)
+    bash script/b20/test-all.sh     # then this, in the first terminal
+    cd web\e2e; npx playwright test # and this FROM A WINDOWS POWERSHELL, in
+                                    # the same checkout (not in WSL)
+    Expect every suite to report 0 failed and 0 skipped. Anything else stops
+    here. (It used to name three counts; they went stale the day a test was
+    added, and a gate every correct tree fails trains people to ignore it.)
+    test-all.sh runs, before the two forge halves, the selftests of the
+    preflight, the size gate, the sharing read-back, check-deployment.sh and
+    check-publish-set.sh, the publish set itself, and THE KEEPER'S OWN SUITE
+    (cd services/sharer && npm ci --no-audit --no-fund && npm run check -
+    Node 22.18 or later on the PATH). The keeper's image is built from this
+    commit only after that suite has passed on it (RUNBOOK 8.1).
+    THE BROWSER SUITE RUNS FROM WINDOWS because it drives Microsoft Edge
+    (web/e2e/playwright.config.js), which a stock Ubuntu does not have, with
+    the node_modules PREP 2 installed on Windows. Its setup
+    (web/e2e/global-setup.js) starts a fork node of its own on port 8549
+    inside WSL, through wsl -d Ubuntu (CURB_WSL_DISTRO names another
+    distro), deploys onto it and stops it at the end - so it needs neither
+    the second terminal's node nor STEP 2's CURB_* exports, which do not
+    reach it there.
+    The browser suite deploys the stack onto a local fork that serves chain
+    8453. Its runner scripts file that broadcast under broadcast/local/
+    (FOUNDRY_BROADCAST), NOT under broadcast/DeployCurb.s.sol/8453/, which is
+    where the mainnet run will record itself and which the preflight refuses
+    to find occupied. They used to write there, so following this runbook in
+    order stopped at STEP 2 every time. If that directory exists from an older
+    run, move it aside now - after checking it is not a mainnet record (the
+    preflight says how to tell).
+
+  STEP 2 - THE PREFLIGHT. No key, no broadcast, no risk.
+    IN THE WSL SHELL OF PREP 2, after its signer check printed CURB_DEPLOYER,
+    with PREP 3 done and PREP 1's re-priced list in the tree. Its section 6
+    is PREP 1's point 6: the day's dollar check, made by this step itself.
+    read -rs BASESCAN_API_KEY && export BASESCAN_API_KEY
+                                    # paste your Basescan / Etherscan API key and
+                                    # press Enter; nothing is echoed
+    export CURB_PLATFORM_RECIPIENT=<the address> \
+      CURB_POLICY_OWNER=<the policy owner> \
+      CURB_DEPLOYER=<your deployer address> \
+      CURB_SHARING_PUBLISHER=<the publisher> \
+      CURB_SHARING_KEEPER_PAYEE=<the keeper payee> \
+      CURB_SHARING_VETOERS=<vetoer>[,<vetoer>...] \
+      CURB_FIRST_LAUNCH=1 \
+      CURB_FIRST_NAME="<$CURB's name>" \
+      CURB_FIRST_SYMBOL="<its symbol>" \
+      CURB_FIRST_URI="$(cat <the file holding its token URI>)" \
+      CURB_FIRST_TAX_BPS=<100 to 500> \
+      CURB_FIRST_CREATOR=<its creator wallet: never zero, never the deployer> \
+      CURB_FIRST_DEV_BUY=<wei of ETH, or 0> \
+      CURB_FIRST_SHARE=<1 for holder sharing at launch, 0 for not> \
+      CURB_WALLET_OPTION="<one of: --ledger | --trezor | --account <name> | --interactives 1>"
+    bash script/b20/preflight-mainnet.sh
+    EVERY ADDRESS CHECKSUMMED - copied as Basescan or the Safe app shows it,
+    in mixed case - never typed, never lower-cased. Mixed case is the
+    address's EIP-55 checksum, and the preflight, DeployCurb and
+    check-deployment.sh each refuse an address whose checksum is wrong: one
+    mistyped character in it would otherwise be another valid address nobody
+    holds, which section 3 reads as "ONE KEY (no code), balance 0" just like
+    an unused real one. An address written all in one case carries no
+    checksum to catch that; section 3 says so beside it.
+    QUOTE ANY VALUE WITH A SPACE IN IT, as above; an unquoted space ends the
+    value there. Unquoted, CURB_WALLET_OPTION=--interactives 1 exports
+    --interactives alone and complains that 1 is not a valid identifier, and
+    CURB_FIRST_NAME=Curb Token exports "Curb" alone, silently: a name the
+    preflight cannot tell from one you meant, which $CURB would hold for
+    good. Inside double quotes the shell still reads a $, a backquote, a
+    backslash and a double quote; a value holding one goes in single quotes
+    instead (an apostrophe in it written '\''). Section 3 prints the name,
+    symbol and URI, shell-quoted, as the token will hold them: read them
+    there.
+    EXPORTED, NOT SET ON THE PREFLIGHT'S COMMAND LINE: an assignment written
+    in front of a command lasts for that one process, and the shell is left
+    with none of them. STEP 5's check-deployment.sh (and its --accepted run,
+    and ADDING A QUOTE ASSET's step 7, weeks later) reads every one of them
+    from the shell and stops at once with exit 2 when one is missing. The
+    printed STEP 4 command writes every value into itself (the deployer as
+    --sender), so exporting them changes nothing there. In a new shell,
+    export the same values again first (ADDRESSES.txt records them). Keep
+    them out of any shell that runs STEP 1's browser suite: the fork runner
+    scripts it starts (script/b20/demo-waiting.sh, demo-app.sh) leave
+    CURB_POLICY_OWNER and CURB_FIRST_* to the environment, and would deploy
+    the fork with these.
+    The CURB_FIRST_* lines are decision 6, with the exact rules it lists:
+    CURB_FIRST_LAUNCH must be 1 or 0 (unset is refused), and with 1 all
+    seven others are set. Write the values down before the run;
+    ADDRESSES.txt records them.
+    BASESCAN_API_KEY is what the STEP 4 command's --verify uses. Read it in
+    with read -rs, as above: typed into a command line, it would stay in your
+    shell history. The STEP 4 command hands it to forge in
+    forge's environment, as ETHERSCAN_API_KEY, and not on forge's command
+    line, where the process list would show it for the whole broadcast; the
+    command itself holds only the variable's name. The preflight
+    checks that it is set and one word, and never prints it; it cannot check
+    that the key is valid without sending it to the explorer, so a wrong key
+    shows only after the broadcast, and STEP 6 is then done by hand.
+    THE ENDPOINT is https://mainnet.base.org unless CURB_MAINNET_RPC names
+    another. Whatever it names is printed into the STEP 4 command as given -
+    quoted, so a & or ? in it survives the paste - and if that URL holds a
+    provider's API key, running the command puts the key in your shell
+    history. Use a key you can revoke, or the public endpoint.
+    A LEDGER OR TREZOR SIGNS AS ITS FIRST ACCOUNT unless told otherwise. If the
+    deployer is another account on the device, write it into the option -
+    "--ledger --mnemonic-indexes 1" for the second, or
+    "--ledger --mnemonic-derivation-paths m/44'/60'/0'/0/1" for a full path
+    (quote the whole value in the shell). Exactly one of the two, one account,
+    after --ledger or --trezor only; the preflight refuses anything else. (The
+    option could not name another account at all, so such a deployer could
+    only get through by editing the STEP 4 command by hand.)
+    Before anything else it asks every setting above (the CURB_FIRST_* rules
+    of decision 6 included), that base-forge and base-cast are there (WSL),
+    and the signer: with --ledger or --trezor it asks the device for its
+    address and stops unless it is CURB_DEPLOYER (PREP 2). Then it checks
+    the tree and the build settings, runs the suites (nothing
+    skipped), runs the size and code gate (script/b20/size-gate.sh: every
+    contract within its runtime budget, the five contracts core v2 leaves
+    unchanged at their pinned code identities, the router at its pinned code
+    hash), reads your addresses off Base (a read that fails stops it;
+    it is never printed as "one key"), sees that the deployer already holds
+    $CURB's dev buy (section 4, since the simulation spends it), simulates
+    the whole deployment against live Base, prices every asset's start and
+    graduation at Chainlink's
+    answer (section 6, PREP 1's point 6: a failure there means re-price the
+    list first, in a commit of its own - never on the day), checks the
+    funding against the simulation's own estimate, and prints the one
+    command to sign, ending in your wallet option. The opt-ins
+    are OFF unless you set them, each only for a recorded decision:
+      CURB_ALLOW_EOA_RECIPIENT=true           the recipient is one key (A6)
+      CURB_ALLOW_NON_SAFE_RECIPIENT=true      the recipient is a contract that
+                                              is not a Safe
+      CURB_ALLOW_EOA_POLICY_OWNER=true        the policy owner is one key
+      CURB_ALLOW_NON_SAFE_POLICY_OWNER=true   the policy owner is a contract
+                                              that is not a Safe
+      CURB_ALLOW_SAME_RECIPIENT_AND_OWNER=true  one address for both roles
+      CURB_ALLOW_EOA_CREATOR=true             $CURB's creator wallet is one
+                                              key (decision 6)
+    Each is exactly true or false, or unset; the preflight refuses anything
+    else - an empty value included - because forge reads some other
+    spellings as true (TRUE, True, 1) and whatever it cannot parse as false,
+    and the STEP 4 command carries the value as given.
+    (This step used to be a hand-typed forge command with
+    CURB_ALLOW_EOA_RECIPIENT=true written into it - the override the preflight
+    had made opt-in, turned back on by the runbook.)
+
+    THE FIRST RUN USUALLY STOPS AT THE FUNDING CHECK, once the deployer
+    holds at least CURB_FIRST_DEV_BUY wei, and that is expected. The cost is
+    only known once the simulation has run, so the preflight prints the
+    estimate and the amount it wants, and stops without printing a command.
+    Go to STEP 3, then run this step again.
+    A DEPLOYER HOLDING LESS THAN THE DEV BUY STOPS EARLIER, in section 4,
+    before the simulation. forge gives a balance only to its own default
+    sender; this simulation runs as --sender CURB_DEPLOYER, with the
+    deployer's real Base balance, and DeployCurb wraps the dev buy out of it
+    inside the broadcast - short of it, the simulation reverts OutOfFunds
+    and nothing is priced. The simulation charges no gas, so the dev buy
+    alone is what it needs. Send that much (section 4 names it), then run
+    this step again. With CURB_FIRST_DEV_BUY=0 the deployer may hold
+    nothing.
+
+    READ THE OUTPUT BEFORE GOING ON. The preflight prints everything the
+    script logged, not a filtered few lines:
+      "=== CURB ===" and NOT "with a demo launch"
+      "chain id" followed by 8453 (printed as "chain id         8453")
+      "NO DEMO LAUNCH WAS CREATED. The registry holds $CURB alone, as launch 0."
+      the RECIPIENT line, which names the address on the same line - either
+        "WARNING: the platform recipient is one key (...), not a multisig: 0x..." or
+        "platform recipient is a Safe-shaped contract: 0x..." followed by its
+        threshold and every owner. It must be YOUR address, and for a Safe,
+        YOUR signers and threshold.
+      the POLICY OWNER line, the same way
+      "code identities match the pinned ones" - the script checked the five
+        unchanged contracts before anything else
+      the SharingCatalog and HolderDistributorFactory lines, and the sharing
+        publisher, keeper payee and every vetoer - the policy owner among them
+      $CURB's lines, each exactly what you set: section 3's "$CURB, THE
+        FIRST LAUNCH" (its name, symbol, URI, tax, dev buy and whether it
+        shares with holders, and the creator wallet's kind), and the
+        script's "=== $CURB, the first launch, as simulated
+        (registry.launchAt(0)) ===" block - "$CURB token", "$CURB curve",
+        "$CURB factory" (the WETH factory of the list above it), "$CURB
+        creator", "$CURB tax bps", "$CURB dev buy wei", "$CURB shares with
+        its holders". Its token and curve are the simulation's: STEP 5 takes
+        the ones that landed from check-deployment.sh (decision 6 says why)
+      the registry handover: "registry owner" is the deployer, "registry
+        pending owner" the policy owner you chose, and under "THE REGISTRY IS
+        OFFERED, NOT HANDED OVER" the Safe's call (to the registry, data
+        0x79ba5097) that STEP 4B sends
+      section 6's line per asset: its price, where it starts and where it
+        graduates, in dollars
+      the "Estimated amount required" line - write it down
+    If any line names an address, a signer, a threshold or a $CURB setting you
+    did not expect, stop. The recipient can be changed later for future launches
+    (announce, 24 hours, execute), never for launches made before the change.
+    The whole simulation log is kept at the path the preflight prints.
+
+  STEP 3 - FUND THE DEPLOYER, THEN RUN STEP 2 AGAIN
+    The funding check's line names what the deployer holds and the exact wei
+    the whole run needs: THREE TIMES the estimate the preflight printed,
+    never under 0.001 ETH, PLUS CURB_FIRST_DEV_BUY's wei - $CURB'S DEV BUY
+    IS PAID BY THE DEPLOYER TOO, in ETH, on top of the gas. Send the
+    difference between the two: the deployer already holds the dev buy,
+    which STEP 2 asked for before simulating, and the amount named is the
+    total, the dev buy included. Check it arrived, then run STEP 2 again
+    with the same variables. It prints the command only once the
+    deployer can pay; until then there is no command to run. And keep a
+    little more for STEP 4A: the router is one more transaction from the
+    same key, which no estimate here includes.
+
+  STEP 4 - BROADCAST. THIS IS THE IRREVERSIBLE ONE.
+    The command the preflight printed, exactly, FROM THE REPOSITORY ROOT, in a
+    shell where BASESCAN_API_KEY is EXPORTED (read -rs BASESCAN_API_KEY &&
+    export BASESCAN_API_KEY, as in STEP 2, which keeps it out of history).
+    ITS FIRST TWO LINES ARE
+      [ "$(env -u SHELLOPTS -u BASHOPTS -u BASH_ENV -u ENV bash script/b20/preflight-mainnet.sh --recheck <the commit>)" \
+        = "recheck passed <the commit>" ] && \
+    which asks STEP 0's questions again in the shell you sign from, and forge
+    does not start unless every answer is the preflight's: HEAD is the commit
+    the preflight checked, the tree is still clean (whatever git's settings
+    hide or ignore, as STEP 0 says, with every file of the commit under src,
+    test, script, web and lib, foundry.toml, remappings.txt and the top-level
+    .txt files hashed from its bytes and no file git would filter), no GIT_*
+    variable steers git (an
+    editor's GIT_ASKPASS, GIT_EDITOR and the like aside) and git's work tree
+    is the repository root, no FOUNDRY_*/DAPP_* variable is
+    exported in any case, no .env and no ~/.foundry/foundry.toml exist, no
+    ETH_*, ETHERSCAN_* or VERIFIER_* variable is exported (ETHERSCAN_API_KEY
+    aside, which the command sets from BASESCAN_API_KEY), every CURB_ALLOW_*
+    in the shell is true, false or unset, no earlier run is recorded
+    (records_clear), and BASESCAN_API_KEY is set. The preflight's checks used
+    to run only in the preflight's own shell, so a pull or an edit since, an
+    exported
+    FOUNDRY_OPTIMIZER_RUNS or FOUNDRY_PROFILE (other bytecode, which --verify
+    would still accept, compiling the same way), a FOUNDRY_BROADCAST left from
+    a rehearsal (the mainnet record filed under broadcast/local/, where STEP 5
+    and records_clear never look), an ETH_GAS_PRICE left at 1gwei (every
+    transaction priced about a hundred times the simulation's, and a deployer
+    that runs dry partway leaves a half-wired deployment) or a VERIFIER_URL
+    (the sources and a key sent elsewhere, the hook left unverified) all
+    reached the broadcast unasked. If the recheck stops, fix what it names
+    - and if that was the commit or the tree, run STEP 2 again - rather than
+    removing the line [--recheck in script/b20/preflight-mainnet.sh, and the
+    selftest's "the printed command, run" cases].
+    forge starts on the line the recheck prints once every check has passed,
+    not on its exit status. The first line used to end in && alone, and a
+    shell's leftovers can make the recheck's bash run nothing and still exit
+    0: an exported SHELLOPTS=noexec (dash, zsh and fish pass it on), a BASH_ENV
+    file ending in exit 0. env -u drops those four variables, so the recheck
+    runs as written; a recheck that ran nothing prints no line, and forge
+    does not start. (If nothing at all is printed and forge does not start,
+    run the first line's bash command on its own to see why.)
+    It carries the same opt-ins the simulation ran with - checked, and
+    shell-quoted, so none can end the command before forge (printed bare, a
+    value ending in ; did, and forge then ran whether or not the recheck
+    passed) -
+    and CURB_DEMO_LAUNCH=false, so a flag left
+    exported in the signing shell cannot create a demo launch (decision 4),
+    and it ends in the wallet option you gave as
+    CURB_WALLET_OPTION - one of --ledger, --trezor (either with the account
+    selector STEP 2 describes), --account <name> or
+    --interactives 1, nothing added. If you did not set CURB_WALLET_OPTION, its
+    last line is a placeholder that will not run: set it and run STEP 2 again
+    rather than editing the command by hand. (The command used to end in
+    --ledger whatever you used, while this step said to add your own option,
+    so a Trezor or keystore user passed two.)
+    IT ALSO CARRIES decision 6's lines - CURB_FIRST_LAUNCH, and with 1 every
+    CURB_FIRST_* setting, each shell-quoted as the preflight checked it - so
+    the broadcast launches the $CURB the simulation launched; and --slow,
+    which sends one transaction at a time, each after the last one's
+    receipt: without it forge sends the sixty-odd in a burst, and one that
+    an endpoint drops strands every one after it behind a nonce gap.
+    BELOW IT THE PREFLIGHT PRINTS A SECOND COMMAND, THE RESUME: the same
+    lines with --resume, behind --recheck-resume <the commit> <CURB_DEPLOYER>
+    <the endpoint> instead of --recheck. It is for one case only - this broadcast died part
+    way (IF SOMETHING GOES WRONG, A PARTIAL DEPLOYMENT) - and refuses to run
+    otherwise. KEEP IT: copy the preflight's output, or at least that
+    command, somewhere you can read it after a crash. Once a record exists
+    the preflight refuses to run, so it cannot print it again.
+    Use a hardware wallet, a keystore or an interactive prompt; do not put a
+    private key in a shell command, in a file, or in an environment variable
+    that survives the session. The preflight refuses --private-key.
+    A KEYED RPC OF YOUR OWN SENDS THE BROADCAST MORE RELIABLY than the public
+    endpoint, which rate-limits: about sixty transactions go out, and one
+    refused send strands the rest (IF SOMETHING GOES WRONG, A PARTIAL
+    DEPLOYMENT). Set CURB_MAINNET_RPC to it at STEP 2, with a key you will
+    revoke afterwards, as STEP 2 says.
+    THE MOMENT IT ENDS - success or not - copy the record before anything else:
+      mkdir -p deployments/base-mainnet && \
+        cp broadcast/DeployCurb.s.sol/8453/run-latest.json deployments/base-mainnet/run.json
+    and read the output's $CURB lines and the registry's pendingOwner line
+    again. STEP 5 commits the copy. THEN, WITHIN THE HOUR AND BEFORE STEP 4A,
+    the head of STEP 5: the guardian, started from the record (STEP 5 says
+    why it cannot wait).
+
+  STEP 4A - THE ROUTER: DEPLOY, VERIFY, READ ITS CODE BACK
+    Without CurbRouter the site has no ETH sale on a pair that is not ETH, and
+    an ETH buy takes two transactions where the docs promise one - and nothing
+    fails loudly, because the page simply takes the longer flows. It has no
+    owner and no arguments, and it lands at one address whoever sends it
+    (script/DeployRouter.s.sol's header says why). Same commit, same WSL
+    shell, same wallet option as STEP 4.
+    First, no transaction - it must print 0xEa20C3266229a01cd0f45D9c7921a45d5b359561
+    and the code hash 0x25814dde01efddddcc582ba476471c80ce6de85154d1ee6a357f28cb67b37c5e:
+      ~/.foundry/bin/base-forge script script/DeployRouter.s.sol --rpc-url <a Base RPC>
+    Then send it:
+      ~/.foundry/bin/base-forge script script/DeployRouter.s.sol --rpc-url <a Base RPC> \
+        --sender <CURB_DEPLOYER> --broadcast <your CURB_WALLET_OPTION>
+    The script refuses to send when the router as built would land anywhere
+    else or hash to anything else, and reads the router's constants back after
+    it lands. Copy its record too, for STEP 5's commit:
+      cp broadcast/DeployRouter.s.sol/8453/run-latest.json deployments/base-mainnet/router-run.json
+    If the script prints "CurbRouter already deployed at" (it was sent by
+    someone else - anybody may send it), nothing is broadcast and there is
+    no record to copy (a run-latest.json in that folder is an older run's,
+    not this one): leave router-run.json out of STEP 5's commit, and write
+    the router's creation transaction, from Basescan, into ADDRESSES.txt's
+    CurbRouter lines. The read-back and the verification below still apply.
+    READ ITS CODE BACK, from the chain:
+      ~/.foundry/bin/base-cast keccak "$(~/.foundry/bin/base-cast code 0xEa20C3266229a01cd0f45D9c7921a45d5b359561 --rpc-url <a Base RPC>)"
+    must print 0x25814dde01efddddcc582ba476471c80ce6de85154d1ee6a357f28cb67b37c5e,
+    the EXPECTED_RUNTIME_CODEHASH that web/app.js pins; and
+      bash script/b20/size-gate.sh --deployed <a Base RPC> 0xEa20C3266229a01cd0f45D9c7921a45d5b359561 CurbRouter
+    must print ok.
+    VERIFY IT BY HAND. It is created by a plain call to the deployment proxy,
+    not by `new`, so do not count on --verify to find it. The router is
+    compiled in its own profile, without the metadata hash (foundry.toml),
+    and verify-contract has to be told so:
+      ETHERSCAN_API_KEY="$BASESCAN_API_KEY" ~/.foundry/bin/base-forge verify-contract \
+        --chain 8453 --verifier etherscan --skip-is-verified-check --watch \
+        --compilation-profile router \
+        0xEa20C3266229a01cd0f45D9c7921a45d5b359561 src/curb/CurbRouter.sol:CurbRouter
+    It takes no constructor arguments. The explorer key is handled exactly
+    as STEP 6 says, for the same reasons. Tick it in ADDRESSES.txt only when
+    the explorer shows the source.
+
+  STEP 4B - THE SAFE ACCEPTS THE REGISTRY, AND EVERY OWNER IS READ BACK
+    DeployCurb ended with registry.transferOwnership(<CURB_POLICY_OWNER>)
+    (decision 2). Nothing has moved until the Safe accepts. Do it today,
+    before the site is published: until then the deployer's single key can
+    admit launchers at once, and the create form would offer them.
+    The Safe's transaction, in app.safe.global, Transaction Builder, network
+    Base - enter it as raw data, not through an ABI someone sent you:
+      to      <the LaunchRegistry, from the run's output>
+      value   0
+      data    0x79ba5097              acceptOwnership()
+    Each signer checks the decoded call and the transaction hash on the
+    device before signing (SAFE_OPS.txt, BEFORE ANY SIGNATURE). Once it is
+    executed, read back - every line from a Base RPC, in the WSL shell:
+      base-cast call <registry> "owner()(address)"              --rpc-url <rpc>   the policy Safe
+      base-cast call <registry> "pendingOwner()(address)"       --rpc-url <rpc>   0x0000...0000
+      base-cast call <hook> "owner()(address)"                  --rpc-url <rpc>   the policy Safe
+      base-cast call <hook> "pendingOwner()(address)"           --rpc-url <rpc>   0x0000...0000
+      base-cast call <catalog> "owner()(address)"               --rpc-url <rpc>   the policy Safe
+      base-cast call <catalog> "pendingOwner()(address)"        --rpc-url <rpc>   0x0000...0000
+      base-cast call <distributor factory> "owner()(address)"   --rpc-url <rpc>   the policy Safe
+      base-cast call <distributor factory> "pendingOwner()(address)" --rpc-url <rpc>   0x0000...0000
+    The hook, the catalog and the distributor factory are born owned by the
+    policy owner, so their pendingOwner is zero from the start; the
+    registry's becomes zero only when the Safe accepts. If the policy owner
+    IS the deployer (CURB_ALLOW_EOA_POLICY_OWNER=true, a recorded decision),
+    the run starts no handover and there is nothing to accept.
+    Gathering the signers can take hours: propose the transaction now, and
+    do STEP 5 while it waits. Once it is executed, check-deployment.sh
+    --accepted (STEP 5) must end "check-deployment: ok". The lines above are
+    what it reads, among some four hundred others; they stay here so that a
+    signer can see the handover without the script.
+
+  STEP 5 - THE GUARDIAN FIRST, THEN THE ADDRESS BOOK AND THE SITE'S CONFIG
+    FIRST, AT ONCE, THE GUARDIAN. Holder sharing is live from STEP 4: the
+    catalog admitted the distributor factory inside the run, so a launch -
+    $CURB with CURB_FIRST_SHARE=1, its dev buy's tax included - pays its
+    creator income into its distributor from its first trade, and the
+    publisher key has been on the keeper PC since PREP 3. Until a guardian
+    runs, nothing watches a root: a leaked publisher key could propose one
+    paying that balance to itself, and it would become payable after one
+    unwatched hour. This used to wait for STEP 9, hours or a day later. So
+    before anything else in this step, and before STEPs 6 to 8:
+      1. services/sharer/deploy/sharer.json, generated from this run's
+         record (npm run config-from-run, services/sharer/RUNBOOK.md part 7)
+         - the same file the rest of this step commits; it needs only
+         deployments/base-mainnet/run.json, copied at STEP 4.
+      2. On the guardian's machine, set up at PREP 3: that file as its
+         config/sharer.json, then RUNBOOK part 10 - check says config ok,
+         factory.isVetoer(<guardian>) is true, its key holds about 0.02 ETH,
+         and the guardian starts. Its heartbeat (ops/status-guardian.json)
+         shows a recent beat, SIGNED with its vetoer key: a verifier trusts
+         that file only when its signer is a vetoer of the factory on chain,
+         and otherwise pages "The GUARDIAN heartbeat is NOT SIGNED by a
+         vetoer" - anyone with a data repo token can write it. The guardian
+         and the verifiers run the same code, STEP 0's commit (RUNBOOK 8.1
+         and 10.1): an older guardian's heartbeat carries no signature,
+         and the verifiers page on it.
+    The keeper itself still starts only at STEP 9: no root of ours is
+    proposed before then, so what the guardian watches meanwhile is a root
+    nobody of ours proposed. If the guardian cannot run within the hour
+    after the broadcast, a vetoer (SAFE_OPS.txt, Safe B) freezes the
+    distributor factory instead - holding every root - and the policy Safe
+    lifts the freeze, 48 hours after announcing it, once the guardian runs.
+    THEN fill in ADDRESSES.txt from the script's own output - every address, the
+    hook's salt, the roles, the opt-ins and $CURB's lines are printed by it;
+    the block and the commit from step 0 are not. $CURB'S TOKEN AND CURVE
+    are the exception: the script printed its simulation's, and the ones
+    that landed are what check-deployment.sh below prints ("$CURB token ...,
+    curve ... - from its launch's receipt"), read off the launch's own
+    receipt (decision 6 says why they can differ). In the SAME commit:
+      - deployments/base-mainnet/run.json and router-run.json, the copies made
+        at STEP 4 and 4A (router-run.json only when STEP 4A sent the router
+        itself). broadcast/ is gitignored and a later forge run
+        against a node serving chain 8453 would overwrite the only record of
+        what landed.
+      - web/config.js, AND NO OTHER SITE FILE FOR ADDRESSES. Every page loads
+        it first; the site bar, the search, the launch page and the warning
+        about foreign links (CANONICAL in web/app.js) all read their defaults
+        from it. It ships as placeholders:
+          window.CURB_SITE = { chainId: 8453, rpc: "", lens: "", registry: "",
+            factories: [], explorer: "https://basescan.org", featured: [],
+            banner: "", hiddenFactories: [], hiddenLaunches: [] }
+        Fill in:
+          rpc        the site's endpoint (PREP 3)
+          lens       the LaunchLens, from the run's output
+          registry   the LaunchRegistry, as ADDRESSES.txt lists it
+          factories  every CurbLaunchFactory the run listed, one per asset
+        THE REGISTRY IS REQUIRED, not a label: on chain 8453, once lens is
+        set, every send the pages make - a buy, a sale, a create, a claim, the
+        sharing switch - is refused unless the factory it goes through is in
+        factories and that factory's registry() is this registry (web/app.js
+        canonicalRefusal). An empty or wrong one stops every send on the
+        site. Leave featured empty unless a launch is to be featured: it
+        lists the launch tokens a ?featured= link may put in the front page's
+        featured card, and a link naming any other is ignored. Leave banner,
+        hiddenFactories and hiddenLaunches empty - they are the incident
+        levers (INCIDENT.txt). A link carrying ?rpc= and ?lens=
+        still overrides the defaults, and a visitor's saved settings too, but
+        a visitor with neither now reads Base and the real lens - which is
+        what first-time visitors, and every clean /token/0x... link shared on
+        X, will be. Links whose values equal these defaults stay plain.
+        (topbar.js and app.js keep 127.0.0.1:8546 only as the fallback for
+        an empty rpc, which the check below refuses.)
+      - web/sharing.js CODE_AT, the verify panel's repository (its
+        VERIFY_WHERE text names it): the public code repository of RUNBOOK
+        4.1 at the commit the keeper's image is built from (RUNBOOK 8.1) -
+        STEP 0's commit, whose services/sharer code the later commits leave
+        as it is (this step adds only deploy/sharer.json, which the image
+        does not hold) - as
+          https://github.com/<org>/<repo>/tree/<that commit, 40 hex>/services/sharer
+        A branch would move on under the reader; the reader must run the code
+        that made the files. If the keeper is ever rebuilt from a commit that
+        changes services/sharer, CODE_AT moves to it in the same change.
+      - web/docs.md, "CURB contracts": every "Not deployed yet" replaced by
+        its address from ADDRESSES.txt, the CurbRouter's included; and under
+        "Holder sharing contracts", the verify sentence's repository
+        (https://github.com/<org>/<repo>/tree/<commit>/services/sharer)
+        replaced by the same address as CODE_AT above.
+      - services/sharer/deploy/sharer.json, generated from this run's record
+        as services/sharer/RUNBOOK.md part 7 says (npm run config-from-run:
+        the Graduator and its block, the distributor factory, the catalog,
+        the registry, hook, lens, policy owner and launchers, and every
+        factory, escrow, policy and vault in the exclusions), and the
+        /sharing/<chain>/ rewrite to the data repo in web/vercel.json and
+        web/_redirects with your GitHub organisation filled in (RUNBOOK part
+        4.3).
+    Commit exactly these, by name - git add with each path above, then git
+    commit - and never git commit -a or git add -A: the suites and the
+    preflight rewrote the build artifacts git tracks under out/ (STEP 0),
+    and they do not belong in the record. git checkout -- out/ puts them
+    back.
+    THEN CHECK THE PUBLISH SET AGAINST THE ADDRESS BOOK:
+      bash script/b20/check-publish-set.sh --addresses ADDRESSES.txt
+    must print "publish set ok". On top of the test pages, the hosts' rules
+    and the headers it checks before every publish (HOSTING), it asks that
+    config.js names chain 8453, an https endpoint that is not local, the
+    LaunchLens and the LaunchRegistry ADDRESSES.txt records and exactly its
+    CurbLaunchFactory lines, and that sharing.js CODE_AT names a github.com
+    repository at a 40-hex commit. Do not publish until it passes.
+    THEN READ IT ALL BACK, from the chain, against the record:
+      bash script/b20/check-deployment.sh <a Base RPC> deployments/base-mainnet/run.json
+    in the STEP 2 shell, with the same CURB_* settings exported (in a new
+    shell, export them again first, as STEP 2 writes them). It reads
+    every owner, pendingOwner, role and term the run should have set -
+    some four hundred reads, a few minutes against the keyed endpoint of
+    STEP 4 (the public one rate-limits, and a refused read counts as a
+    failure) - and ends "check-deployment: ok" or names every failure and
+    exits 1. While the Safe has not yet executed STEP 4B the registry's
+    handover is printed as a PENDING line and passes; nothing else may fail.
+    It ends by printing the size-gate.sh --deployed command for every
+    escrow, policy and vault, with the addresses filled in: run them
+    (ADDRESSES.txt, THE CODE THAT LANDED). Once STEP 4B is executed, run it
+    again with --accepted at the end:
+      bash script/b20/check-deployment.sh <a Base RPC> deployments/base-mainnet/run.json --accepted
+    It must end "check-deployment: ok", and the site is not published (STEP
+    8) before it does.
+
+  STEP 6 - VERIFY ON THE EXPLORER
+    --verify in STEP 4 does this in the same run. By hand, every contract with
+    the settings the build used - solc 0.8.30, cancun, optimizer on, 200 runs,
+    AND via-IR on [foundry.toml, [profile.default]]. Without via-IR the legacy
+    pipeline compiles different bytecode and PonsV2BondingCurve does not
+    compile at all, so verification fails. forge takes all of them from
+    foundry.toml when run from the repository root on STEP 0's commit, in a
+    shell where STEP 0's ETH/ETHERSCAN/VERIFIER line still prints nothing (a
+    VERIFIER_URL sends the sources and the key elsewhere). One contract at a
+    time, in this shape:
+      ETHERSCAN_API_KEY="$BASESCAN_API_KEY" ~/.foundry/bin/base-forge verify-contract \
+        --chain 8453 --verifier etherscan --skip-is-verified-check --watch \
+        <address> <path>:<Contract> <--constructor-args 0x... if it takes any>
+    The hook's constructor arguments include the mined salt's result - take
+    them from deployments/base-mainnet/run.json (step 5) rather than
+    retyping.
+    THE EXPLORER KEY MUST NOT REACH THE SCREEN. Left to itself,
+    verify-contract first asks the explorer whether the contract is already
+    verified, with a GET whose URL carries the key (apikey=...), and when
+    that request fails - a timeout, a DNS failure, the kind of network
+    trouble that sends you here from STEP 4 - forge prints the URL, key
+    included, into the scrollback and any log. So:
+      - the key reaches forge as ETHERSCAN_API_KEY, expanded from
+        BASESCAN_API_KEY as above (in a new shell, read it in with read -rs
+        as in STEP 2); never --etherscan-api-key <key>, which puts it in
+        shell history and the process list.
+      - --skip-is-verified-check stays in. Without that GET forge sends the
+        key only in POST bodies, which it does not print - measured against a
+        stand-in explorer with base-forge 1.6.0, --watch's status checks
+        included. A contract STEP 4 already verified is then answered
+        "already verified", which is harmless. (STEP 4's --verify never sends
+        that GET, so its own errors do not hold the key.)
+      - do not pipe the output into tee or a log, and do not share the screen
+        while it runs.
+      - if any line printed holds apikey=, the key is exposed: revoke it on
+        the explorer and make a new one.
+    THIS IS NOT COSMETIC. Uniswap's hook allowlist requires "your hook code
+    should be validated in a block explorer" [PRE_MAINNET C7], so the
+    application cannot be filed until this is done.
+
+  STEP 7 - POINT THE PAGES AT IT
+    Publish PLAIN links: https://<the domain>/, https://<the domain>/token/<a
+    token>, https://<the domain>/sharing. Since STEP 5 the site's own
+    defaults (web/config.js) are Base and the real lens, so a link needs no
+    ?rpc= or ?lens=, and links equal to those defaults are written plain by
+    the site itself. A link that carries contracts is for something else - a
+    fork, a review, another deployment - and the page says so when its lens or
+    factory is not one web/config.js lists. A link with contracts and no rpc
+    is read against the visitor's local or last-used endpoint, which the page
+    calls half a link; there is no reason to publish one.
+
+  STEP 8 - THE HOST AND THE LIVE SITE
+    THE HOSTING PROJECT, as HOSTING above set it up (Vercel or Netlify; not
+    Cloudflare Pages as it is): the root directory is web/, with no build
+    command and no framework, and the production branch is main.
+    web/vercel.json (Vercel) and web/_redirects (Netlify) carry the
+    rewrites: /, /token/*, /sharing and /sharing/<chain>/*. Run
+    check-publish-set.sh --addresses ADDRESSES.txt on STEP 5's commit,
+    publish that commit from main, then attach the production domain, with
+    HTTPS on. Nothing goes live from any other branch (SAFE_OPS.txt,
+    ACCOUNTS).
+    THE HEADERS - from any shell:
+      curl -sI https://<the domain>/
+    must show content-security-policy with frame-ancestors 'none' in it, and
+    x-frame-options DENY, x-content-type-options nosniff, referrer-policy and
+    permissions-policy. A response without them is a project that does not
+    read vercel.json or _headers: stop here.
+    THE DOMAIN, PAGE BY PAGE - from any shell, with <CURB> the $CURB token
+    ADDRESSES.txt records (STEP 5, from check-deployment.sh):
+      for p in / /token/<CURB> /sharing /sharing/8453/config.json /docs.html \
+               /terms.html /curb.html /config.js; do
+        printf '%s %s\n' "$(curl -s -o /dev/null -w '%{http_code}' "https://<the domain>$p")" "$p"
+      done
+    Every line must start 200, except /sharing/8453/config.json, which the
+    keeper writes with its first epoch (RUNBOOK part 4.3's table). That can
+    be hours or days after STEP 9, since an epoch waits for a sharing
+    launch's income to reach 50 times the epoch's gas, or for 7 days with
+    any income; and it is never, if no launch shares. Until then, STEP 9's
+    check --probe is what proves the rewrite; run that one line again after
+    the first epoch.
+    / is the Launches page with $CURB in its hero; /token/<CURB>
+    is $CURB's page with its price and chart; /sharing/8453/config.json is
+    the keeper's published config, served from the data repo through the
+    rewrite; https://<the domain>/config.js holds STEP 5's values. A path
+    that does not exist must answer 404 with the site's own page (404.html,
+    with the site bar), not the host's:
+      curl -s -o /dev/null -w '%{http_code}\n' https://<the domain>/no/such/page
+    prints 404, and the same address in a browser shows the site bar.
+    THE PUBLISH SET - the test pages must not be on the domain. wallet-setup.html
+    and tests.html take an endpoint from the link, and on the real origin
+    that is somebody else's script running next to the visitor's wallet:
+      for p in /tests.html /wallet-setup.html /wallet-stub.js /REAL_WALLET_TEST.txt \
+               /README.txt /assets/README.txt /e2e/serve.js /e2e/package.json \
+               /test-results/; do
+        printf '%s %s\n' "$(curl -s -o /dev/null -w '%{http_code}' "https://<the domain>$p")" "$p"
+      done
+    Every line must start 404. Any 200 stops here: take the domain off the
+    project until it is fixed.
+    THE SITE'S CONTENT, FILE BY FILE - one commit on main, before the site
+    is announced:
+      web/curb.html     the title, the "Not launched yet" badge and the lede
+                        say $CURB exists, and link to /token/<CURB>
+      web/curb.js       TREASURY, once the treasury address is published
+      web/docs.md       the contract table and the verify sentence's
+                        repository (STEP 5), the Paired assets and
+                        Paired-asset addresses tables as PREP 1 left them, the
+                        FAQ "Is $CURB live?", the security contact, and the
+                        final internal audit's report link
+      DOCS_STYLE.txt    "FACTS docs.md AND curb.html MUST AGREE ON": $CURB
+                        IS NOT LAUNCHED becomes what is true now - changed
+                        with the two pages, never apart
+      web/.well-known/security.txt   CREATE IT - it is not in the tree:
+                        Contact: <the docs.md contact> and Expires: <a date
+                        within a year>; once this commit is published,
+                        https://<the domain>/.well-known/security.txt must
+                        answer 200 (the domain loop above, with that path)
+      (web/sharing.js CODE_AT, the verify panel's repository, was filled at
+      STEP 5, where check-publish-set.sh --addresses asks for it.)
+      then
+        grep -rnE 'PLACEHOLDER \(owner\)|OWNER PLACEHOLDER' web --exclude-dir=e2e --exclude-dir=test-results
+      and resolve each line, or leave it on purpose and say which; and run
+      check-publish-set.sh --addresses ADDRESSES.txt again before publishing
+      that commit.
+    A REAL WALLET, ON THE LIVE SITE, ON BASE. Everything the browser suite
+    proves was driven by a stub wallet on a fork (web/REAL_WALLET_TEST.txt
+    says what that cannot prove). Once, by hand, in a fresh browser profile
+    with a real wallet holding a few dollars of ETH:
+      1. Open https://<the domain>/ with no query: the Launches page lists
+         launches, $CURB is the hero card, no settings panel opens and no
+         warning about a half link shows.
+      2. Open the hero: /token/<CURB> shows price, market cap and chart. Buy
+         a few dollars of it with ETH (one confirmation, through the router),
+         then sell part of it for ETH (the router approval once, then the
+         sale). Both transactions appear on Basescan from your address, and
+         the explorer links on the page open the right addresses.
+      3. Open the create form and pick each paired asset: each shows its
+         threshold and the platform's terms read from the chain. STOP THERE.
+         Do not press Create: a launch is a permanent registry record, and a
+         test launch on mainnet stays on the Launches page for good.
+      4. Switch the wallet to another network: the page says so and offers
+         to switch back.
+      5. Open /sharing: it loads. If $CURB shares with holders, its holder
+         details (/token/<CURB>#holders) load too.
+      6. Open /docs.html: the contract table's addresses are ADDRESSES.txt's.
+    Anything that does not behave stops the announcement, not the chain:
+    nothing on chain needs undoing for a page that is wrong.
+
+  STEP 9 - HOLDER SHARING'S SERVICES, BEFORE THE SITE IS ANNOUNCED
+    The factory is admitted inside the run, so a launch - $CURB too, with
+    CURB_FIRST_SHARE=1 - can share with holders from its first trade. Its
+    income then waits in its distributor until a keeper publishes and pays
+    it; the guardian has watched roots since STEP 5. Nothing is lost
+    meanwhile, but nothing is paid either. So, in this order, from
+    services/sharer/RUNBOOK.md - parts 2 to 6, 8.1, 8.2, 8.6 and the
+    rehearsal of 16.1 to 16.4 were done, and cleaned up, at PREP 3; the real
+    keeper has never run:
+      part 4.3         the /sharing/<chain>/ rewrite: committed by STEP 5 at
+                       the latest; check it once the first file exists
+      part 7           deploy/sharer.json, generated from this run's record
+                       with npm run config-from-run and committed at STEP 5,
+                       copied to the keeper folder's config/sharer.json;
+                       part 8.1 is done again first, at STEP 0's commit (the
+                       one CODE_AT names, STEP 5), and .env names that image
+                       (8.2); check must say config ok on every host
+      part 10          THE GUARDIAN, RUNNING SINCE STEP 5 on its operator's
+                       machine (or the fallback guardian's server, 10.2), its
+                       key a vetoer: factory.isVetoer(<guardian>) is true.
+                       Check it still is, that check says config ok there,
+                       and that it runs before the keeper starts (10.1) - it
+                       is never started after the keeper. It writes
+                       ops/status-guardian.json, signed with its vetoer key,
+                       with its own data repo token; without one, the
+                       verifiers' config needs
+                       verifier.guardianSilentAfterSec 0, or they page
+      part 8           the keeper, on its host: check, check --probe (the
+                       data repo write, a pin on every pinner, the read-back
+                       through the site and a gateway, a test alert) and
+                       alert-test, each ok, then up -d (8.3)
+      part 9           both workflows, enabled (part 4.1 disabled them) and
+                       run once each by hand from main: the standby run's
+                       log must say "standby stays idle" - a grey "skipped"
+                       job, run from main, means main is not the
+                       repository's default branch (RUNBOOK 4.1)
+      part 16.5        the GitHub standby takes over on Base: stop the PC's
+                       keeper, see a scheduled run act and the WARN arrive,
+                       start it again - before the site is announced
+    And on the keeper's host and the guardian's, the alert-test command
+    (RUNBOOK part 15) must reach every sink it names. GitHub's workflows
+    cannot run it: part 16.5's WARN reaching every sink is what proves the
+    standby's alert secret. The keeper's heartbeat (ops/status.json in the
+    data repo) must show a recent lastOkAt, and the guardian's
+    (ops/status-guardian.json) a recent beat of its own.
+
+================================================================================
+IMMEDIATELY AFTER, IN THIS ORDER
+================================================================================
+  1. FILE THE UNISWAP HOOK ALLOWLIST APPLICATION. Our hook uses
+     beforeSwapReturnsDelta and afterSwapReturnsDelta, so it is NOT
+     automatically routed and never could have been. The form needs a deployed,
+     explorer-verified hook and a pool with minimal liquidity. Read C7 first:
+     two of their six criteria bear on properties of our hook we are not going
+     to change, and the answer may be no.
+  2. MEASURE EACH AGGREGATOR'S REAL QUOTE ENDPOINT against a live launch.
+     Everything recorded in C7 is what a venue's DOCUMENTATION says; none of it
+     is a measurement that a swap actually routes into our pool.
+  3. LAUNCHES STUCK IN WAITING (AutoGraduationFailed). The curve emits it
+     when a crossing buy's automatic graduation fails - including when the
+     buyer starves it of gas under the 63/64 rule. A launch sitting
+     ready-but-ungraduated has both buying and selling closed until somebody
+     calls graduate(), which is permissionless - the launch's page has
+     Complete the move. THE KEEPER WATCHES FOR IT, given lens in its config
+     (config-from-run fills it; check prints "lens: not set (launches stuck
+     in Waiting are not watched)" otherwise): every ten minutes it reads
+     every launch's state through LaunchLens, and sends graduate() itself
+     from its pusher key (keeper.completeGraduations, on by default),
+     warning "A launch stuck in Waiting was graduated by the keeper". It
+     pages "A launch is STUCK in Waiting" when it cannot send it, and "...
+     and graduate() would REVERT" when the call would fail - an issuer
+     blocking the escrow needs Graduator.rescueCurveFees(token) first, which
+     the platform recipient may send at once and anyone else an hour after
+     Graduator.noteReady(token) (IF SOMETHING GOES WRONG, A LAUNCH STRANDED
+     BY THE ISSUER). For that launch the keeper sends noteReady itself,
+     once, so the hour starts without a person; the page says when the
+     rescue opens. Check, after
+     STEP 9, that the keeper host's check does not print "lens: not set".
+  4. ONCE $CURB (OR THE FIRST LAUNCH) GRADUATES, VERIFY ONE OF EACH PER-LAUNCH
+     CONTRACT: its CurbLaunchToken and PonsV2BondingCurve, its PositionLock
+     (Graduator.lockOf(token)) and, if it shares, its HolderFeeDistributor.
+     Every later launch's copies have the same code, so the explorer matches
+     them to these. Without a verified lock, the explorer's Write tab - which
+     docs.md points creators to for collecting LP fees - is unusable. STEP 6's
+     command and rules, with each contract's constructor arguments read from
+     its creation transaction. The curve and the token are also checked
+     against the pinned identities (ADDRESSES.txt, THE CODE THAT LANDED).
+  5. FROM HERE ON, INCIDENT.txt is the playbook when something goes wrong in
+     production, and SAFE_OPS.txt how every Safe signature is made.
+
+================================================================================
+ADDING A QUOTE ASSET AFTER LAUNCH
+================================================================================
+  WHICH ASSET, AND WHEN, IS THE OWNER'S DECISION; this is how it is done. A
+  factory's asset, phantom and threshold are immutable, an admitted launcher
+  can never be removed, and the registry holds at most 32
+  (LaunchRegistry.MAX_LAUNCHERS). So the stack is built by
+  script/DeployAssetStack.s.sol - DeployCurb's own _deployAssetStack and its
+  cross-checks, against the live registry, Graduator and hook read off the
+  chain - and nothing reaches the site until the policy Safe admits it,
+  last. IN THIS ORDER:
+  1. THE LIST, IN A COMMIT OF ITS OWN. The asset's line in
+     DeployCurb.quoteAssets(), priced as PREP 1 prices the list
+     (measure-thresholds.js against live Base, cross-checked with
+     Chainlink, ~$4,000 to ~$55,000), with its fixture in
+     test/fork/B20MultiAsset.t.sol and its test_lifecycleOn<asset>() named
+     in that file's bytes4[13] array (made one longer), the list's length in
+     test/fork/B20SafeERC20.t.sol (assertEq(shipped.length, 14)) raised by
+     one, and in test/fork/DeployCurbRun.t.sol (the launcher-gas test, which
+     measures the list against the eleven of before 15 October), its row in
+     web/docs.md's Paired assets table, and its Chainlink
+     feed in web/prices.js USD_FEEDS and in
+     services/sharer/deploy/sharer.example.json's sharing.feeds - the same
+     feed in both, which the preflight's dollar check asks. STEP 1 on that
+     commit, nothing skipped.
+  2. BUILD THE STACK, in the PREP 2 shell, on that commit, with the asset
+     preflight - never a forge command typed by hand. In a new shell, first
+       read -rs BASESCAN_API_KEY && export BASESCAN_API_KEY
+     as STEP 2 does - the printed command hands it to --verify as
+     ETHERSCAN_API_KEY, and an unset key leaves the four contracts
+     unverified after the broadcast (then STEP 6 by hand). Then, with every
+     address checksummed (STEP 2) and CURB_MAINNET_RPC naming a keyed Base
+     endpoint:
+       export CURB_DEPLOYER=<the deployer> CURB_REGISTRY=<the LaunchRegistry> \
+         CURB_WALLET_OPTION="<your wallet option, as STEP 2>"
+       bash script/b20/preflight-mainnet.sh --asset <its label in quoteAssets()>
+     It asks STEP 2's section 1 - the tree hashed against its commit, no
+     FOUNDRY_*, DAPP_*, ETH_*, ETHERSCAN_* or VERIFIER_* setting, no .env -
+     with the records an asset run may find: deployments/base-mainnet/run.json
+     there, nothing of this asset's, and any earlier asset run's record
+     already kept. It simulates script/DeployAssetStack.s.sol against live
+     Base, PRICES THE ASSET'S START AND GRADUATION AT CHAINLINK'S ANSWER -
+     within 5% of $4,000 and $55,000, STEP 2's section 6 for this one asset -
+     checks the funding, and prints the Safe's call with the asset's dollar
+     start and graduation beside it, then the one command to sign. That
+     command starts with
+       [ "$(env -u SHELLOPTS -u BASHOPTS -u BASH_ENV -u ENV bash script/b20/preflight-mainnet.sh --recheck-asset <the commit> <label>)" \
+         = "asset recheck passed <the commit> <label>" ] && \
+     which asks section 1 and the records again in the shell you sign from,
+     as STEP 4's does; run it exactly, from the repository root. (This step
+     used to be a forge command typed from here, with none of these checks:
+     a stale or uncommitted price passed everything automated, and the
+     signers saw only addLauncher(<address>).)
+     The script itself refuses a label quoteAssets() does not hold, an asset
+     the registry already admits a factory for, a full registry, and a
+     registry whose handover is still pending (STEP 4B first). It runs the
+     full run's checks - the unchanged contracts' code identities and the
+     asset's depth claim - and admits NOTHING: it prints the Safe's call, to
+     the registry, value 0, data addLauncher(<the new factory>), after showing
+     in the simulation, as the owner, that the call would pass.
+  3. COPY ITS RECORD at once, as STEP 4 does:
+       cp broadcast/DeployAssetStack.s.sol/8453/run-latest.json deployments/base-mainnet/asset-<label>.json
+     and run size-gate.sh --deployed <rpc> <address> FeeEscrow / FeePolicy /
+     PonsV2BuybackVault on the three it printed; each must print ok. Tick the
+     four contracts in ADDRESSES.txt only once the explorer shows them.
+  4. THE KEEPER SIDE, BEFORE THE SAFE SIGNS - services/sharer/RUNBOOK.md part
+     7.2: the new factory, escrow, policy and vault excluded and the asset's
+     feed added to sharing.feeds, with sharing.rules.version raised, on every
+     host at once (part 7.1: the keeper, GitHub, the guardian, a fallback
+     guardian). npm run config-from-run -- --from deploy/sharer.json --run
+     ../../deployments/base-mainnet/run.json --run
+     ../../deployments/base-mainnet/asset-<label>.json --bump --out
+     deploy/sharer.json adds the exclusions and the launcher; the feed is
+     added by hand. Until the Safe admits the factory, check names exactly
+     one problem - config.launchers lists an address the registry never
+     admitted, the new factory - and nothing else may fail.
+  5. THE SITE AND THE BOOK, ONE COMMIT: the asset's block in ADDRESSES.txt
+     and its record, the new factory in web/config.js factories, docs.md's
+     Paired-asset addresses row; then check-publish-set.sh --addresses
+     ADDRESSES.txt, and publish. The site offers the asset only once the
+     registry admits it; config.js knowing it first keeps the foreign-link
+     warning quiet from the first launch on it.
+  6. LAST, THE SAFE: addLauncher, entered as raw data exactly as the asset
+     preflight printed it (SAFE_OPS.txt, BEFORE ANY SIGNATURE). The signers
+     see beside it where the asset's launches start and graduate in dollars
+     at the day's Chainlink price - about $4,000 and $55,000, or no
+     signature. From that moment anybody can launch on the asset, for good.
+  7. READ IT BACK, with both records, with STEP 2's CURB_* settings exported.
+     In a new shell, export the same values again first, as STEP 2 writes
+     them (ADDRESSES.txt records them):
+       bash script/b20/check-deployment.sh <a Base RPC> deployments/base-mainnet/run.json deployments/base-mainnet/asset-<label>.json --accepted
+     must end "check-deployment: ok" (before the Safe's call it fails on
+     registry.launcherCount(), one short).
+     IF THE PLATFORM'S TERMS HAVE CHANGED SINCE THE RUN - the policy Safe
+     moved the recipient (decision 1 expects it to become a Safe) or the
+     share - CURB_PLATFORM_RECIPIENT stays the run's: every factory, policy
+     and $CURB is checked against what it was built or stamped with, read
+     from the records. Export the hook's terms now beside it,
+       CURB_HOOK_RECIPIENT=<the recipient executed>   CURB_HOOK_SHARE_BPS=<the share>
+     as ADDRESSES.txt records them, and the hook and every factory's
+     currentPlatformPolicy() are checked against those. The new stack's own
+     recipient is the one the hook held when it was built, and the check
+     prints it. A change announced and not yet executed is a note, not a
+     failure. (Every value used to be compared with the run's, so after a
+     legitimate change no export could pass and this step could never end
+     ok.) check on every keeper host now
+     says config ok, and the keeper's event scan reports "A listed launcher
+     was admitted to the LaunchRegistry" (INFO) - an UNLISTED one pages.
+
+================================================================================
+IF SOMETHING GOES WRONG
+================================================================================
+  A PARTIAL DEPLOYMENT. forge writes every sent transaction to
+  broadcast/DeployCurb.s.sol/8453/run-latest.json as it goes. If the run dies
+  half way - a dropped send, a rate limit, a closed laptop - DO NOT simply
+  re-run it: the registry's wire() is callable exactly once and a second full
+  run would deploy a second everything.
+  FIRST, COPY THAT FILE to deployments/base-mainnet/run.json and commit it,
+  alone: git add deployments/base-mainnet/run.json, then git commit - never
+  git commit -a, which would carry in the build artifacts git tracks under
+  out/ (STEP 0), and the resume's recheck refuses a commit that changes
+  anything outside deployments/.
+  broadcast/ is gitignored, and a later forge run against any node serving
+  chain 8453 overwrites run-latest.json - after a partial run it is the only
+  record of what landed. Leave the original where it is: --resume reads it.
+  AND KEEP THE RECORD'S OTHER HALF, privately: forge writes where each
+  transaction is sent - the endpoint, a provider key and all - apart from the
+  record, in cache/DeployCurb.s.sol/8453/run-latest.json, and --resume reads
+  that too. FOUNDRY_BROADCAST does not move it, so the browser suite's fork
+  runners and any other run on a node serving 8453 rewrite it with their own
+  endpoint. Copy it at once to a private place outside the repository, and
+  never commit it:
+    cp cache/DeployCurb.s.sol/8453/run-latest.json <a private folder>/run-latest.cache.json
+  If it was rewritten anyway, put that copy back; without one, write it
+  again - one {"rpc": <endpoint>} per transaction of the record, the
+  endpoint being exactly the one the RESUME command carries:
+    python3 -c 'import json,sys; n=len(json.load(open(sys.argv[1]))["transactions"]); json.dump({"transactions":[{"rpc":sys.argv[2]}]*n},open(sys.argv[3],"w"))' \
+      deployments/base-mainnet/run.json '<the endpoint the RESUME command carries>' cache/DeployCurb.s.sol/8453/run-latest.json
+  The resume's recheck refuses a cache half that is missing, holds another
+  number of transactions than the record, or names any other endpoint
+  (records_resumable): forge would resume against whatever it names - a
+  dead local node, or a fork whose receipts make the run look complete.
+  The preflight refuses to run while either file exists, and says why
+  (records_clear in script/b20/preflight-mainnet.sh), and so does the STEP 4
+  command's recheck. That is why the preflight printed the RESUME command
+  below the STEP 4 one, and why STEP 4 said to keep it: it cannot be printed
+  again now.
+  THE CLOCK. SharingCatalog.admitInitial works only from the deployer and
+  only within ONE DAY of the catalog's creation. DeployCurb calls it in its
+  sixth transaction, before any asset's stack (it used to come after all of
+  them), so the clock binds only a run that died within its first six. If
+  it did, and recovery takes longer than that day, the first distributor
+  version can only come in by the Safe's proposal and the catalog's seven
+  days - launches can share with holders only after that, and $CURB's
+  launch with CURB_FIRST_SHARE=1 reverts until then. Recover the same day.
+  THEN, IN THIS ORDER:
+    1. Read the copy: which transactions have a receipt, which were sent and
+       never mined, which were never sent.
+    2. RESUME, don't rebuild. forge continues the SAME recorded transactions
+       - the same addresses, the same arguments - from where they stopped.
+       Run the RESUME command the preflight printed, exactly, from the
+       repository root, in the STEP 4 shell (BASESCAN_API_KEY exported). It
+       is the STEP 4 command - every CURB_* setting, the endpoint, --sender,
+       --slow, --verify and the wallet option - with --resume added, and its
+       first two lines are
+         [ "$(env -u SHELLOPTS -u BASHOPTS -u BASH_ENV -u ENV bash script/b20/preflight-mainnet.sh --recheck-resume <the commit> <CURB_DEPLOYER> <the endpoint>)" \
+           = "resume recheck passed <the commit>" ] && \
+       which asks STEP 0's questions again, as STEP 4's recheck does, and
+       starts forge only if the record is there, every transaction in it is
+       CURB_DEPLOYER's, something is left to send, NONE OF ITS RECEIPTS IS A
+       REVERT (then step 3, not a resume), deployments/base-mainnet/run.json
+       is a byte-for-byte copy of it (copy it again if it is not), and the
+       cache half above names exactly <the endpoint>, the one --rpc-url
+       carries. HEAD must be the commit that broadcast, or a
+       commit after it that adds only files under deployments/ - committing
+       the copy is allowed, nothing else. If the command was not kept, type
+       it from the STEP 4 command: the first line's --recheck <commit>
+       becomes --recheck-resume <commit> <CURB_DEPLOYER> <the endpoint, as
+       --rpc-url gives it>, its expected line "resume recheck passed
+       <commit>", and --resume goes after --slow.
+       Use the keyed endpoint of STEP 4: a resume is sixty-odd sends at most,
+       one at a time. --resume sends nothing new that the simulation did not
+       record, and it rewrites the record as it goes: when it ends, copy
+       run-latest.json to deployments/base-mainnet/run.json again and commit
+       it the same way, alone.
+    3. If a recorded transaction reverted on chain - the resume's recheck
+       refuses such a record and points here - or can no longer succeed (a
+       nonce taken by something else, a state that moved), stop and work out
+       the rest by hand from the record, contract by contract, against
+       script/DeployCurb.s.sol's order. Never recreate a contract whose
+       creation has a receipt.
+    4. Then STEP 4A onwards as usual. check-deployment.sh reads what landed
+       and names what is missing.
+
+  $CURB IS NOT LAUNCH ZERO. check-deployment.sh fails with "$CURB is
+  registry.launchAt(<n>), not launchAt(0)" when somebody's launch landed on
+  the WETH factory in the one receipt between its admission and $CURB's own
+  (decision 6), or a partial run that died between the two left that gap
+  open longer. No other factory is admitted before $CURB, so the launch
+  ahead of it is a WETH one. The registry cannot be reordered, and the plain
+  front page would feature that launch. A RUN THAT DIED BEFORE $CURB'S
+  LAUNCH: resume it (the resume sends $CURB next, then the remaining
+  admissions); do not admit the other factories by hand first.
+    1. $CURB EXISTS ALREADY: do NOT launch it again. Its token and curve are
+       the ones check-deployment.sh printed from its launch's receipt - not
+       the script's "$CURB token" line, which was the simulation's and is
+       now another address. Record them in ADDRESSES.txt, with n and the
+       launch(es) ahead of it, and why.
+    2. From then on run check-deployment.sh with CURB_FIRST_INDEX=<n>
+       exported beside STEP 2's settings; ADDRESSES.txt records it with
+       them. It then passes, saying which launch $CURB is, and still fails if
+       $CURB is anywhere else.
+    3. List the launch(es) ahead of it in hiddenLaunches in web/config.js:
+       that takes them off the Launches grid, the hero and the search - but
+       THE HERO DOES NOT MOVE TO $CURB: a hidden first ETH pair leaves the
+       hero card empty, on purpose, because the next ETH pair is not one
+       anybody chose (browse.js loadHero). The plain front page then has no
+       hero; a link with ?featured=<$CURB> shows $CURB in it once $CURB is
+       in featured in web/config.js too - put it there in the same change,
+       since a ?featured= link naming a launch config.js does not list is
+       ignored (browse.js featuredAllowed). Featuring $CURB on the plain
+       front page in that case is a change to browse.js, with its own review
+       and tests, not a setting.
+  A run made with CURB_FIRST_LAUNCH=0 launched no $CURB at all: launch it on
+  the WETH factory by hand, with the decision 6 values and
+  CURB_FIRST_CREATOR as its creator wallet, then the three steps above for
+  whatever landed before it.
+
+  THE HANDOVER NOT ACCEPTED. If registry.pendingOwner() is still the Safe
+  days later, the deployer's key still owns the registry: the Safe executes
+  STEP 4B. If pendingOwner() is zero and owner() is still the deployer, the
+  run started no handover (decision 2) - the deployer calls
+  registry.transferOwnership(<the Safe>) by hand, reads pendingOwner back,
+  then STEP 4B.
+
+  THE WRONG RECIPIENT. The policy owner announces the right one
+  (announcePlatformRecipient), waits the 24 hours, and executes it
+  (executePlatformRecipient). Every launch created after that is stamped with
+  it. Launches created BEFORE the change keep the old recipient for good -
+  $CURB among them, since it is made inside the run - and only those need a
+  decision; redeploying would not rescue them either. (This paragraph used to
+  say the hook was immutable and order a full redeploy.) Record the executed
+  recipient in ADDRESSES.txt, and run check-deployment.sh from then on with
+  CURB_HOOK_RECIPIENT=<it> beside the unchanged CURB_PLATFORM_RECIPIENT
+  (ADDING A QUOTE ASSET, step 7, says why).
+
+  A LAUNCH STRANDED BY THE ISSUER. If the issuer blocklists the escrow, a full
+  curve cannot graduate, cannot be bought from and cannot be sold to. The exit
+  is Graduator.rescueCurveFees(launchToken). The curve's creator-fee recipient
+  and the platform recipient may call it at once: the platform Safe sending it
+  is the quickest way out. Anybody else may once the launch has sat full and
+  ungraduated for an hour (RESCUE_DELAY) after Graduator.noteReady(launchToken)
+  recorded it so - anyone may send that note, app.html's "Rescue the curve's
+  fees" sends it on the first press, and readySince(launchToken) reads it.
+  Not at the moment the curve is full: the buyer who fills it can starve its
+  automatic graduation and would rescue in the same transaction, forcing the
+  creator's tax out as raw WETH; in the hour the keeper completes the move of
+  any launch that is not truly stranded. It pays the fees directly and the
+  launch then graduates. This was provoked and
+  measured [AUDIT C-1]. It does NOT help if the blocked address is
+  the protocol's own recipient; nothing routes around the issuer.

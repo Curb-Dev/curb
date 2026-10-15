@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Curb — launch state</title>
+<meta property="og:site_name" content="Curb" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Curb — a launch's state" />
+<meta property="og:description" content="Launch coins paired with ETH, stocks and more. Launch in one transaction, trade from the first block, liquidity locked forever." />
+<meta property="og:image" content="https://curb.fun/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Curb: launch coins paired with ETH, stocks and more" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@curbfun" />
+<!-- THE DEPLOYMENT AND THE INCIDENT SWITCHES, before any script reads them. -->
+<script src="config.js"></script>
+<link rel="icon" href="curb-mark.svg" />
+<link rel="stylesheet" href="topbar.css" />
+<style>
+  /* Same palette as the other pages. See browse.html for where the values came
+     from. This file names its text colour --text and its accent --accent; the
+     values are the same ones. */
+  :root {
+    color-scheme: dark;
+    --bg: #080b11; --panel: #0e131b; --panel2: #131a24; --line: #1d2633;
+    --text: #eef2f7; --dim: #94a0b0; --dimmer: #5f6b7c;
+    --accent: #0052ff; --paint: #0052ff; --paint-hi: #2a6dff; --warn: #ffb020; --bad: #ff6b6b;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); }
+
+  main { max-width: 648px; margin: 0 auto; padding: 0 clamp(24px, 3vw, 40px) 96px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); font-size: 13px; margin: 0 0 24px; line-height: 1.5; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 28px; margin-bottom: 28px; }
+  label { display: block; font-size: 12px; color: var(--dim); margin-bottom: 6px; }
+  input { width: 100%; box-sizing: border-box; background: transparent; color: var(--text);
+          border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: inherit; font-size: 13px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  input[readonly] { color: var(--dim); }
+  .row { display: grid; gap: 12px; grid-template-columns: 1fr; }
+  @media (min-width: 620px) { .row.two { grid-template-columns: 1fr 1fr; } }
+  button { background: var(--accent); color: #06281a; border: 0; border-radius: 8px;
+           padding: 11px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  button[disabled] { opacity: .5; cursor: not-allowed; }
+  .state { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 650; margin: 2px 0 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); flex: none; }
+  .dot.selling { background: var(--accent); }
+  .dot.waiting { background: var(--warn); }
+  .dot.graduated { background: #7aa2f7; }
+  .dot.notfound { background: var(--bad); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 14px 0 0; font-size: 13px; }
+  dt { color: var(--dim); }
+  dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  .bar { height: 6px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 12px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  .note { font-size: 12.5px; color: var(--dim); line-height: 1.55; margin: 12px 0 0; }
+  /* Deliberately OUTSIDE the state card: the card is hidden whenever reading
+     fails, and a message drawn inside it would be invisible exactly when it is
+     most needed. */
+  #msg { font-size: 13px; margin: 0 0 16px; padding: 11px 13px; border-radius: 10px;
+         border: 1px solid var(--line); background: var(--panel); line-height: 1.55; }
+  #msg.err { border-color: var(--bad); color: var(--bad); }
+  #msg.ok { border-color: var(--accent); }
+  #msg.wait { border-color: var(--warn); }
+  /* The one control a message can carry: ending a record nothing on chain can
+     settle. Small and plain, so it reads as a choice, not as the next step. */
+  #msg button.forget { font: inherit; font-size: 12px; margin-left: 4px; padding: 3px 9px; border-radius: 7px;
+                       border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+</style>
+</head>
+<body>
+<header id="siteBar" data-page="launch"></header>
+<script src="topbar.js"></script>
+<main>
+  <h1>Curb — launch state</h1>
+  <p class="sub">Reads <code>LaunchLens.launchState()</code> straight from the chain. No status is stored anywhere but the contracts. Reading needs no wallet; only completing a transition does.</p>
+
+  <div class="panel">
+    <div class="row two">
+      <div>
+        <label for="lens">LaunchLens address</label>
+        <input id="lens" spellcheck="false" placeholder="0x…" />
+      </div>
+      <div>
+        <label for="grad">Graduator (read from the lens, not typed)</label>
+        <input id="grad" spellcheck="false" readonly placeholder="—" />
+      </div>
+    </div>
+    <div class="row two" style="margin-top:12px">
+      <div>
+        <label for="token">Launch token</label>
+        <input id="token" spellcheck="false" placeholder="0x…" />
+      </div>
+      <div>
+        <label for="rpc">RPC endpoint (for reading without a wallet)</label>
+        <input id="rpc" spellcheck="false" placeholder="http://127.0.0.1:8546" />
+      </div>
+    </div>
+    <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap">
+      <button id="connect" class="ghost">Connect wallet</button>
+      <button id="refresh" class="ghost">Refresh</button>
+    </div>
+    <p class="note" id="wallet">No wallet connected. Reading works without one; completing a transition needs one.</p>
+  </div>
+
+  <div id="msg" hidden></div>
+
+  <div class="panel" id="card" hidden>
+    <div class="state"><span class="dot" id="dot"></span><span id="statusText">—</span></div>
+    <p class="note" id="statusNote"></p>
+
+    <div id="progressWrap" hidden>
+      <div class="bar"><i id="progress" style="width:0%"></i></div>
+      <p class="note" id="progressText"></p>
+    </div>
+
+    <div id="actionWrap" hidden style="margin-top:16px">
+      <button id="complete">Complete the move to the pool</button>
+      <p class="note">
+        Anyone can do this — it takes no permission and gives the caller no claim on anything.
+        <strong>You pay the gas for it</strong>, and every term of the graduation comes from the
+        launch's registry record, not from this page.
+      </p>
+    </div>
+
+    <dl id="facts"></dl>
+  </div>
+</main>
+
+<!-- The send-path protections, shared with app.html. Must load first. -->
+<script src="tx-core.js"></script>
+<script src="launch.js"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400" role="img" aria-label="CURB">
+  <!--
+    CURB — profile mark.
+
+    The name comes from the Curb Exchange: traders who could not get inside the
+    NYSE dealt on the kerb outside. The mark is a kerb in profile - which is
+    also a step up, which is also a rising chart. Three readings, one shape.
+
+    ONE step, not a staircase. A two-step version read well at 200px and turned
+    to mush at 32px, where most of a profile picture's life is spent. The mark
+    also sits well inside the inscribed circle, because X crops to one and a
+    shape that runs to the edges loses its ends. Sat 26px low in the circle on
+    the first pass: the amber mass on the right pulls the eye, so the geometric
+    centre has to sit slightly left and above the true one.
+  -->
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#161A21"/>
+      <stop offset="1" stop-color="#0A0C0F"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="400" fill="url(#ground)"/>
+
+  <g fill="none" stroke-linecap="butt" stroke-linejoin="miter" stroke-width="52">
+    <!-- road level, the riser, and the top of the kerb -->
+    <path d="M 90 260 H 200 V 148 H 300" stroke="#E9ECF0"/>
+    <!-- the top, painted. A painted kerb is one you may not stand on; this is
+         the one you have got onto. -->
+    <path d="M 174 148 H 300" stroke="#F5A524"/>
+  </g>
+</svg>

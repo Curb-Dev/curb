@@ -1,0 +1,41 @@
+<!doctype html><meta charset="utf-8"><title>CURB brand preview</title>
+<style>
+ body{margin:0;background:#F4F5F7;font:14px ui-sans-serif,system-ui,sans-serif;color:#12151b;padding:26px}
+ h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#667;margin:22px 0 10px}
+ .row{display:flex;gap:22px;align-items:flex-end;flex-wrap:wrap}
+ .c{border-radius:50%;box-shadow:0 1px 4px #0002}
+ figure{margin:0;text-align:center} figcaption{font-size:11px;color:#667;margin-top:6px}
+ /* how X actually shows a profile: banner with the avatar overlapping */
+ .profile{width:600px;background:#fff;border:1px solid #e3e6ec;border-radius:14px;overflow:hidden}
+ .profile .b{display:block;width:600px;height:200px;object-fit:cover}
+ .profile .av{width:112px;height:112px;border-radius:50%;border:4px solid #fff;margin:-58px 0 0 16px;display:block;position:relative}
+ .meta{padding:8px 18px 18px}
+ .nm{font-weight:800;font-size:19px} .hd{color:#667;font-size:14px;margin-bottom:8px}
+ .bio{font-size:14.5px;line-height:1.45}
+ .narrow{width:380px}
+ .narrow .b{width:380px;height:127px}
+</style>
+<h2>Profile picture — as X crops it</h2>
+<div class="row">
+  <figure><img class="c" src="curb-avatar.svg" width="200" height="200"><figcaption>200</figcaption></figure>
+  <figure><img class="c" src="curb-avatar.svg" width="96" height="96"><figcaption>96</figcaption></figure>
+  <figure><img class="c" src="curb-avatar.svg" width="48" height="48"><figcaption>48</figcaption></figure>
+  <figure><img class="c" src="curb-avatar.svg" width="32" height="32"><figcaption>32</figcaption></figure>
+  <figure><img class="c" src="curb-avatar.svg" width="24" height="24"><figcaption>24</figcaption></figure>
+</div>
+
+<h2>The two together, as a profile</h2>
+<div class="row" style="align-items:flex-start">
+  <div class="profile">
+    <img class="b" src="curb-banner.svg"><img class="av" src="curb-avatar.svg">
+    <div class="meta"><div class="nm">CURB</div><div class="hd">@curbfun</div>
+      <div class="bio">Stock-paired launches on Base. Every token trades against a real ticker, not against ETH. Building in public — nothing live yet. curbfun.xyz</div></div>
+  </div>
+  <div class="profile narrow">
+    <img class="b" src="curb-banner.svg"><img class="av" src="curb-avatar.svg">
+    <div class="meta"><div class="nm">CURB</div><div class="hd">@curbfun</div></div>
+  </div>
+</div>
+
+<h2>Banner, full width</h2>
+<img src="curb-banner.svg" width="900">

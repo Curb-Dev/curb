@@ -1,0 +1,365 @@
+THE REAL-WALLET RUN
+===================
+
+Everything web/app.html does has so far been driven by a stub this repository
+wrote. The stub forwards real transactions to a real fork, so what the browser
+suite proves about the CONTRACTS is sound. What it cannot prove is anything
+about a real wallet, because the stub is the part that would have to be wrong:
+it decides its own error codes, its own confirmation dialog, its own idea of
+which network it is on, and it signs with a key the page never sees.
+
+This is the run that a person does by hand, once, with a real wallet. Nothing
+here is automated and nothing here should be: the point is the software that
+was not written in this repository.
+
+WHAT DECIDES WHETHER IT PASSED
+  Not the page. script/b20/wallet-session.sh reads the chain afterwards - which
+  transactions were mined, who sent them, what they called, and what moved - and
+  exits non-zero if any required step is missing. The page's own account of what
+  happened is the thing under test, so it is not evidence.
+
+  The gate itself is checked by script/b20/selftest-wallet-gate.sh, which
+  replays the flow one step at a time and requires the gate to refuse at each
+  point where a step has not happened yet.
+
+
+BEFORE YOU START
+----------------
+
+A SEPARATE BROWSER PROFILE, AND A WALLET THAT HOLDS NOTHING.
+  This adds a network whose RPC is a local node, and it asks you to send
+  transactions and to switch networks. Do not do it in a profile that has a
+  wallet with money in it. Make a new browser profile, install the wallet there,
+  and create a NEW account in it. That account will be funded on the fork with
+  play money and it never needs anything else.
+
+  If you are asked at any point for a seed phrase or a private key belonging to
+  a wallet you actually use, stop: nothing in this run needs one.
+
+THREE THINGS RUNNING, EACH IN ITS OWN TERMINAL.
+
+  1  the pinned fork, answering with a chain id of its OWN
+       export SERVE_CHAIN_ID=84530
+       bash script/b20/start-node.sh
+     NOT Base's 8453, which is what the fork would otherwise report. A wallet
+     cannot tell 8453 from 8453: MetaMask merges the localhost endpoint into its
+     Base entry, prices gas in dollars, and runs its hosted simulation against
+     the PUBLIC chain - where a contract deployed here does not exist, so every
+     confirmation reads "this transaction is likely to fail". The warning is
+     false and it makes the wallet's real warnings unreadable, which is most of
+     what this run is for. Keep SERVE_CHAIN_ID exported for `prepare` too.
+
+  2  an empty scratch chain, used ONLY by the wrong-network step
+       bash script/b20/scratch-node.sh
+     Its whole reason to exist is that the obvious "other network" to switch to
+     is a real one, and a page with the bug this step looks for would then
+     broadcast to it for real.
+     START IT BEFORE `prepare`. The session records it, and the gate checks the
+     wrong-network step on BOTH chains - that is the chain a mistaken send would
+     land on. A session prepared without it makes that step FAIL rather than
+     pass on the fork alone.
+
+  3  the page
+       node web/e2e/serve.js
+
+THEN PREPARE THE CHAIN, with the address your test account shows:
+
+    bash script/b20/wallet-session.sh prepare --wallet 0xYOURTESTADDRESS
+
+  It deploys the stack with that address as the PROTOCOL'S FEE RECIPIENT.
+  launch() itself is open to anyone and whoever sends it becomes that launch's
+  creator, so a second wallet could create one too; this run uses one wallet
+  throughout because it is the one that is funded. It funds the
+  address with NVDAc and with gas, and it prints the two networks to add to the
+  wallet and the URL to open. It also turns anvil's impersonation back OFF, so
+  that "every transaction came from the wallet" means the wallet signed it.
+
+ADD BOTH NETWORKS TO THE TEST WALLET
+
+    Name  CURB local fork    RPC  http://127.0.0.1:8546    Chain ID  84530
+    Name  CURB scratch       RPC  http://127.0.0.1:8547    Chain ID  31337
+
+  Both are custom networks the wallet has never heard of, which is the point:
+  neither can be confused with a real one. `prepare` prints the ids it actually
+  found, and those are the ones to trust over this file.
+
+  OR LET THE WALLET DO IT. Open
+
+      http://127.0.0.1:8778/wallet-setup.html
+
+  and press "Add CURB local fork" and "Add CURB scratch". It asks the wallet
+  through wallet_addEthereumChain, so there is an Approve button instead of a
+  five-field form to fill twice - which is where the first attempt at this run
+  stopped. It reads both chain ids from the endpoints rather than carrying them,
+  so what gets added is what the nodes actually serve. It sends no transactions.
+  Its Switch buttons also do step 6's move to the scratch chain and back.
+
+  Start on CURB local fork.
+
+  THE ETH BALANCE DOES NOT TELL THEM APART, and an earlier version of this file
+  said it did. `prepare` funds the wallet on BOTH chains on purpose - the
+  scratch chain needs it so that a mistaken send there could actually be mined
+  rather than being refused for lack of gas - so both read about a thousand ETH.
+  The fork reads slightly LESS than 1000, because deploying the stack from this
+  address spent some, and a wallet rounding to three or four places shows the
+  same thing for both. It was mistaken for the fork on the first attempt.
+
+  WHAT DOES TELL THEM APART
+    the network's NAME in the wallet: CURB local fork, not CURB scratch
+    NVDAc: 2,000 of it on the fork, and the token does not exist on the scratch
+      chain at all. Add 0xb20000000000000000000078ee7ce2fE4908108C to see it,
+      or just read the page - it shows your NVDAc balance in the header
+    the page itself, which refuses and names both chain ids when they differ
+
+
+THE RUN
+-------
+
+Open the URL that `prepare` printed. Where a step says `mark <name>`, run it in
+a terminal:
+
+    bash script/b20/wallet-session.sh mark <name>
+
+ 1  CONNECT
+    Press "Connect wallet" and approve. The account shown must be the address
+    you prepared with.
+
+ 2  CREATE
+    Fill in a name and a symbol and press "Create the launch". Confirm in the
+    wallet. The page should report the new token's address and then read the
+    launch back as Selling.
+
+ 3  BUY
+    "Buy on the curve", 10 NVDAc. Before confirming, read what the page says:
+    the amount, the expected tokens, the minimum after slippage, and the fees.
+    Confirm. The tokens should arrive and the numbers on screen should be the
+    ones that happened.
+
+ 4  THE DECLINE - this is one of the two steps that must send NOTHING
+
+        bash script/b20/wallet-session.sh mark reject-before
+
+    Press "Buy on the curve" again and REJECT it in the wallet.
+    The page must say that NOTHING WAS SENT and that you can try again. If it
+    says instead that it is not certain nothing was broadcast, that is a real
+    finding: the wallet is not using EIP-1193 code 4001 for a decline, and
+    app.js only trusts the code. Write down exactly what it said.
+
+        bash script/b20/wallet-session.sh mark reject-after
+
+ 5  SELL
+    Switch the side to sell, sell some of the tokens back, confirm. NVDAc should
+    come back and the token balance should fall.
+
+ 6  THE WRONG NETWORK - the other step that must send NOTHING
+
+        bash script/b20/wallet-session.sh mark network-before
+
+    Switch the wallet to CURB scratch (31337). Leave the page's RPC box alone.
+    Press "Buy on the curve".
+    The page must refuse, saying your wallet is on chain 31337 while the RPC
+    endpoint serves whatever SERVE_CHAIN_ID it was started with - 84530 in the
+    run that has been done - and that nothing is sent until they are the same
+    network. The wallet should never open a confirmation dialog - WRITE DOWN
+    whether it did, because the gate cannot see that; it only sees what reached
+    a block, and it looks at both chains for that.
+    Switch the wallet back to CURB local fork.
+
+        bash script/b20/wallet-session.sh mark network-after
+
+ 7  UP TO THE THRESHOLD
+    Buy in 10 NVDAc steps until the progress towards graduation is somewhere
+    around 45 of 60. Do not cross it yet.
+
+ 8  THE CROSSING BUY, ON A HAND-SET GAS LIMIT
+    Buy 66 NVDAc - and before confirming, open the wallet's advanced gas
+    settings and set the GAS LIMIT to 900000.
+
+    WHY. The curve calls the graduator itself on the buy that crosses the
+    threshold. With enough gas the launch is Graduated the moment it is ready,
+    the Waiting state never exists, and the page's permissionless button never
+    has anything to do. Waiting is the state where both sides of the curve are
+    shut and the pool does not exist yet, and the only way to reach it is for
+    that automatic attempt to FAIL. A tight limit is how this run tries to
+    make it fail, and 900000 is the value that has produced it on this fork.
+    Do not read that as the amount graduation needs: graduate() sent on its own
+    costs about 1.5 million here, but that is a different call context and does
+    not measure the nested attempt.
+      The event the curve emits says an attempt failed. It does NOT say why -
+      the number it carries is gasleft() read after the call returned, and the
+      catch keeps no reason - so neither the event nor the receipt holds one.
+
+    After it confirms the page should read Waiting, and offer the button.
+    If it reads Graduated instead, the limit was not tight enough - the gate
+    will say so, and you can start over with `prepare`.
+
+ 9  THE PERMISSIONLESS BUTTON
+    Press "Complete the move" and confirm. The page should read Graduated, and
+    show the lock ("unlocks: never"), and the amount actually burned.
+
+10  THE POOL
+    "Buy in the pool", a few NVDAc. This goes through the UniversalRouter and
+    needs approvals - expect more than one confirmation. Check that what the
+    page quoted is what arrived.
+
+11  ETH INTO THE TOKEN - the routed path
+    Set "Pay / receive with" to ETH (routed), side Buy, amount 0.002.
+    The quote should show a line saying the ETH becomes NVDAc and that the NVDAc
+    is "held by the router between the two legs", and a minimum that says it is
+    on the tokens you receive rather than on the NVDAc in the middle.
+    Confirm. There should be NO Permit2 approval on this path: nothing of yours
+    is moved except the transaction's value.
+
+    WRITE DOWN, from the result line:
+      the hash
+      "you paid" - it must be exactly the amount you entered
+      the fee line: the L2 part, and whether the L1 part says a number or
+        UNKNOWN. On this fork the receipt carries no l1Fee, so unknown is the
+        correct answer and "0" would be wrong
+      the exact figures at the bottom, in the smallest unit
+
+12  THE TOKEN BACK INTO ETH
+    Side Sell, "Pay / receive with" still ETH, amount some of your tokens.
+    This path DOES need Permit2 - the tokens are yours and it moves them - so
+    expect the two approvals and then the swap.
+
+    WRITE DOWN:
+      the hash
+      "this transaction unwrapped ..." - this is what the transaction paid out,
+        read from WETH's own event rather than from your balance
+      "your balance moved by ..." - a different statement, and it carries the
+        fee. The two are not meant to be equal
+      the fee line again, and the exact figures
+
+    WHY THOSE TWO ARE SEPARATE. A balance difference includes anything else that
+    arrived while the trade was in flight, and the fee comes out of the same
+    balance. The page reports what the TRANSACTION did and shows the balance
+    beside it, saying so. If it ever claims they disagree, that line is worth
+    keeping: it means something moved ETH that this transaction did not.
+
+IF THE WALLET SAYS A TRANSACTION FAILED
+--------------------------------------
+
+  DO NOT SEND IT AGAIN YET. In this run that is how one intended purchase became
+  two: the wallet reported a failure, the buy was repeated, and BOTH are on
+  chain. Paying twice is the thing the page's own messages are built to prevent,
+  and here the false report came from the wallet instead.
+
+  CAPTURE, BEFORE ANYTHING ELSE
+    the wallet's message, word for word, and a screenshot
+    WHEN it appeared: on the confirmation screen, before you approved, or
+      afterwards - a prediction and a report are different faults
+    where it appears now: does the activity list show that entry as failed?
+    the transaction hash, the NONCE, and the gas limit the wallet used
+    what the PAGE said at the same moment
+
+  THEN LOOK AT THE CHAIN, and only then decide
+
+      bash script/b20/wallet-session.sh show     # the session's start block
+
+    A nonce that is on chain means the transaction was sent. Whether it
+    SUCCEEDED is the receipt's status, not the wallet's word. If the nonce is on
+    chain with status 0x1, the trade happened and repeating it buys a second
+    one. If no transaction carries that nonce, nothing was sent and the wallet
+    refused - which is a different fault and a safe one.
+
+  WHAT THIS RUN FOUND, as a worked example: every nonce from 10 to 31 was
+  present, contiguous, and successful. There was no failed transaction anywhere
+  on the chain while the wallet was reporting failures.
+
+THEN
+
+    bash script/b20/wallet-session.sh verify
+
+
+WHAT THE GATE CHECKS
+--------------------
+
+    every transaction in the session came from the wallet
+      Nothing else drove the chain. Impersonation is off, so this means the
+      wallet's key signed all of them.
+    the wallet created a launch
+      A successful launch() to the prepared factory, emitting LaunchCreated
+      with the wallet as creator. The token and the curve are taken FROM that
+      event, not from anything typed in.
+    the wallet bought on the curve
+      A successful buy() to that curve, and the token balance rose across that
+      block.
+    the lens said Selling (1) at the block of that buy
+    the wallet sold on the curve
+      Tokens down and NVDAc up across that block, not just a call that returned.
+    the wallet graduated the launch with the permissionless button
+      A successful graduate() to the graduator emitting Graduated. A launch that
+      graduated inside the crossing buy does NOT satisfy this - there was no
+      Waiting state and no button.
+    the lens said Waiting (2) in the block before the button was pressed
+    the lens reports Graduated (3)
+    the LP position is held by the lock
+      holdsPosition() is true and lockedLiquidity() is not zero: locked forever.
+    the remainder was burned
+      Total supply on either side of the graduation block differs by EXACTLY
+      what RemainderBurned says. The event alone is not the measurement.
+    the wallet traded the pool after graduation
+      A successful execute() to the UniversalRouter, in a block after the
+      graduation, with both balances moved.
+
+    THE ETH LEGS ARE NOT IN THE GATE. verify checks the NVDAc-denominated pool
+    trade; steps 11 and 12 are read off the page and the receipts by hand. The
+    route itself is covered by test/fork/B20EthRoute.t.sol against the deployed
+    router, and by the browser suite - what is being looked at here is a REAL
+    wallet doing it, which is the part neither can stand in for.
+    declining in the wallet put nothing in a block
+    a wallet on the wrong network put nothing in a block on either chain
+      Between the two marks the wallet's nonce did not move and nothing of its
+      was mined - on the fork AND on the scratch chain, because a page that
+      wrongly sent while the wallet was on the other network would have sent it
+      THERE and left the fork untouched. The wallet is funded on the scratch
+      chain so such a mistake could actually be mined; otherwise the node would
+      refuse it and the check would pass for the wrong reason. A transaction
+      that reverted on chain still moves the nonce, so a page that sent
+      something and got a revert cannot pass this by failing.
+      IT IS ABOUT WHAT ENTERED A BLOCK, and nothing more. It does not show that
+      the wallet's dialog never opened, that no request left the page, or that
+      you pressed the button at all - a transaction can sit in a mempool or be
+      refused by a node and leave nothing behind. You saw those things; the
+      chain did not. Say so in your notes if what you saw disagrees.
+
+
+WHAT ONE RUN ALREADY ANSWERED
+-----------------------------
+
+  Done once with MetaMask 13.41.0, against a fork whose STATE is Base at block
+  51171034 but whose SERVED chain id is 84530, not Base's 8453. 13 of 13,
+  exit 0. The transactions, the numbers and the findings are in web/README.txt
+  under THE REAL-WALLET RUN. In short:
+
+    a decline really is 4001, so app.js's code-only check holds for MetaMask
+    the wrong network never opened the confirmation dialog at all
+    MetaMask allowed the gas limit to be set by hand, so Waiting is reachable
+    an event and a balance delta agreed EXACTLY, in raw units, on the sell
+    whether a QUOTE equalled its realisation is NOT established - the page
+      prints six decimals of an eighteen-decimal amount, so the comparison
+      can only be made at a display's resolution
+    the success message after a pool swap ADDS the hook fee to the swap output
+      when the trader is also the fee recipient, and says nothing about it
+
+
+WHAT THIS RUN CANNOT TELL YOU
+-----------------------------
+
+  WHICH CODE A WALLET SENDS FOR EVERY KIND OF FAILURE. Step 4 checked one
+  wallet's DECLINE and got 4001. app.js treats 4001 as the only thing that means
+  "nothing was sent", deliberately - a provider failing for its own reasons can
+  wrap a message that reads "user rejected" while the transaction went out
+  anyway. What a wallet sends for the failures that are NOT declines - a dropped
+  connection, a provider erroring mid-send - is still unobserved, and so is
+  every other wallet. If yours uses a different code for a decline, the page will
+  be honest and unhelpful: it will say it is not certain. That is a finding about
+  the wallet, and it belongs in this file when you have one.
+
+  A CONFIRMATION LEFT OPEN FOR MINUTES, or a network switched while it is open.
+  app.html re-reads the chain id after the dialog resolves and refuses, but no
+  run has held a dialog open long enough for the receipt poll and that check to
+  race. Nothing here makes you wait.
+
+  ANY WALLET BUT THE ONE YOU USED. Each of them is its own program.

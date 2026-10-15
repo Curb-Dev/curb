@@ -1,0 +1,525 @@
+================================================================================
+CURB - THE FEE POLICY, DECIDED
+================================================================================
+
+THE DECISION, AS THE CODE NOW HOLDS IT
+  Every buy and every sell carries ONE tax, between 1% and 5%, and the CREATOR
+  picks the number for their own launch. Of that tax the platform takes a share
+  P of the trade base; everything above it goes to the creator. Raising the tax
+  does not raise the platform's share - it only raises the creator's.
+
+    tax T, chosen per launch, 100 <= T <= 500 bps
+    platform  =  P bps of the base, frozen per launch - 50 at deployment
+    creator   =  T - P bps
+
+  P IS NOT FIXED ACROSS LAUNCHES. This decision was first written as "a FIXED
+  0.5%", "50 bps of the base, always", and that is not what was built. P is
+  the fee hook's platformFeeBps. Its owner (the policy owner, DEPLOY.txt
+  decision 3) can change it FOR FUTURE LAUNCHES ONLY: announce, wait
+  POLICY_CHANGE_DELAY (24 hours), execute inside POLICY_CHANGE_WINDOW (7 days),
+  anywhere from 0 up to maxPlatformFeeBps() = 80 bps, a cap that keeps the
+  creator at no less than a fifth of the lowest tax [FeeHook.sol,
+  announcePlatformFeeBps / executePlatformFeeBps]. launch() reads P once and
+  freezes it, with the recipient, into the launch's record; the curve and the
+  pool both charge that copy, so a launch's P never moves after it is created
+  [CurbLaunchFactory.launch, the policy.platformFeeBps() read].
+
+  Charged in THE LAUNCH'S QUOTE ASSET on both sides - WETH, USDC, a
+  Coinbase-wrapped coin, VIRTUAL or AERO, or a tokenized stock: fourteen since
+  2026-10-15 [DeployCurb.quoteAssets]. NVDAc, in the figures below, was the
+  first and is one of fourteen:
+    on a BUY   the base is the quote INPUT
+    on a SELL  the base is the GROSS quote OUTPUT
+  The same policy applies on the curve and in the graduated pool, so a trader's
+  cost does not change shape at graduation.
+
+  The earlier 0.05% and 0.005% additional cuts are DROPPED. They do not exist
+  in this policy.
+
+  THE LP FEE IS NOT PART OF THE TAX and is never folded into it. It is the
+  pool's own fee tier, it exists only after graduation, and it is shown on its
+  own line everywhere a cost is displayed.
+
+WHAT THIS FILE IS
+  The current fee behaviour read out of the contracts, the proposed behaviour
+  beside it, and the implementation and test scope that follows. No contract is
+  changed by this file. Line references were checked against the files while
+  writing; the ones that drifted are replaced by the name of what they point
+  at, which does not drift.
+  WHERE A LATER SECTION SAYS 50 BPS, OR "FIXED", read it as P at its starting
+  value: sections 2 to 7 were written while P was a constant, and THE DECISION
+  above says what it is now.
+
+
+================================================================================
+1. WHAT THE CONTRACTS DID BEFORE THE DECISION WAS BUILT
+================================================================================
+  THIS SECTION IS THE BEFORE STATE, RELABELLED 2026-09-20. It was written as
+  "what the contracts do today" and that stopped being true when the decision
+  at the top of this file was implemented. What is in the code now:
+
+      then                              now
+      feeBps 100, a parameter           the hook's platformFeeBps AS FROZEN
+                                        INTO THE LAUNCH'S RECORD by launch()
+                                        [CurbLaunchFactory.launch]: 50 at
+                                        deployment, 0..80 for later launches
+                                        if the policy owner moves it
+      protocolFeeShareBps 2000          PROTOCOL_FEE_SHARE_BPS = 10000, no
+                                        split [CurbLaunchFactory, the
+                                        constant of that name]
+      creatorTaxBps 300, fixed          T - P, T chosen per launch inside a
+                                        band [CurbLaunchFactory.launch]
+      hook fee a flat 100 bps           the same P / T-P split, read from the
+                                        launch's registry record so it cannot
+                                        drift from the curve's
+                                        [FeeHook.configureLaunch]
+
+      THIS ROW USED TO SAY "PLATFORM_FEE_BPS = 50, a constant", with a note
+      under the table contradicting it. The constant still exists, but launch()
+      never charges it: it is only the floor the factory's tax band is checked
+      against at construction (BandBelowPlatformFee).
+
+  Sections 2 onward are current in structure; for "50" read P (see WHAT THIS
+  FILE IS).
+
+
+  ON THE CURVE - two separate charges, on the base this policy already wants
+    curve fee     feeBps of the base; accrues in the curve and is SPLIT at
+                  sweep: protocolFeeShareBps of it to protocolFeeRecipient, the
+                  rest to the creator [PonsV2BondingCurve.sol:407, :479, and
+                  _sweepFees]
+    creator tax   creatorTaxBps of the same base, to the creator IN FULL,
+                  never entering the split [same lines]
+    the base      the quote INPUT on a buy, the GROSS quote output on a sell -
+                  which is exactly the base decided above, so nothing about the
+                  MATRAH has to change
+    candidate     feeBps 100, creatorTaxBps 300, protocolFeeShareBps 2000
+
+  IN THE POOL - a flat hook fee, on the wrong side for this policy
+    hook fee      100 bps of the swap OUTPUT, taken inside the swap and paid
+                  immediately [the hook's immutable fee fields then; the hook has no rate
+                  field now].
+                  The RATE was identical for every launch then; it is now the
+                  launch's own T, with the platform's P read from the registry
+                  [FeeHook.configureLaunch].
+    which token   the pool is always launch-token/NVDAc, so the output is the
+                  memecoin on a buy and NVDAc on a sell
+    LP fee        the pool's own tier - 500, 3000 or 10000 are the ones the
+                  registry supports [LaunchRegistry.isSupportedFee], but a
+                  factory's tier is immutable and every factory DeployCurb
+                  builds uses 500 (POOL_FEE) - accruing to the locked
+                  position, which pays the beneficiary [PositionLock.claimFees]
+
+  WHAT A TRADER PAYS TODAY, on 100 NVDAc, at the candidate parameters
+    curve buy     4.00 NVDAc     platform 0.20, creator 3.80
+    pool buy      1% of the MEME they receive, plus the LP tier
+
+  THREE THINGS THAT ARE ALREADY RIGHT AND SHOULD BE LEFT ALONE
+    - the curve charges on the NVDAc side, on exactly the base decided above
+    - the creator tax is already separate from the split and paid in full
+    - the LP fee already goes to the beneficiary through the lock, already
+      separate from everything else
+
+
+================================================================================
+2. THE PROPOSED TABLE
+================================================================================
+
+  CHARGE        BASE                     RATE            TO WHOM
+  ------------  -----------------------  --------------  ---------------------
+  platform fee  quote in on a buy;       P bps, the same  the protocol
+                gross quote out on a     at every T;      recipient frozen
+                sell                     50 at deploy-    into the launch
+                                         ment, 0..80 for
+                                         later launches
+  creator tax   the same base            T - P bps       the creator
+                                         T is 100..500
+  LP fee        the pool's own tier,     500 (0.05%) on  the locked position,
+                AFTER graduation only    every factory   i.e. the beneficiary
+                                         DeployCurb      - SHOWN SEPARATELY
+                                         builds
+
+  SO THE TRADER PAYS
+    on the curve   T
+    in the pool    T + the LP tier, and both are shown as their own lines
+
+  WORKED, ON 100 NVDAc, WITH P AT ITS STARTING 50 BPS
+                           T=1%              T=3%              T=5%
+    platform               0.50              0.50              0.50
+    creator                0.50              2.50              4.50
+    total tax              1.00              3.00              5.00
+    reaches the curve     99.00             97.00             95.00
+    (in the pool, the LP tier then applies to what is left: at 0.3% that is
+     a further 0.297 / 0.291 / 0.285, to the position, not to us)
+
+  ON A SELL the base is the NVDAc the trade produced BEFORE the tax. In the
+  pool that figure is already net of the LP fee, because the LP fee is taken
+  on the memecoin going in - which is what "gross NVDAc output" means here and
+  matches how the curve already words it.
+
+  AGAINST TODAY, at the candidate parameters
+    platform   0.20  ->  0.50 on every trade, and it no longer moves when the
+                         creator changes their tax
+    creator    3.80  ->  T - 0.50, their own choice
+    pool       a flat 1% of the memecoin  ->  T in NVDAc, the same as the curve
+
+
+================================================================================
+3. HOW IT MAPS ONTO THE CURVE - NO NEW CURVE CODE
+================================================================================
+The curve already has the exact shape this policy needs. It is a
+CONFIGURATION, not a rewrite:
+
+    feeBps               = P           the platform's share, frozen per
+                                       launch (50 at deployment)
+    protocolFeeShareBps  = 10000       all of it to the protocol
+    creatorTaxBps        = T - P       the creator's share, chosen per launch
+
+  WHY THAT LANDS EXACTLY RIGHT
+    - the base fee and the creator tax are charged on the same base and summed
+      independently, so the total is T
+    - with the share at 10000 the creator's slice of the BASE fee is zero, and
+      the creator is paid entirely through the tax - which is the leg that is
+      already "paid to the creator in full" and never enters the split
+    - the buyback earmark is computed from the creator's slice of the base fee,
+      which is now zero; and buyback is already off by construction
+      [CurbLaunchFactory.launch, the literal `false` it passes the curve
+      for buybackEnabled, and see PRE_MAINNET E1], so that path stays
+      dead rather than newly dead
+    - both caps allow it: protocolFeeShareBps is rejected only ABOVE 10000
+      [PonsV2BondingCurve.sol:206], and feeBps + creatorTaxBps is capped at
+      2000 bps [:215], well above our 500
+
+  DONE. The factory no longer takes a rate at all: it takes ONE number,
+  totalTaxBps, and derives the two legs from it -
+      feeBps        = the hook's platformFeeBps AT LAUNCH (50 at deployment)
+      creatorTaxBps = totalTaxBps - that share
+      the snapshot   built inside launch(), with the share at 10000 and the
+                     recipient = the hook's platformRecipient AT LAUNCH
+  (SUPERSEDED WORDING: this block said feeBps was the constant 50 and the
+  recipient the factory's own immutable. Both have been read off the hook, per
+  launch, since the fee policy became settable.)
+  and it refuses anything outside 100..500 with TaxOutOfBand. The band itself
+  is defined in the REGISTRY, read by the factory at construction so the two
+  cannot drift, and enforced again when the record is written - a future
+  launcher does not get to widen it.
+    The registry's error is TaxOutOfRange and the factory's is TaxOutOfBand,
+    deliberately different names. Identical names with identical argument types
+    share a selector, a test asserting on one is satisfied by the other, and
+    deleting the factory's check left the suite green. A mutation run found
+    that; the rename is the fix.
+
+
+================================================================================
+4. HOW IT MAPS ONTO THE POOL - BUILT
+================================================================================
+DONE: a new FeeHook at a new mined address, and the graduator binds each pool to
+its launch in the transaction that opens it. What follows is what the plan said,
+with DONE notes for what it turned into and what it taught.
+
+The hook could not express this policy as it stood, for two independent reasons.
+
+  A. IT CHARGES THE WRONG SIDE ON A BUY
+     The policy says the base is NVDAc on both sides. In the pool:
+       sell  MEME -> NVDAc   NVDAc is the OUTPUT - the hook already does this
+       buy   NVDAc -> MEME   NVDAc is the INPUT - the hook cannot reach it
+     afterSwap can only return a delta on the UNSPECIFIED currency, and for an
+     exact-input swap the unspecified side is the output. Charging the input
+     needs beforeSwap with a beforeSwapDelta on the specified currency, which
+     means the BEFORE_SWAP and BEFORE_SWAP_RETURNS_DELTA permissions the hook
+     did not have then [DeployCurb mined BEFORE_INITIALIZE, AFTER_SWAP and
+     AFTER_SWAP_RETURNS_DELTA; it now mines BEFORE_SWAP and
+     BEFORE_SWAP_RETURNS_DELTA too - the `flags` in DeployCurb.run()].
+     A permission change changes the hook's ADDRESS, because v4 encodes
+     permissions in the address. So this is a new hook deployment and a new
+     requiredHook in the registry - not an edit to a live one.
+
+  B. THE RATE IS ONE IMMUTABLE NUMBER FOR EVERY LAUNCH
+     feeBps is set once in the hook's constructor. T is per launch. The hook
+     needs per-pool configuration, and the honest way to get it is for the
+     graduator to write the launch's T into the hook keyed by pool id at
+     graduation, from the registry record that already fixed it - one write,
+     then one cold read per swap. The alternative, having the hook call out to
+     the registry inside every swap, puts an external call in the swap path for
+     a value that never changes.
+
+     DONE, AND NARROWER THAN PLANNED. configureLaunch takes a token and a KEY
+     and reads the rate and the creator out of the REGISTRY itself, so the
+     caller supplies neither and has nothing to get wrong or to lie about. Only
+     the graduator may call it; the key must be that launch's own pool; and a
+     second call with the same record is a no-op, because a write-once record
+     cannot produce different values. If graduation reverts afterwards the
+     binding reverts with it - which is what lets the same launch be completed
+     by a later attempt, and there is a test for exactly that.
+
+  C. THINGS THAT MUST BE DECIDED WHILE DESIGNING IT, NOT DISCOVERED AFTER
+     - EXACT-OUTPUT SWAPS. The hook refuses them today rather than mis-charge
+       [FeeHook.beforeSwap and afterSwap, error
+       ExactOutputNotSupported]. Keep refusing, or handle
+       them? Anyone can swap against
+       the pool; our own interface only sends exact-input.
+     - SKIMMING THE INPUT CHANGES THE PRICE THE TRADER GETS. Take T off the
+       NVDAc first and the swap prices the remainder, so the trader receives
+       less MEME than an untaxed swap - which is correct and is what "the base
+       is the NVDAc input" means, but the quote on screen must be built the
+       same way or it will be wrong by T.
+     - THE ETH ROUTE CHARGES ON THE NVDAc LEG. ETH->MEME is wrap, a V3
+       WETH/NVDAc swap that is not ours, then NVDAc->MEME on our pool. The tax
+       lands on the NVDAc that reaches our pool, which is the right base - and
+       the interface must show it as a NVDAc figure rather than implying a
+       percentage of the ETH sent.
+     - A POOL FROM A LAUNCH CREATED BEFORE THIS CHANGE would have no T written
+       for it. Since nothing is deployed to mainnet this is a fork-only
+       concern today, but the hook must fail closed rather than charge zero.
+       DONE - PoolNotConfigured, in beforeSwap AND afterSwap.
+
+  D. DECIDED WHILE BUILDING, AND WORTH KEEPING
+     - EXACT-OUTPUT IS STILL REFUSED, by its own error, in both entry points.
+     - EACH LEG IS AN INDEPENDENT FLOOR of the base, never a split of a
+       combined total. That is precisely what keeps the platform's P
+       identical at every tax - splitting a total would let rounding move it -
+       and the trader keeps both remainders, so the two together can only ever
+       be at or below base x T.
+     - WHAT A RECEIPT CANNOT SETTLE, AND THE PAGE NOW SAYS SO. When the
+       platform recipient and the creator are the SAME address - which they are
+       on a launch whose creator is the deployer - the chain records two
+       payments to one payee, and matching them cannot tell 50/250 from
+       250/50. The TOTAL is checkable; the split between the legs is not.
+       Found by a mutation that lied about the platform's rate and was NOT
+       caught, which is the only reason anyone would know. The page prints the
+       limit instead of implying it verified something it could not, and the
+       test lies about the total instead.
+     - THIS HOOK DOES NOT SUPPORT PARTIAL FILLS ON A BUY, and reverts the
+       whole transaction rather than charge for input that was not spent. The
+       overcharge it replaces was real, not hypothetical: beforeSwap charges on
+       the amount the trader ASKS to spend, and at that moment nobody knows
+       whether the pool will take all of it. Measured on the fork with a limit
+       a tenth of a percent away: 1,000,000 NVDAc requested, 100,301 actually
+       taken, 869,699 returned - and the old code taxed the whole million.
+         A CUSTOM PRICE LIMIT IS NOT THE ONLY WAY TO GET A PARTIAL FILL. Our
+         own interface supplies none, and that does NOT guarantee a full fill:
+         a trade large enough to run the price to the range's own bound stops
+         there too, with no limit involved, and is refused the same way. The
+         pool is open to anyone besides.
+         WHY REFUSE RATHER THAN REFUND, SCOPED TO THIS DESIGN. The fee is taken
+         in beforeSwap; afterSwap is the first point a partial fill is visible,
+         and it may only return a delta on the UNSPECIFIED currency, which for
+         an exact-input swap is the output. Handing input back would mean
+         taking the fee somewhere else - a different arrangement, not a missing
+         line. It is not a claim that no hook could ever refund.
+         A SELL NEEDS NO SUCH GUARD - its tax is taken in afterSwap from the
+         NVDAc that actually came out, so a partial fill is already charged on
+         exactly what happened. There is a test for that too.
+     - A CLAIM I MADE ABOUT THESE TESTS WAS WRONG, AND THE EXPERIMENT THAT
+       SETTLED IT IS script/b20/zerofee-experiment.sh.
+         Splitting _legs() out of _pay() dropped `charged = platformAmount +
+         creatorAmount`, so _pay returned zero and THE POOL CHARGED NOTHING.
+         The commit that fixed it said "every fee test still passed" while that
+         was true of the code. That was an INFERENCE, never an observation: the
+         bug and the fill guard arrived in the same patch, so the only run that
+         ever existed had both, and the failures it produced all came from the
+         guard - which is what I read.
+         RUN APART, the answer is the opposite. With the summing line removed
+         AND the fill guard removed, ALL NINE fee tests fail, each naming the
+         money: "the platform's leg is wrong: 0 != 5000", "the hook took
+         nothing", "not a fixed 50 bps: 0 != 50000". With the guard left in,
+         eight of them fail through its revert instead and one -
+         aSellIsChargedOnTheGrossOutput, which never touches the buy-side
+         guard - still fails on the money.
+         So the tests were never blind to a zero fee. What happened is that two
+         changes landed together and I attributed the failures to the newer
+         one. A sequence is not a cause, and this file should not have said it
+         was.
+     - THE BUY'S BASE IS MEASURED FROM THE RECEIPT, not taken from the form.
+       On the ETH route the v4 leg's input is whatever the v3 leg produced, and
+       passing the amount the person typed put an ETH-scale number into an
+       8-decimal calculation - a tax five thousand times too large. It was
+       caught because the payments then did not reconcile, which is what that
+       check is there for.
+
+
+================================================================================
+5. IMPLEMENTATION SCOPE
+================================================================================
+In order. Nothing starts before the line above it is done.
+
+  5.1  FACTORY: ENFORCE THE BAND - DONE
+       Validate at creation, revert with a named error carrying the offending
+       value. Three checks: the platform rate is the one the caller was shown
+       (it was "the fixed platform rate" while it was a constant), the 1%-5%
+       band on the total, and the snapshot's share. Smallest change, largest immediate
+       effect, and it is what makes every later test meaningful.
+
+  5.2  A NEW FEE HOOK - DONE
+       beforeSwap + beforeSwapDelta for the buy side, afterSwap for the sell
+       side, per-pool T written by the graduator at graduation, fail closed on
+       an unconfigured pool. New permissions mean a new mined address; the
+       registry's requiredHook moves with it.
+
+  5.3  THE GRADUATOR WRITES T - DONE
+       One call at graduation, from the registry record. It must be part of the
+       same transaction that opens the pool, so a pool can never exist in a
+       state where the hook does not know its rate.
+
+  5.4  THE INTERFACE - DONE
+       Three lines wherever a cost is shown - platform, creator, LP - never one
+       merged number, on the curve quote, the pool quote and the ETH route. The
+       receipt-based reporting that already exists reads what actually moved,
+       so these become three reconciled figures rather than three predictions.
+
+  5.6  THE POLICY IS REAL TOO, AND THE DEPLOY PATH HAS NO TEST CODE IN IT
+       CLOSED. Nothing in sections 1 to 6 of this file is outstanding: the
+       curve and the pool both charge the decided tax, the escrow pays it out,
+       the policy publishes it, and the deploy path builds all of it without
+       test code. What follows this section is what was never in it.
+       THE ONE THING THIS WORK HANDED FORWARD is the address the platform is
+       paid at. It is required rather than inferred, and each launch freezes
+       the one in force when it is created - so choosing it is an OPERATIONAL
+       decision, not a fee one, and
+       it lives in PRE_MAINNET A6 with the Safe multisig question rather than
+       here.
+       src/curb/FeePolicy.sol. feeSweepOperator() is a CONSTANT zero - no
+       setter, no stored value - because this product has no such role: a
+       creator sweeps their own launch and buyback is off. Its other getters
+       are not decoration either: they return the terms a deployment chose -
+       the recipient being the one AT DEPLOYMENT, since launches take theirs
+       from the hook.
+       FOUR OF THEM ARE CONSTANTS RATHER THAN ARGUMENTS, and that replaced a
+       check that did not cover them. protocolFeeShareBps, buybackBurnBps,
+       hookFeeBps and feeSweepOperator were all constructor inputs, and the
+       deployment compared the first and the last and NOT the middle two - so a
+       policy could have published a buyback burn or a hook rate that no launch
+       uses, and every assertion would still have passed. A value that cannot
+       be set cannot be set wrong; that is why they moved rather than gaining
+       two more comparisons. What a deployment still decides - the recipient,
+       the escrow, the price-impact ceiling - is compared against the factory
+       both in the script and in a test.
+       THE PLATFORM RECIPIENT IS REQUIRED, NOT INFERRED. It used to default to
+       the deployer. It is the hook's starting recipient and every launch
+       created before a change is stamped with it for good, so a deployment
+       that guessed it leaves those launches paying the wrong address forever.
+       (The hook's own copy can be changed behind the 24-hour announcement;
+       this paragraph used to call it immutable.) The local runners set it explicitly to anvil's account 0, which is
+       test configuration where a reader can see it.
+
+  5.4b NO LAUNCH FEE (owner's decision, 4 October 2026). DeployCurb sets
+       launchFee 0 for every factory, immutable per factory: launching costs
+       gas only. The factory can still carry a fee - it goes to the platform
+       recipient in force at launch, and a refused one is held in
+       unclaimedLaunchFees until withdrawn (AUDIT M-06) - but no CURB factory
+       charges one. The platform's share of the trading tax is unchanged.
+
+  5.5  WHERE THE FEES GO - DONE SEPARATELY, AND NOT BY THE WORK ABOVE
+       The fee work made the AMOUNTS right and said, correctly at the time,
+       that it did not make them withdrawable. src/curb/FeeEscrow.sol does:
+       balances per recipient, a claim that pays only the caller from only the
+       caller's balance, nothing privileged anywhere in it. PRE_MAINNET A2
+       carries the evidence and the limits.
+       BOTH DIRECTIONS ARE MEASURED, AND A CLAIM IS BOUNDED ON BOTH SIDES.
+       A credit is what arrived. A claim must pay the claimant at least what
+       they asked for AND take no more than that out of the escrow. Each half
+       was missing at some point and each was found by reading, not by a test:
+         - safeTransfer catches a `false` return and cannot see a token that
+           returns true and pays less. Measured: a 4e18 balance paid 3.96e18
+           and still went to zero.
+         - the recipient check alone protects the wrong person. A token paying
+           the claimant 4 and taking 4.04 from the escrow satisfies it, and the
+           surplus comes out of what backs everyone else.
+       The claimant-side figure is a NET GAIN rather than a delivery, so a
+       recipient that forwards its tokens mid-callback is refused as well. That
+       is deliberate and documented rather than discovered - and it is a LIMIT,
+       not a rule everyone can comply with: an account whose forwarding is in
+       immutable code cannot stop, and for it the escrow is unusable.
+       THE CREATOR'S ADDRESS IS STILL FIXED for the life of the launch - C3.
+       Under core v2 the launch's FUTURE creator income can be switched once,
+       one way, to the launch's own holder distributor; nobody can point it at
+       an address of their choosing, and the switch moves no balance this
+       escrow already holds. The escrow makes the cost of a fixed address
+       concrete rather than theoretical: a lost key leaves a balance nobody can
+       ever move, and there is deliberately no administrator who could.
+
+
+================================================================================
+6. TEST SCOPE
+================================================================================
+What would have to pass for this to be believed. Every figure asserted as an
+exact integer against a balance or a receipt, never as "about right".
+
+  THE BAND, AT ITS EDGES
+    - T = 100 and T = 500 are accepted; 99 and 501 are refused, each with its
+      own error and the offending value in it
+    - a platform rate other than the one shown is refused: launch() takes
+      the share the caller saw (expectedPlatformBps) and refuses if the hook's
+      moved in between. A rate other than 50 is NOT refused - the policy owner
+      may set 0..80 for later launches. (This line said it was, from the days
+      the rate was a constant.)
+    - a snapshot whose share is not 10000 is refused
+    - MUTATION: remove each check in turn and the matching test must fail, for
+      the right reason. A band that no test can break is not enforced.
+
+  THE SPLIT IS EXACT, AND FROZEN PER LAUNCH
+    - at T = 100, 300 and 500, on a buy and on a sell: the platform receives
+      exactly P of the base and the creator exactly T-P, asserted on balances
+      before and after (P = 50 in these tests, its starting value)
+    - THE PLATFORM'S SHARE DOES NOT MOVE WITH T. The same trade size at three
+      different T values pays the platform the same integer. This is the
+      decision's whole point and it deserves its own test.
+    - the trader's cost equals T of the base exactly, both sides
+
+  THE BASE IS THE RIGHT ONE
+    - buy: the base is the NVDAc SENT, not what reached the curve
+    - sell: the base is the gross NVDAc the trade produced, before the tax
+    - a clamped partial fill on the curve charges on what was actually SPENT,
+      not on what was offered - the refunded part is not taxed
+
+  THE POOL MATCHES THE CURVE
+    - the same trade size at the same T costs the same on the curve and in the
+      pool, to the integer, with the LP fee excluded from the comparison
+    - the LP fee is separately visible and goes to the position, not to us
+    - a swap sent by somebody who is not our interface pays the same
+    - an exact-output swap is refused, ASSERTED ON ITS OWN SELECTOR rather
+      than on "it reverted". A bare expectRevert here passed even with both
+      fail-closed guards deleted, because an unconfigured pool has a zero tax
+      and the creator's leg underflows instead - the test was reporting
+      arithmetic as if it were a guard
+    - a pool whose T was never written FAILS rather than charging zero
+    - A REVERT IS ASSERTED BY DECODING v4's WRAPPER, not by looking for four
+      bytes somewhere in the blob. CustomRevert.WrappedError carries the
+      failing contract, the callback it failed in, and the inner error: all
+      three are checked, and PoolNotConfigured's pool id with them. The scan it
+      replaced could have matched those bytes inside an address or an amount -
+      and it could not tell beforeSwap's refusal from afterSwap's, which is
+      exactly what one of the mutations does
+
+  ROUNDING AND DUST
+    - a trade small enough that 50 bps rounds to zero: what happens, and is it
+      in the trader's favour
+    - the sum of the parts never exceeds the base, at every T, over a fuzz run
+
+  THE ETH ROUTE
+    - the tax appears as a NVDAc figure on the NVDAc leg, and the ETH reported
+      to the user still reconciles with the receipt, gas kept separate
+
+  AND WHAT NO TEST HERE CAN SHOW
+    None of this proves anyone can WITHDRAW what was collected. That is A2, it
+    is not in this scope, and no test in this section should be read as
+    covering it.
+
+
+================================================================================
+7. STILL OPEN, AND TOUCHED BY THIS DECISION
+================================================================================
+  - WHO PICKS T - SETTLED. launch() is open to anyone. The creator is the
+    caller UNLESS the caller names another address in creatorWallet
+    [CurbLaunchFactory.LaunchConfig, and launch()'s `creator` line], so a
+    launch can be made on someone else's behalf, and the tax it chooses is
+    then paid to that address. (This line said the caller is always the
+    creator.) See PRE_MAINNET A5.
+  - WHERE THE PLATFORM'S SHARE GOES - A2.
+  - WHETHER THE CREATOR'S ADDRESS CAN EVER CHANGE - C3. A creator choosing a
+    5% tax and then losing their key strands 4.5% of every trade forever.
+  - THE TOTAL A TRADER PAYS IN THE POOL is T plus the LP tier. The tier is
+    NOT a per-launch choice: it is immutable per factory, and every factory
+    DeployCurb builds uses 0.05% (POOL_FEE = 500, tick spacing 10). Changing it
+    means new factories. (This line called it a per-launch choice among
+    three.)

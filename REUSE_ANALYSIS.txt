@@ -1,0 +1,262 @@
+================================================================================
+PONS V2 REUSE ANALYSIS
+What to take, what to write ourselves, and what it costs in licence terms
+================================================================================
+Date    : 11 September 2026
+Source  : reference/ponsfamily @ debbc21fb27761245356fe9b61a9276437147a1c
+          (repo HEAD - NOT verified against the live deployment)
+Purpose : CURB is our own PONS-like launchpad on Base. PONS is a reference.
+          No fork decision has been made. This document exists to make that
+          decision from source rather than from posture.
+
+Everything below was read from the local checkout, not from documentation.
+
+
+================================================================================
+1. WHAT IS ACTUALLY IN THE REPO
+================================================================================
+
+PONS's own V2 Solidity, 15 files, ~6,100 lines. All 15 are MIT.
+
+  FILE                                      LINES   MVP RELEVANCE
+  PonsV2LaunchFactory.sol                    1526   core, but most-changed
+  PonsV2MemeHook.sol                          887   core (Uniswap v4 hook)
+  PonsV2BondingCurve.sol                      777   core
+  PonsV2Staking.sol       (hooks/..._test)    807   NOT MVP
+  testing/burn_system.sol                     747   NOT MVP
+  PonsV2BuybackVault.sol                      357   NOT MVP (buyback off)
+  PonsV2GraduationExecutor.sol                209   core
+  PonsV2LaunchDeployer.sol                    141   core
+  interfaces/ILaunchpadV2.sol                 139   cheap, useful
+  PonsV2GraduationGuard.sol                   125   the BUSL touch point
+  PonsV2LaunchLocker.sol                      123   generic, small
+  PonsV2LauncherToken.sol                     106   generic, small
+  libraries/PonsV2BondingCurveMath.sol         88   pure math
+  libraries/PonsV2GraduationMath.sol           63   pure math
+  interfaces/ILaunchpadV2Graduation.sol        12   cheap, useful
+
+  ~1,911 lines (staking + burn + buyback) are irrelevant to our MVP.
+  That is a third of the codebase we would inherit and not use.
+
+NO BUILD OR TEST INFRASTRUCTURE EXISTS IN THIS CHECKOUT
+  foundry.toml    absent
+  remappings.txt  absent
+  test/           absent
+  *.t.sol         0 files
+  So "run the existing tests" is not an option - there are none. Our first
+  job is a compiling workspace and tests we wrote, not a test run.
+
+
+================================================================================
+2. LICENCE POSITION
+================================================================================
+
+PONS's own code: MIT, all 15 files. MIT still requires the copyright and
+permission notice to be preserved in distribution - reuse is free, silent
+reuse is not.
+
+Vendored dependencies under contractsV2/lib: 69 MIT, 2 BUSL-1.1.
+
+  BUSL-1.1 files:
+    lib/v4-core/src/libraries/Pool.sol
+    lib/v4-core/src/libraries/Position.sol      (pulled in by Pool.sol)
+
+  "PONS is MIT so the package is free" is FALSE. One PONS contract reaches
+  into BUSL code:
+
+    PonsV2GraduationGuard.sol:4
+      import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
+    PonsV2GraduationGuard.sol:110
+      if (liquidity == 0 || liquidity > Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing))
+
+  THE ENTIRE BUSL IMPORT SURFACE IS ONE CALL TO ONE PURE HELPER. It computes
+  max liquidity per tick from tick spacing - a known closed-form formula.
+
+  BUT: "reimplement the helper" and "drop the guard" are NOT the same
+  outcome, and an earlier draft wrongly treated them as interchangeable.
+  The guard catches conditions under which the post-graduation pool could
+  not be created at all. The FILE may go; the PROTECTION must not. Whatever
+  we build has to keep equivalent checks on price, amounts and the
+  liquidity-per-tick bound. Dropping the guard to dodge an import would
+  trade a licence question for a graduation failure in production.
+
+  SEPARATE PROBLEM: the vendored lib/v4-core contains NO LICENCE FILE. Only
+  the SPDX header is present, so the BUSL Change Date and Additional Use
+  Grant - the terms that actually decide whether commercial use is permitted
+  before the change date - are not in this tree at all.
+  DONE: Uniswap dependencies are now installed from upstream and their
+  licence files came with them (lib/v4-core/licenses/, lib/v4-periphery/
+  LICENSE, lib/openzeppelin-contracts/LICENSE). The gap in PONS's vendored
+  copy is closed.
+
+  WHAT THE UPSTREAM BUSL LICENCE ACTUALLY SAYS (lib/v4-core/licenses/BUSL_LICENSE)
+    Licensor            Universal Navigation Inc.
+    Licensed Work       Uniswap V4 Core, (c) 2023
+    Additional Use Grant  "Any uses listed and defined at
+                           v4-core-license-grants.uniswap.eth"
+    Change Date         the earlier of 2027-06-15 or a date at
+                           v4-core-license-date.uniswap.eth
+    Change License      MIT
+
+  So v4-core becomes MIT on 2027-06-15 at the latest - roughly nine months
+  from now. Before that, permission depends on the Additional Use Grant.
+
+  THE GRANT COULD NOT BE READ. Both ENS names were queried against Ethereum
+  mainnet: v4-core-license-grants.uniswap.eth resolves to the zero address,
+  and v4-core-license-date.uniswap.eth does not resolve at all. The terms
+  live in ENS text records, which this cast version cannot read.
+  [ ] Resolve both records by other means before relying on any grant.
+  UNTIL THEN, PLAN AS IF BUSL RESTRICTIONS APPLY. Do not assume a grant
+  covers a commercial launchpad.
+
+  CORRECTION - rewriting code does not settle the licence question.
+  An earlier draft implied that reimplementing the helper makes the BUSL
+  issue disappear. It does not. Whatever version of v4-core we build
+  against carries its own terms, and those terms have to be read for that
+  version. Avoiding one import is an engineering choice, not a legal one.
+
+  This is a reading of licence headers, not legal advice.
+
+
+================================================================================
+3. RECOMMENDATION - WHAT TO REUSE AND WHY
+================================================================================
+
+The question is not "fork or greenfield". It is file by file.
+
+CANDIDATE TO TAKE, WITH ATTRIBUTION  (~150 lines)
+  libraries/PonsV2BondingCurveMath.sol      88   pure, self-contained
+  libraries/PonsV2GraduationMath.sol        63   pure, self-contained
+  WHY: small, pure, no state, auditable line by line, and they encode maths
+  rather than product decisions.
+
+INTERFACES - DO NOT COPY AUTOMATICALLY  (moved out of "take")
+  interfaces/ILaunchpadV2.sol              139
+  interfaces/ILaunchpadV2Graduation.sol     12
+  An earlier draft listed these as neutral. They are not. They define
+  PONS's fee-escrow, buyback and graduation states - i.e. the architecture
+  we may specifically want to shed. Copying them up front imports product
+  decisions through the back door. Choose interfaces once our own MVP
+  behaviour is settled, and let them be shaped by it.
+
+PROBABLY TAKE, AFTER READING
+  PonsV2LaunchLocker.sol                   123   LP locking is generic
+  PonsV2LauncherToken.sol                  106   a launch token is a launch token
+  WHY: small enough to understand fully, generic enough to have no product
+  opinion baked in.
+
+DECISION DEFERRED - A DIFF TABLE COMES FIRST
+  PonsV2LaunchFactory.sol                 1526
+  PonsV2BondingCurve.sol                   777
+
+  [WITHDRAWN] An earlier draft recommended writing our own here, on the
+  grounds that "B20 quote assets, 8 decimals, our fee split, our economics
+  configuration and our graduation target differ". That reasoning
+  contradicts this document's own findings: the existing code ALREADY takes
+  per-asset decimals, fee shares and the graduation threshold as
+  PARAMETERS. Things already solved by configuration are not a reason to
+  rewrite. The companion estimate - "400 lines we understand, faster to
+  audit" - was a guess presented as an argument, with nothing behind it.
+
+  REQUIRED BEFORE THIS DECISION - a short diff table, one row per need:
+      what we need | what the current code does | what must change
+  Rows where the answer is "set a parameter" do not count toward a rewrite.
+  Only behaviour the existing design cannot express does.
+
+  DONE - see DIFF_TABLE.txt (11 Sep 2026). Its result:
+
+  All eight product differences that were offered as rewrite justification
+  (B20 quote, 8 decimals, our fee level, protocol/creator split, creator
+  tax, graduation threshold, buyback off, curve shape) are ALREADY
+  PARAMETERS in the existing code. Not one of them requires touching these
+  2,303 lines.
+
+  What we actually have to build - a QuoteRouter with a depth guard, a
+  reference-deviation guard, weekend/oracle degradation, a discovery
+  surface - is work PONS never had to do, and none of it belongs inside the
+  factory or the curve. It sits at the edge.
+
+  VERDICT: do not rewrite. Do not blanket-fork either. Read these two,
+  adopt where they hold up, and spend the budget on the edge components.
+  Open items are listed as section C of the diff table.
+
+DECIDE LATER, AFTER THE VENUE CHOICE (Section 5 of ROADMAP)
+  PonsV2MemeHook.sol                       887
+  PonsV2GraduationExecutor.sol             209
+  PonsV2LaunchDeployer.sol                 141
+  WHY: these are shaped by the Uniswap v4 integration. Phase 0 E has not yet
+  chosen reuse / adapt / custom for the venue, and that choice determines
+  how much of this is even applicable.
+
+DO NOT TAKE FOR MVP
+  PonsV2GraduationGuard.sol                125   the BUSL touch point
+  PonsV2BuybackVault.sol                   357   buyback is off at launch
+  PonsV2Staking.sol                        807   marked _test, out of scope
+  testing/burn_system.sol                  747   out of scope
+
+
+================================================================================
+4. CORRECTION TO AN EARLIER CLAIM - THE 8 DECIMALS FINDING
+================================================================================
+
+An earlier note said NVDAc's 8 decimals "propagates through all curve maths"
+and implied the maths would need rework. That was overstated.
+
+What is actually true:
+  - The factory already supports PER-ASSET decimals and economics:
+      struct PairTokenEconomics { uint256 phantomQuote;
+                                  uint256 graduationThreshold;
+                                  uint8   decimals; }
+  - _requireDecimals(pairToken, economics.decimals, true) enforces that the
+    configured value matches the token's own decimals() at approval time.
+  - The maths works in RAW TOKEN UNITS, so the decimals value is
+    configuration, not an algorithm change.
+
+So: configure NVDAc amounts at the 10^8 scale. The 18-vs-8 gap is 10^10, not
+twelve orders - the "twelve-order-of-magnitude mispricing" in the source
+comment is that comment's own example, not our case.
+
+The mis-scaling RISK is real and the guard exists precisely because of it.
+The conclusion that the existing maths is broken does not follow.
+
+
+================================================================================
+5. WHAT THIS MEANS FOR THE NEXT STEP
+================================================================================
+
+Proposed, not decided:
+
+  1. Set up our own workspace: foundry.toml, remappings.txt, dependencies
+     pulled from UPSTREAM (with licence files), reference/ponsfamily kept
+     read-only as reference.
+  2. Port the four "take" files with attribution intact.
+  3. Write our own factory and curve, informed by reading PONS's.
+  4. Write the tests that do not exist: approval with an 8-decimals quote
+     token, buy, sell, fee split, graduation price continuity.
+  5. Prepare the B20 native environment in parallel - it is not needed for
+     any of the above.
+
+  Do not change curve maths or token validation without a demonstrated need.
+
+WORKSPACE STATE - step 1 is done
+  Foundry project initialised at the repo root, 11 Sep 2026:
+    foundry.toml      solc 0.8.30, cancun, optimizer 200 runs
+    remappings.txt    @openzeppelin, @uniswap/v4-core, @uniswap/v4-periphery
+    lib/              installed from UPSTREAM, licence files present
+    src/, test/       skeleton
+    reference/ponsfamily  kept read-only as reference, pinned at debbc21f
+  forge build: 26 files, Solc 0.8.30, successful.
+  forge test:  1 passed - a wiring test proving OpenZeppelin, v4-core and
+               our own source all resolve.
+  Git initialised; cache/, out/, broadcast/ ignored.
+
+NEXT, AND NOT BEFORE THE DIFF TABLE
+  [ ] Diff table for Factory and Curve (see above). No rewrite decision
+      until it exists.
+  [ ] First working scope, per the founder's brief: approval with an
+      8-decimals quote token, buy, sell, fee distribution, graduation.
+  [ ] Keep the guard's protections whatever we do about the file.
+  [ ] Resolve the two Uniswap licence ENS records.
+  [ ] Prepare the B20 native environment in parallel - not needed for any
+      of the above.
+  Do not change curve maths or token validation without a demonstrated need.

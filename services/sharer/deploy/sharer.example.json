@@ -1,0 +1,72 @@
+{
+  "$comment": "curb-sharer ops config for Base mainnet. Generate deploy/sharer.json from it with: npm run config-from-run -- --run ../../deployments/base-mainnet/run.json --keeper-key <the keeper host's pusher> --keeper-key <the standby pusher> --out deploy/sharer.json (it fills every 0x0000000000000000000000000000000000000000 below, the launchers and the exclusions from what was deployed; RUNBOOK.md part 7), then fill site, dataRepo and ipfs (three pinners, minPinned 2: the third a Kubo-compatible RPC, or the keeper PC's own node, RUNBOOK.md part 5). No secrets go in this file.",
+  "sharing": {
+    "chainId": "8453",
+    "graduator": "0x0000000000000000000000000000000000000000",
+    "graduatorFromBlock": "0",
+    "weth": "0x4200000000000000000000000000000000000006",
+    "rules": {
+      "version": "1",
+      "exclusions": [
+        { "address": "0x000000000022D473030F116dDEE9F6B43aC78BA3", "reason": "Permit2" },
+        { "address": "0x6fF5693b99212Da76ad316178A184AB56D299b43", "reason": "the Uniswap UniversalRouter" },
+        { "address": "0x2626664c2603336E57B271c5C0b26F421741e481", "reason": "the Uniswap SwapRouter02" },
+        { "address": "0xEa20C3266229a01cd0f45D9c7921a45d5b359561", "reason": "the CurbRouter" },
+        { "address": "0xBA12222222228d8Ba445958a75a0704d566BF2C8", "reason": "the Balancer V2 Vault" },
+        { "address": "0xbA1333333333a1BA1108E8412f11850A5C319bA9", "reason": "the Balancer V3 Vault" }
+      ],
+      "keeperKeys": [],
+      "ammFactories": [
+        { "address": "0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6", "reason": "Uniswap v2 factory" },
+        { "address": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD", "reason": "Uniswap v3 factory" },
+        { "address": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da", "reason": "Aerodrome v2 PoolFactory" },
+        { "address": "0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A", "reason": "Aerodrome Slipstream CL factory" },
+        { "address": "0x02a84c1b3BBD7401a5f7fa98a384EBC70bB5749E", "reason": "PancakeSwap v2 factory" },
+        { "address": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865", "reason": "PancakeSwap v3 factory" },
+        { "address": "0x71524B4f93c58fcbF659783284E38825f0622859", "reason": "SushiSwap v2 factory" },
+        { "address": "0xc35DADB65012eC5796536bD9864eD8773aBc74C4", "reason": "SushiSwap v3 factory" },
+        { "address": "0xFDa619b6d20975be80A10332cD39b9a4b0FAa8BB", "reason": "BaseSwap factory" },
+        { "address": "0x3E84D913803b02A4a7f027165E8cA42C14C0FdE7", "reason": "AlienBase factory" },
+        { "address": "0x04C9f118d21e8B767D2e50C946f0cC9F6C367300", "reason": "SwapBased factory" }
+      ]
+    },
+    "feeds": {
+      "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0x7e860098f58bbfc8648a4311b374b1d669a2bc6b" },
+      "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0x07da0e54543a844a80abe69c8a12f22b3aa59f9d" },
+      "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0xeaf310161c9ef7c813a14f8fef6fb271434019f7" },
+      "0x940181a94a35a4569e4529a3cdfb74e38fd98631": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0x4ec5970fc728c5f65ba413992cd5ff6fd70fcff0" },
+      "0xcb585250f852c6c6bf90434ab21a00f02833a4af": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0xeee1a9d5a0c36d99972c057cb959267e88ab9160" },
+      "0xb2000000000000000000008501b13360000cb2ec": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0x69e5bc4988a9af30ec827c5609c0d41028446ec0" },
+      "0xb20000000000000000000078ee7ce2fe4908108c": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0x04689a41629776563e6822f76f2e57d148d28513" },
+      "0xb2000000000000000000002d0ba3164cc74f58b7": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0x5bf49e0ffa937ce2fff033c739ad7c634c4d34f2" },
+      "0xb2000000000000000000007b9fcbd005511acbd5": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0x6a634b235903c4ad6376892180d6ff8612e3fa68" },
+      "0xb200000000000000000000d9192b6b456483c2e8": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0x06a8e4b3abb3b7543d8396fb2b763d22820cb295" },
+      "0xb200000000000000000000ab99cfa739e253872b": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0xeb10a6c9aa7e537aed766c08c35dae35b321b18c" },
+      "0xb200000000000000000000c2e324d24d7eecd1fb": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0x787f13dea48db0897cbcdd985de77809d837f988" },
+      "0xb2000000000000000000008bc8786b856e61707c": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "0x6526ae6797a76123638b863aee4dd27ba4e4b27d" }
+    }
+  },
+  "distributorFactory": "0x0000000000000000000000000000000000000000",
+  "catalog": "0x0000000000000000000000000000000000000000",
+  "registry": "0x0000000000000000000000000000000000000000",
+  "hook": "0x0000000000000000000000000000000000000000",
+  "lens": "0x0000000000000000000000000000000000000000",
+  "policyOwner": "0x0000000000000000000000000000000000000000",
+  "launchers": [],
+  "ethUsdFeed": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70",
+  "site": { "base": "https://curb.example" },
+  "dataRepo": { "owner": "your-github-org", "repo": "curb-sharing-data", "branch": "main" },
+  "ipfs": {
+    "gateways": ["https://your-gateway.mypinata.cloud", "https://ipfs.filebase.io"],
+    "pinners": [
+      { "kind": "pinata", "name": "pinata", "token": "pinata" },
+      { "kind": "kubo", "name": "filebase", "url": "https://rpc.filebase.io", "token": "filebase" },
+      { "kind": "kubo", "name": "third", "url": "https://your-third-kubo-rpc.example", "token": "third" }
+    ],
+    "minPinned": 2
+  },
+  "keeper": { "intervalSec": 300, "largeFileBytes": 8388608, "largeFileAccounts": 50000 },
+  "lease": { "ttlSec": 600, "standbyAfterSec": 2700, "heartbeatEverySec": 900, "blockedAfterSec": 1800 },
+  "guardian": { "intervalSec": 60, "vetoUnverifiedBeforeSec": 900, "vetoUnverifiedAfterSec": 600, "freezeAtBadRoots": 3, "freezeOnRepeat": true, "checkTimeoutSec": 120, "passTimeoutSec": 300, "maxGasPriceWei": "100000000000" },
+  "alerts": { "cooldownSec": 3600, "reminderSec": 43200 }
+}

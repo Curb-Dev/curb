@@ -1,0 +1,1497 @@
+================================================================================
+CURB - YOL HARITASI
+Base aginda hisse-eslesmeli launchpad ve trading destinasyonu
+================================================================================
+Tarih  : 11 Eylul 2026
+Durum  : Faz 0'a hazir. Kod yok, sirket yok, taahhut yok.
+Icerik : Arastirma bulgulari, mimari kararlar, fazlama, acik sorular.
+
+Ingilizce master: ROADMAP.txt  (celisme durumunda o gecerlidir)
+Revizyon gecmisi: belgenin sonunda.
+
+ISARETLEME: [OLCULDU] kamuya acik kaynaktan dogrulandi (kaynaklar sonda).
+[KARAR] secilmis yon. [ACIK] henuz karar verilmedi. Bu belge yalnizca guncel
+kararlari yazar - gecersiz kalan cumleler not dusulerek degil, silinerek
+cikarilir.
+
+
+================================================================================
+1. TEZ
+================================================================================
+
+Base'de tokenize ABD hisseleri canli ve gercek hacim donuyor, ama tuketiciye
+donuk tek bir destinasyon yok. Mevcut her sey altyapi: DEX, agregator,
+lending, vault. On yuz yok.
+
+Bu boslugu iki fazda kapatiyoruz:
+
+  FAZ 1  Launchpad     - yeni tokenlar B20 hisselerine eslesik cikar
+  FAZ 2  Destinasyon   - mevcut 13 B20 hissesi ayni venue'de islem gorur
+
+Faz 1 musteri kazanma motoru, Faz 2 elde tutma ve para kazanma katmani.
+Faz 1'i kontrol ettigimiz bir venue uzerine kurmak Faz 2'yi sifirdan
+baslamadan mumkun kilar - ama otomatik veya bedava yapmaz. Faz 2, Faz 1'in
+Faz 0'da dondurulan sayilara gore tekrar kullanim ve net gelir gostermesine
+baglidir.
+
+
+================================================================================
+2. PAZAR DURUMU [OLCULDU]
+================================================================================
+
+BASE TARAFINDAKI HAMMADDE
+  - B20 standardi Base mainnet'te    : 8 Temmuz 2026
+  - Coinbase tokenize hisseleri canli: 24 Agustos 2026
+  - Ilk parti                        : AAPLc, NVDAc, METAc, GOOGLc
+  - Bugunku liste (13-14)            : AAPL, AMZN, COIN, CRCL, GOOGL, INTC,
+                                       META, MSFT, MSTR, NVDA, SNDK, SPCX, TSLA
+  - Yapi                             : ERC-20 uyumlu, Rust precompile, 1:1
+                                       regule saklamada gercek hisse karsiligi
+  - Ikincil piyasa                   : Izinsiz. Beyaz liste cuzdan yok,
+                                       platform kilidi yok.
+  - Fiyat                            : Chainlink Data Feeds, 24/5
+  - Kullanici uygunlugu              : ABD disi kisiler
+
+HACIM
+  - Ilk gun        : $4.55M mint, $3.06M likidite seed, $10.8M hacim
+  - Ilk gun NVDAc  : Aerodrome havuzunda ~$957K
+  - Ilk 4 gun      : $124M DEX hacmi
+  - Debut toplami  : $228M
+  - 30 gun         : $227.7M DEX hacmi (Token Terminal)
+  - Zirve gun      : $33M+
+  - NVDAc bugun    : ~$10.6M / 24 saat, fiyat ~$226
+  - NVDAc pay      : Toplam hacmin ~%57'si
+
+  >> YORUM: Olu degil. Ama 13 ticker'lik gorunen pazar pratikte 1.5 ticker.
+
+META DURUMU (baska zincirler)
+  - PONS (Robinhood Chain) : 14 Tem cikti. 2 Eyl'de gunluk protokol gelirinde
+                             pump.fun'i gecti, $1.1M/gun.
+  - StonkFun (Solana)      : 3 Agu cikti. 6 Eyl'de pump.fun'i gecti,
+                             $1.5M/gun. 5-6 Eyl'de Raydium LaunchLab'e gecti.
+                             7 Eyl: 12 saatte 1,113 launch (~94/saat).
+                             STONK: 6 Eyl zirvesi ~$140M mcap -> ~$113M.
+  - pump.fun Custom Pairs  : 9 Eyl, 93 tokenize hisse cifti.
+
+  >> YORUM: Meta ~8 haftalik ve zirvede. Klon yapan icin gec faz. Gercekten
+     soguyor mu, ona nasil bakilacagi Bolum 13'te - token fiyati o sinyal
+     degil.
+
+
+================================================================================
+3. RAKIPLER
+================================================================================
+
+BASE UZERINDE, HISSE-ESLESMELI
+  vvveity      "Base'in ilk stock-paired launchpad'i". Doppler multicurve ->
+               Uniswap V4. NVDA / COIN / MSTR / S&P 500 karsiligi fiyatlama.
+               Kendi tokeni ~$460K/24s. Yani: var ama kucuk. Tek gercek rakip.
+
+  Bankr        Base-native. 28 Agu'da Aerodrome uzerinde tokenize hisseler
+               icin ajan-yonetimli konsantre likidite cikardi. Ama
+               hisse-eslesmeli LAUNCH isini Robinhood Chain'de yapiyor
+               (20 Tem, 90+ hisse/ETF). Yani altyapi tarafini tutuyor,
+               launchpad tarafi Base'de bos.
+
+BASE UZERINDE, HISSE DESTEKLEMEYEN (dogrudan rakip degil)
+  Clanker      Base'in en buyuk launchpad'i, Farcaster satin aldi.
+               Quote token listesi: WETH, A0X, cbBTC, DEGEN, HIGHER, NATIVE,
+               ANON, CLANKER. SIFIR hisse.
+               Model: tek tarafli Uniswap v4 havuzu, kurucu %1-3 havuz ucreti
+               secer, Clanker LP ucretlerinin %20'sini alir.
+  Flaunch      Uniswap V4, programlanabilir gelir paylasimi, Progressive Bid
+               Wall geri alim tabani. Launch ucreti mcap'in %0.1'i.
+               Varsayilan %80/20 kurucu/geri-alim.
+  Zora         Creator coin tarafi.
+
+BASKA ZINCIRLERDE, FORMATI KANITLAYANLAR
+  PONS         Robinhood Chain. feeBps = temel islem ucreti,
+               protocolFeeShareBps ile protokol / buyback / kurucu arasinda
+               BOLUNUYOR - protokol hepsini almiyor. creatorTaxBps 0-300
+               ustune biniyor ve tamami kurucuya gidiyor. Gercek formul
+               Bolum 11'de; feeBps'i gelirimiz diye okuma.
+               Curve dolunca kalici kilitli full-range Uniswap V4 pozisyonu.
+               Uniswap Labs pozisyon aldi.
+               BIZIM REFERANS UYGULAMAMIZ BU. Bkz. Faz 0 A.
+  StonkFun     Solana. Yeni tokenlari tokenize hisseye karsi kote ediyor.
+  Long.xyz     Mayis 2025'te BASE'de dogdu, 14 Tem 2026'da Robinhood Chain'e
+               tasindi. ONEMLI: ayrildiginda Base'de tokenize hisse YOKTU -
+               24 Agu'da geldi. Bu, Base aleyhine kanit degil.
+  Flap         BNB Chain + Robinhood Chain. Ek katman: hisse temettusunu
+               token sahiplerine dagitiyor.
+
+
+================================================================================
+4. NEDEN LAUNCHPAD ONCE
+================================================================================
+
+Soguk baslangic problemi.
+
+  Trading destinasyonu once acilirsa: 13 mevcut token icin kimsenin
+  Aerodrome veya 1inch'ten sana gecmek icin sebebi yok. Execution kalitesinde
+  agregatorlere karsi yarisirsin. Kucuk ekip icin kaybedilen oyun.
+
+  Launchpad once acilirsa: yeni token sadece sende. Tekel envanteri. Ayrica
+  her launch bir pazarlama olayi - canli akisi besleyen icerik makinesi
+  launchpad'in kendisi.
+
+Oynanan oyun pump.fun -> PumpSwap oyunu: once launchpad, sonra mezun hacmi
+baskasina birakmamak icin kendi venue'n.
+
+
+================================================================================
+5. GRADUATION: TOKEN NEREYE DUSUYOR
+================================================================================
+
+Curve dolunca token nereye mezun oluyor?
+
+  SECENEK A - Aerodrome'a mezun et
+    Hacmi Aerodrome'a veririz ve sonrasinda hicbir sey kazanmayiz.
+
+  SECENEK B - Kontrol ettigimiz bir venue'ye mezun et
+    Mezun hacim, ucret aldigimiz bir yere duser.
+
+[KARAR] Yon: Secenek B. Mezuniyet sonrasi hacim, kontrol etmedigimiz bir
+venue'ye degil, ucret aldigimiz bir yere dusmeli.
+
+[ACIK] Uygulama. Faz 0 E'de uc yol karsilastirilmadan tek satir kontrat
+yazilmamali:
+    (a) mevcut altyapiyi kullan (Doppler, mevcut bir hook)
+    (b) mevcut bir hook'u uyarla / forkla
+    (c) ozel hook yaz
+Maliyet, audit yuzeyi ve sure bunlar arasinda cok ciddi farkediyor.
+(c) oldugunu varsayma.
+
+ONEMLI CEKINCE: hook sahibi olmak islem akisini GARANTI ETMIYOR. Hook sadece
+O havuza gelen islemlerden ucret alir; agregatorler en iyi fiyata yonlendirir.
+Yeni mezun olmus bir memecoin icin bizim havuzumuz genelde tek havuzdur, o
+yuzden yakalama gercektir. Ama NVDAc gibi yerlesik bir varlikta derinlik
+zaten Aerodrome'da ve hook sahibi olmak hicbir sey kazandirmaz. Faz 2'nin
+bedava bir uzanti degil, kendi likidite problemi olan ayri bir urun olmasinin
+sebebi tam olarak bu.
+
+Ref: https://developers.uniswap.org/docs/protocols/v4/concepts/hooks
+
+
+================================================================================
+6. KONTRAT MIMARISI (taslak)
+================================================================================
+
+6.1  KATMANLAMA - kritik yolda olan ve olmayan
+--------------------------------------------------------------------------
+Bu ayrim tasiyici. Oracle ve router arizalarini cekirdegin disinda tutuyor.
+
+  CEKIRDEK - deterministik, oracle yok, swap yok
+    BondingCurve ve graduation yalnizca HAM B20 BIRIMLERI ile calisir.
+    PONS V2 tasarimina gore curve, mezun olacagi havuzun quote asset'ini
+    bastan topluyor; dolayisiyla graduation ne swap ne fiyat beslemesi
+    gerektiriyor. BUNA GUVENMEDEN ONCE Faz 0 A'da V2 KAYNAGINDAN DOGRULA.
+
+  KENAR - kolaylik katmani, kritik yolun disinda
+    QuoteRouter, B20 varligi elinde olmayan kullanici icin USDC/ETH giris
+    cikisi yapar. Router calismazsa, NVDAc'si olan kullanici curve ile
+    dogrudan islem yapmaya devam edebilir.
+
+  GOSTERIM VE KORUMALAR - konsensus-kritik degil
+    PriceAdapter dolar gosterimi ve tanimli islem korumalari saglar.
+
+6.2  BILESENLER
+--------------------------------------------------------------------------
+  LaunchFactory      CREATE2, deterministik adres. Launch parametrelerini
+                     dondurur (quote asset, curve sekli, ucret, graduation
+                     esigi). Launch basina immutable.
+
+  BondingCurve       Quote = B20 hisse token'i. Ham birim muhasebesi.
+                     Graduation esigine kadar tum arz curve'de.
+
+  Graduation         Faz 0 E'de secilen venue'ye. Pozisyonu acar, LP'yi
+                     kilitler, ucret politikasini uygular.
+
+  QuoteRouter        Kenar katman. USDC/ETH <-> B20, derinlik guard'i ile.
+                     Bkz. 7.1.
+
+  FeeRouter          Protokol/kurucu ayrimi. Tek yonlu, generic call yok.
+
+  PriceAdapter       Chainlink feed + DEX TWAP. Gosterim ve korumalar. 7.2.
+
+6.3  GUVENLIK INCELEME KAPSAMI
+--------------------------------------------------------------------------
+  - Curve muhasebesi: yuvarlama, hassasiyet, ham birim islemleri
+  - Graduation: gecisin kendisi VE basarisiz graduation
+  - Venue entegrasyonu: ucret mantigi, LP kilidi, yukseltme ve yetki yuzeyi
+  - Ucret dagitimi
+  - QuoteRouter ve derinlik guard'i
+  - Toplu satis / bank-run senaryolari: hem curve hem mezun havuz
+  - B20 transfer kisitlari - asagidaki durust gereksinim
+
+  B20 TRANSFER KISITLARI - ne soz verebiliriz, ne veremeyiz
+    Standartta isAuthorized() ve allow/blocklist yetenegi var, ve ihracci
+    transferleri duraklatabilir veya kisitlayabilir.
+
+    HER DURUMDA CIKIS GARANTISI VEREMEYIZ. Ihracci havuzun B20 transferini
+    engellerse bizim hicbir kontratimiz bunu asamaz. Urunde veya pazarlamada
+    aksini soylemek tutamayacagimiz bir soz olur.
+
+    Durust gereksinim:
+      (a) basarisiz bir transfer muhasebeyi bozmamali
+      (b) tekrar denenebilir durumlar desteklenmeli
+      (c) ihracci kaynakli blokaj kullaniciya acikca gosterilmeli
+
+  Ref: https://developers.uniswap.org/docs/protocols/v4/security
+  Ref: https://docs.base.org/build-on-base/integrate-defi/list-tokenized-stocks
+
+6.4  GRADUATION BASARISIZLIGI - bastan tasarlanir, sonradan eklenmez
+--------------------------------------------------------------------------
+Graduation, paranin iki sistem arasinda hareket ettigi tek an. Hata yolu bir
+v1 gereksinimidir; production'da bir sey ters gittikten sonra eklenecek hata
+yonetimi degil.
+
+  [ ] Havuz olusturma TEKRAR DENENEBILIR olmali. Basarisiz graduation,
+      yeniden denenebilecek bir durum birakmali.
+  [ ] Havuz olusturma IDEMPOTENT olmali. Ayni havuz iki kez olusturulamaz;
+      basarili bir denemeyle yarisan tekrar, kopya uretmemeli.
+  [ ] Gecis sirasinda paranin nerede durdugu her adimda acik ve
+      incelenebilir olmali.
+  [ ] Gecis sirasinda kullanicinin ne yapip yapamayacagi tanimli ve gorunur
+      olmali: curve'de hala satabiliyor mu, pozisyon donuk mu, ne kadar sure.
+  [ ] Tamamlanamayan bir graduation - ornegin 6.3'teki ihracci kaynakli B20
+      kisiti - sessizce takilmak yerine sebebini gostermeli.
+
+Basarisiz graduation ayni zamanda Faz 1C'de otomatik durdurma sarti.
+
+
+================================================================================
+7. B20'YE OZGU UC GERCEK PROBLEM
+================================================================================
+
+7.1  QUOTE ASSET LIKIDITESI  -- en sert olcek siniri
+--------------------------------------------------------------------------
+     Kullanici USDC'yle geliyor, curve NVDAc istiyor. Router uzerinden her
+     alim iki hop. Lansmanda tum pair'lere seed edilen likidite ~$3M. NVDAc
+     gunde $10.6M donduruyor ama o HACIM, derinlik degil.
+
+     Risk: tek bir populer launch $500K'yi USDC->NVDAc'den gecirir ve HISSE
+     TOKEN'ININ KENDISINI oynatir. NVDAc gercek NVDA'dan sapar. Hem arbitraj
+     firsati hem itibar bombasi. Olcek sinirimiz curve degil, quote asset'in
+     derinligi.
+
+     IKI AYRI KORUMA - bunlari "slippage guard" altinda birlestirme
+     Farkli seylere karsi koruyorlar ve farkli kosullarda bozuluyorlar.
+
+       1. YURUTME KORUMASI (minimum cikti)
+          Islemin kote edilenden kotu dolmasina karsi korur. Harici fiyat
+          GEREKTIRMEZ: minimum alinacak miktar + sure siniri, gercek dolum
+          ile karsilastirilir. Hafta sonu ve oracle'siz calisir.
+
+       2. REFERANSTAN SAPMA KORUMASI
+          B20 tokeninin gercek hisseden itilmesine karsi korur. Dogrulanabilir
+          bir referans fiyat GEREKTIRIR. Oracle'a bagli olan ve 7.2 A'ya gore
+          kapanan koruma budur.
+
+     YAKLASIM - v1 basit tutulur:
+       - Referanstan sapma korumasi: NVDAc'yi referanstan X bps'ten fazla
+         oynatacak alimi REDDET. v1'de bolme yok, zamana yayma yok.
+       - Yurutme korumasi: minimum alinacak miktar, sure siniri ve toplam
+         maliyet imzalamadan once her zaman gosterilir
+       - Buyuk alimda acik uyari - sessiz slippage asla
+       - FAZ 0 B'DE OLC, iki yonde de
+
+     v1 SONRASINA ERTELENDI: buyuk emri bolme veya zamana yayma, Aerodrome +
+     Uniswap + 1inch coklu venue routing. Buyuk emri reddetmek kabul
+     edilebilir bir v1 davranisi; sessizce gerceklestirmek degil.
+
+7.2  HAFTA SONU, SEANS DISI VE ORACLE BOZULMASI
+--------------------------------------------------------------------------
+     Chainlink feed 24/5. Hafta sonu ve tatilde son kapanisi tutuyor,
+     kurumsal islemlerde donuyor. Guncelleme %0.5 sapma veya 24s heartbeat.
+     Ama havuz 24/7 islem goruyor.
+
+     Cumartesi kullaniciya hangi "NVDA fiyatini" gosteriyorsun?
+       Chainlink'i gosterirsen  -> yalan soyluyorsun, piyasa yurudu
+       DEX fiyatini gosterirsen -> durust ama beklenen "borsa fiyatindan" sapar
+
+     Gordugumuz kadariyla bunu kimse cozmemis - taradigimiz venue'lerden
+     cikan bir kanaat, dogrulanmis bir olgu degil. Problemin kendisi yapisal
+     ve Base'e ozgu. Dogru yaparsan farklilasma; gormezden gelirsen ilk
+     hafta sonu guven kaybi.
+
+     ARAYUZ YAKLASIMI:
+       - Iki fiyati da goster, etiketli: "Son kapanis" / "Zincir ustu simdi"
+       - Aradaki farki (basis) acikca goster, gizleme
+       - Seans disi oldugunu surekli belli et
+
+     BOZULMA - katman katman tanimla, asla toptan degil
+     "Islem duraklat" fazla genel. Her katman farkli davranir:
+
+     Surekli birbirine karistirilan iki ayri ariza var. Ayri tut:
+     ORACLE durmasi bir FIYAT olayi; B20 TRANSFER kisiti bir TOKEN olayi.
+     Etki alanlari farkli.
+
+     A. ORACLE DURMASI - bayat feed, hafta sonu veya kurumsal islem
+        Chainlink kurumsal islem sirasinda feed'i guncellemeyi durdurur. Bu
+        bir bayat-fiyat durumudur, token kisiti degildir, ve diger her bayat
+        feed gibi ele alinir.
+
+       Fiyat gosterimi    Son degeri acik bayatlik etiketi ve zaman
+                          damgasiyla goster. Bayat fiyati asla canli gibi
+                          sunma.
+       QuoteRouter        Slippage guard'i icin fiyat referansi gerekir.
+                          v1'de taze referans DOGRULANAMIYORSA: router
+                          yolunu KAPAT. Guard'i genisletip kullanicidan onay
+                          isteme - onay, teknik korumanin yerine gecmez.
+                          Kenar katmani kapatmak cekirdegi durdurmaz.
+       Dogrudan B20       NVDAc'si olan kullanicinin curve ile ham birim
+                          uzerinden islemi ORACLE GEREKTIRMEZ. Bu yol acik
+                          kalir.
+
+        URUN SONUCU - bunu gizleme, yuzles. Referans yalnizca Chainlink ise
+        ve feed'in hafta sonu guncellenmemesi NORMAL/beklenen davranissa, o
+        zaman USDC giris-cikis yolu HER HAFTA SONU KAPANIR. Dogrudan B20
+        isleminin acik kalmasi, USDC ile gelmis ve elinde NVDAc olmayan
+        kullanici icin bunu cozmez.
+
+        [ACIK] FAZ 0 CIKIS SARTI - iki soru, tek cevap:
+          (a) Referanstan sapma korumasi hafta sonu hangi DOGRULANABILIR
+              fiyat kaynagini kullanacak? Venue'ler arasi DEX TWAP mi? Son
+              kapanisa demirlenmis genisletilmis bant mi? Hicbiri mi?
+          (b) Kabul edilebilir kaynak yoksa cumartesi USDC'li kullaniciya tam
+              olarak ne sunulacak - acikca "donusum Pazartesiye kadar
+              duraklatildi" mi, yoksa farkli korumali baska bir yol mu?
+        Cevap ne olursa olsun, hafta sonu davranisi kullanicinin kesfettigi
+        bir hata degil, kendi ekrani olan TASARLANMIS bir durum olmali.
+
+     B. B20 TRANSFER KISITI - token seviyesi olay, cok daha genis etki alani
+        Ihracci transferleri duraklatabilir veya kisitlayabilir. Bu CEKIRDEGE
+        ulasir - curve ve graduation dahil - cunku hicbir yol varligi
+        hareket ettiremez. Kontratlarimiz bunu asamaz.
+
+       Butun katmanlar    Sebebi goster, ilgili pazari isaretle, o varlikta
+                          yeni launch'lari durdur (Faz 1C), ve asla cikis
+                          garantisi verme. Bkz. 6.3.
+
+7.3  YARGI ALANI
+--------------------------------------------------------------------------
+     Coinbase'in tokenize hisseleri ABD DISI kisilere acik, ve diger butun
+     tokenize hisse ihraccilari da ayni sekilde kisitliyor.
+
+     Kurucu karari (11 Eyl 2026): cografi engelleme yok. Bunun neyi
+     degistirdigi ve neyin yine de gecerli kaldigi (yaptirim taramasi) icin
+     Bolum 12, "KARAR VERILDI - COGRAFI ERISIM".
+
+     Yani canli soru "nereyi engelleyecegiz" degil, "nerede kurulacagiz."
+     Bu karar artik gerisini belirliyor ve avukata sorulacak ilk soru.
+     Bu belge hukuki gorusun yerine gecmez.
+
+
+================================================================================
+8. MULTIPLIER GORUNDUGU KADAR SORUN DEGIL
+================================================================================
+
+B20 kurumsal islemleri zincir ustu bir carpanla yonetiyor (ERC-8056
+uiMultiplier): ham bakiye sabit kalir, carpan token basina hisse oranini
+ayarlar. Total-return mantigi.
+
+  4:1 split  -> carpan 4x, hisse basi fiyat 1/4
+             -> TOKEN FIYATI SUREKLI KALIR
+  Temettu    -> carpan artar, token fiyati surekli kalir
+
+Yani AMM matematigi ve curve muhasebesi BOZULMUYOR. Base bunun icin
+tasarlamis ("DeFi'ye yatirilmis pozisyonlar bozulmaz").
+
+Kalan sorunlar GOSTERIM ve bir aritmetik tuzak:
+  - Arayuzde ASLA "1 NVDAc = 1 NVDA hissesi" yazma. Total-return sarmalayici.
+  - Transferler hem ham hem UI-ayarli degeri yayinlar (TransferWithScaledUI)
+  - Cekirdekte ham birim muhasebesi tut; carpan bir gosterim meselesi
+
+CARPAN NE ZAMAN UYGULANIR - uc durum, ortadaki tuzak
+
+  1. HAM HISSE fiyatindan token fiyati hesapliyorsan  -> UYGULA
+  2. Coinbase B20 Chainlink feed'ini kullaniyorsan    -> UYGULAMA
+     O feed zaten carpan uygulanmis token fiyatini veriyor. Tekrar
+     carpmak, makul gorunen ama yanlis bir deger uretir.
+  3. Token bakiyesinden temsil edilen HISSE adedini hesapliyorsan -> UYGULA
+
+"Carpani gosterim katmaninda uygula" tek basina yeterli bir kural degil,
+cunku 2. durum da gosterim katmaninda yasiyor. Her fiyatin KAYNAGINI koda
+yaz ve kurali katmandan degil kaynaktan sec.
+
+OLCULDU (11 Eyl 2026, NVDAc, Base mainnet):
+    multiplier()    -> 1000000000000000000   (1e18, su an 1.0)
+    uiMultiplier()  -> revert, 0xa60bf13d
+
+Accessor multiplier(). uiMultiplier() guncel base-std IB20Asset arayuzunde
+TANIMLI ama canli ag cevap vermiyor - kaynak surumu ile deploy edilmis surum
+uyusmazligi. multiplier() kullan, ve ikisine de bagimli kod yazmadan once
+deployment ile hangi arayuz surumunun eslestigini sabitle.
+
+Yukaridaki total-return mantigi etkilenmiyor; yanlis olan sadece isimdi.
+
+Kucuk fark ama hukuken onemli.
+
+
+================================================================================
+9. UX VE DAGITIM
+================================================================================
+
+Bu kategoride kontratlar isin kucuk yarisi, kitle buyuk yarisi. Kaniti:
+  - PONS'u Uniswap Labs'in pozisyon almasi buyuttu
+  - StonkFun'i Raydium LaunchLab entegrasyonu %250 pompaladi
+Ikisi de teknik hamle degildi.
+
+BASE'DE KURACAGIMIZ AKIS
+  onramp + embedded wallet + Base App / Farcaster miniapp
+
+  Kullanici kartindaki parayla, seed phrase gormeden, NVDA'ya eslesik bir
+  token'a TEK AKISTA girebilir. Base'de kuracagimiz sey bu.
+
+  BASKA ZINCIRLER BUNU YAPAMAZ IDDIASI DEGIL. Coinbase Onramp Base kadar
+  Solana'yi da destekliyor; altyapi bize ozel degil. Iddia sadece su: bu
+  akisi hisse-eslesmeli tokenlar icin kimse birlestirmedi, biz birlestirecegiz.
+
+  Bu, cekirdek konumun UZERINE binen bir yukselteci; konumun kendisi degil.
+  Bunun v1 kapsamina etkisi icin Faz 1'e bak.
+
+STONKFUN / PUMP.FUN UX'INDEN ALINACAKLAR
+  - Sifir surtunmeli launch (saniyeler, sabit ucret, config yok)
+  - Her seyin canli akisi (sosyal kanit + FOMO)
+  - Bonding curve gorseli - nerede oldugunu goruyorsun
+  - Tek tiklik alim, slippage diyalogu yok
+  - Token basina sohbet
+  - Mobil oncelikli
+
+YOGUNLASMAYI TASARIMA YEDIR
+  NVDAc tum hacmin %57'si. 13 ticker'i esit kutularda gosteren arayuz yalan
+  soyler ve bos gorunur. v1'i TOPLAM UC ISIMLE ac: NVDA + iki tane daha.
+  Uc canli pazar, on uc bos pazardan iyidir.
+
+
+================================================================================
+10. FAZLAMA
+================================================================================
+
+Sira: PONS mekaniklerini cikar -> ekonomiyi ve altyapiyi sec -> dar MVP ->
+sinirli lansman -> olc -> genislet.
+Dagitim bastan sona PARALEL yurur, sonda degil.
+
+FAZ 0 - SOKUM VE DOGRULAMA  (2-3 hafta, urun kodu yok)
+
+  A. PONS SOKUMU - referans uygulama
+     CURB bizim kendi urunumuz. PONS teknik bir REFERANS; fork etmeye karar
+     verdigimiz bir taban DEGIL - o karar REUSE_ANALYSIS.txt'te dosya
+     bazinda veriliyor. Her halukarda: kaynagi oku, tahmin etme.
+     Kaynak public: github.com/ponsdotdev/ponsfamily (resmi repo).
+
+     SURUM DISIPLINI - bu gercek bir tuzak. V1 ve V2 farkli mekanikler
+     kullaniyor ve bizim tasarimimiz V2 ile ortusuyor. Repodaki kok
+     abi.json ve contract-meta.json V1'e ait; yanlislikla onlari kullanmak
+     bizi yanlis protokole entegre eder.
+     [x] Referans klon: reference/ponsfamily
+         commit debbc21fb27761245356fe9b61a9276437147a1c
+         tarih 2026-09-10 20:57:59 +0200 ("Update staking_v1.md")
+         Bu repo HEAD'i, DOGRULANMIS deployment eslesmesi DEGIL - asagi bak.
+     [ ] Karsilik gelen deployment adreslerini kaydet
+     [ ] Kaynak <-> deployment eslesmesini dogrula ve kaydet. HEAD bir
+         kolaylik sabitlemesi, kanit degil. Bytecode canli deployment ile
+         karsilastirilana kadar buradaki her kaynak okumasi "reponun bugun
+         soyledigi"dir, "calisan sey" degil.
+     [ ] Lisanslari DOSYA BAZINDA kontrol et - repo kendi kontratlarinin
+         lisanslarini bagimliliklarindan ayri belirtiyor; uyarlama kapsami
+         hangisinin hangisi oldugune bagli
+
+     *** COZULDU - SUPHELENILEN BLOKAJ DIYE BIR SEY YOK ***
+     11 Eyl 2026'da cast ile Base mainnet'e karsi OLCULDU. Bu belgenin
+     5-9 arasi revizyonlari burada bir "teyit edilmis blokaj" tasiyordu.
+     O YANLISTI, ve nasil yanlis oldugu bulgunun kendisinden onemli.
+
+     IDDIA SUYDU: PonsV2LaunchFactory.setPairTokenApproved() icinde
+         if (pairToken.code.length == 0) revert PairTokenValidationFailed();
+     var ve Base dokumani precompile'larin "hold no bytecode" oldugunu
+     soyluyor, dolayisiyla B20 tokenleri reddedilir.
+
+     ZINCIR AKSINI SOYLUYOR:
+         cast codesize, Base mainnet
+           NVDAc  0xb20000000000000000000078ee7ce2fE4908108C   1   0xef
+           AAPLc  0xb200000000000000000000C2e324d24d7eEcd1fb   1   0xef
+           METAc  0xb2000000000000000000008bC8786B856E61707C   1   0xef
+           GOOGLc 0xb2000000000000000000002D0BA3164cc74f58B7   1   0xef
+           WETH   0x4200000000000000000000000000000000000006   2041 (kiyas)
+           EOA    0x000000000000000000000000000000000000dEaD   0    (kiyas)
+
+     OLCULEN DORT adreste code.length 0 degil 1; yani PONS kontrolu o
+     adreslerde revert etmiyor. "Her B20 adresi" diye GENELLENMEDI: dort
+     tanesi olculdu, digerleri olculmedi.
+
+     Soylenebilecek sey su: dokumandaki "no bytecode" ifadesinden
+     extcodesize'in sifir dondugu sonucu cikarilamaz, cunku bu adreslerde
+     cikmiyor. Tek baytlik 0xef isaretcisinin NEDEN orada oldugu ve
+     dokumanin o cumleyle ne kastettigi ise TESPIT EDILMIS DEGIL - 0xef
+     EIP-3541'in rezerve ettigi EOF oneki, ama Base'in niyetine dair her
+     aciklama tahmin olur. Bulgu olcumdur; aciklama degil.
+
+     HATA NASIL OLDU - asil isine yarayacak kisim bu.
+     Iddia ZINCIR DURUMU hakkindaydi ve ikinci bir dokuman getirilerek
+     "dogrulandi". Daha fazla metin okumak dogrulama degildir. Tek bir cast
+     cagrisi saniyeler icinde cozdu. Bundan sonra bir adresin ne yaptigina
+     dair her iddia, bu belgeye girmeden once zincire sorulacak.
+
+     HALA GERCEK IS - artik blokaj degil, kontrol listesi
+     B20 hala siradan bir kontrat degil. Simdiye kadar olculenler:
+       [x] code.length          1 (0xef) - PONS kontrolu geciyor
+       [x] name / symbol / decimals   "NVIDIA Corporation" / "NVDAc" / 8
+       [x] totalSupply, balanceOf, allowance   hepsi dogru okunuyor
+       [x] Bakiyesiz hesaptan transfer() 0xdb42144d ile revert ediyor; bu
+           cast sig "InsufficientBalance(address,uint256,uint256)" ile
+           BIREBIR esitliyor. Yani hata yolu implemente ve dogru.
+           BU, BAKIYELI TRANSFERIN CALISTIGININ KANITI DEGILDIR. Dogru bir
+           reddi kanitlar, fazlasini degil.
+     Hala dogrulanacaklar:
+       [x] BAKIYELI hesaplarda transfer / transferFrom / approve - "revert
+           etmedi" degil, olusan bakiye ve allowance uzerinden dogrulanmis.
+           Fork sutinin tamaminda: script/b20/transfer-b20.sh iki tarafin
+           bakiye farkini da dogruluyor; her fork testi hesaplari gercek
+           transferle fonluyor ve gelen miktari olcuyor.
+       [x] B20 varliginda Permit2 akisi. Gercek iki adimli akis - token
+           Permit2'ye approve, Permit2 harcayana approve - hem swap
+           (B20UniversalRouter.t.sol) hem likidite (B20PositionManager.t.sol)
+           icin. Taklit yok, approve kisayolu yok.
+       [x] OpenZeppelin SafeERC20 davranisi. test/fork/B20SafeERC20.t.sol,
+           canli NVDAc uzerinde 12 test:
+             - safeTransfer / safeTransferFrom / forceApprove /
+               safeIncreaseAllowance / safeDecreaseAllowance hepsi TAM
+               miktari tasiyor ve TAM allowance'i yaziyor
+             - testin sinadigi uc mutasyon cagrisi - transfer, approve,
+               transferFrom - her biri bir tam kelime `true` donuyor; yani
+               kutuphanenin "donus yok" yedek yolu bunlarin hicbirinde
+               calismiyor. Calissaydi bile codesize 1 onun extcodesize
+               kontrolunu geciyor. Orada cagrilmayan giris noktalari icin bir
+               sey iddia edilmiyor
+             - forceApprove sifir olmayan bir allowance'i TEK cagrida
+               eziyor: USDT'nin once sifirla sorunu B20'de yok
+             - BASARISIZ BIR HAREKET B20'NIN KENDI HATASIYLA REVERT EDIYOR VE
+               SafeERC20 ONU AYNEN GECIRIYOR. Bayt bayt yakalandi:
+                 InsufficientBalance(account,balance,needed)     0xdb42144d
+                 InsufficientAllowance(spender,allowance,needed) 0x192b9e4e
+                 InvalidReceiver(receiver)                       0x9cfea583
+               Bunlar OpenZeppelin'in hatalari DEGIL (OZ'un
+               ERC20InsufficientBalance'i 0xe450d38c) ve cagiranin gordugu sey
+               SafeERC20FailedOperation DEGIL. Basarisiz bir NVDAc hareketini
+               onu yakalayarak tespit eden kod hic tetiklenmez.
+             - trySafeTransfer, token'in sadece false dondugu yerde degil
+               REVERT ettigi yerde de false donuyor
+           Mutasyon testi: token'in revert'ini gecirmek yerine yutan bir
+           sarmalayici, tam olarak gecirmeyi iddia eden iki testi dusuruyor.
+
+           BIR SAAT KAYBETTIREN ARAC BULGUSU, TEKRAR KESFEDILMESIN DIYE BURADA.
+           vm.expectRevert, bir sarmalayicinin INCELEDIGI revert'i, SARMALAYICI
+           TESTIN ICINE INLINE OLDUGUNDA dogrulayamaz. Cheatcode testin bir alt
+           karesindeki cagriyi kancaliyor; SafeERC20 fonksiyonlari internal
+           oldugu icin dogrudan nvdac.safeTransfer(...) inline ediliyor ve o
+           cagri, sarmalayicinin birazdan inceleyecegi TOKEN cagrisinin ta
+           kendisi oluyor. Orada kancalandiginda sarmalayici, kancasiz kodun
+           asla uretmedigi SafeERC20FailedOperation'i uretti; uc test bu sekilde
+           gercegin TERSINI "kanitladi".
+
+           BU GENEL BIR KURAL DEGIL. Harici bir sinir konuldugunda kancalanan
+           cagri yardimci fonksiyon oluyor, token cagrisi bir kare daha derinde
+           ve dokunulmamis kaliyor; expectRevert o zaman SafeERC20'nin
+           gecirdigi hatayi eslestiriyor.
+           test_expectRevertMatchesAcrossAnExternalBoundary bunu sabitliyor;
+           yani kuralin kapsami iddia degil, test.
+
+           Hata testleri yine de revert verisini gercek bir cagridan yakalayip
+           bayt bayt karsilastiriyor, cunku bu selector'un yani sira
+           argumanlari da sabitliyor - ciplak selector'lu expectRevert
+           sabitlemez.
+       [ ] Address.functionCall davranisi (henuz sinanmadi: yigindaki hicbir
+           yol B20 cagrisini oradan gecirmiyor)
+
+     UCTAN UCA KULLANICI AKISI: web/app.html
+       Launch olustur, curve'de al-sat, esigi gec, havuza gecisi tamamla,
+       resmi UniversalRouter ile havuzda al-sat, LP kilidini ve yakilan
+       miktari gor. web/e2e/app.spec.js bunun tamamini GERCEKTEN kazilan
+       islemlerle suruyor - cuzdan stub'i islemi node'a iletiyor, node
+       imzaliyor - ve her islemde bakiye farkinin KOTE EDILEN miktara birebir
+       esit oldugunu dogruluyor (hem curve hem havuz).
+       BU CALISMANIN ORTAYA CIKARDIKLARI, hepsi acik:
+         [ ] launch() yalnizca owner'a acik; yani "cuzdani bagla ve launch
+             olustur" tek bir adres icin dogru. Demo, deploy'un demo hesabini
+             owner yapmasi sayesinde calisiyor.
+         [ ] curve'de onizleme fonksiyonu yok; her arayuz fiyatlamayi yeniden
+             yazmak ve elle senkron tutmak zorunda
+         [ ] Graduator ne kilit adresini ne yakilan miktari sakliyor - ikisi de
+             sadece event'te, ve public uclar eth_getLogs'u 2.000 blokla
+             sinirliyor
+         [ ] script/DeployCurb.s.sol hook'un ucret alicisini deployer yapiyor;
+             o hesaptan yapilan bir islem, topladigi ucretten ayirt edilemiyor
+       [x] CARPAN ACCESSOR'U multiplier(), uiMultiplier() DEGIL.
+           NVDAc, Base mainnet olcumu:
+             multiplier()    -> 1000000000000000000  (1e18, yani 1.0)
+             uiMultiplier()  -> revert, 0xa60bf13d
+           uiMultiplier() guncel base-std IB20Asset arayuzunde TANIMLI ama
+           canli ag bu cagriya cevap vermiyor. Bu bir kaynak-surumu /
+           deploy-surumu uyusmazligi ve sabitlenmeli:
+       [ ] Deploy edilmis B20 ile hangi base-std arayuz surumunun
+           eslestigini sabitle; aksi kanitlanana kadar multiplier() kullan
+       [ ] Quote asset'in normal bir kontrat oldugunu varsayan diger her
+           bagimlilik
+
+     BASKA bir yerde dogrulama problemi CIKARSA: kontrolu butun adresler
+     icin silme. Precompile'lara uygun bir dogrulama yolu tasarla - harici
+     dogrulanmis resmi B20 adreslerinden acik bir allowlist ya da pozitif
+     bir yetenek sinamasi - toptan kaldirma degil.
+
+     TEST KURALI - gecen bir test neyi kanitlar, neyi kanitlamaz.
+
+     Mock modundaki testler gercekten degerli. Curve matematigi, ucret
+     dagitimi ve hata yollari Solidity mock'lari uzerinde duzgun sinaniyor
+     ve o is sayilir. Onlari kosturmaya devam et, bunun arkasina alma.
+
+     Kanitlayamadiklari sey native B20 DAVRANISI. Solidity mock'u ile Rust
+     precompile'i farkli iki implementasyon ve mock, aralarindaki bir
+     sapmayi gizleyebilir. Ayrica mock'un kod boyutu da farkli; extcodesize
+     uzerine akil yuruten her test canli modda kosmali.
+
+     base-std modu gercekte nasil seciyor (guncel kaynaktan dogrulandi):
+       - setUp() ONCE _detectLivePrecompiles() kosuyor - ActivationRegistry
+         .admin()'e bir STATICCALL. Canli precompile 32 baytlik adres
+         donuyor; duz forge sifir uzunlukta returndata donuyor.
+       - Canli precompile algilanirsa vm.etch'ten ONCE return ediyor.
+         Hicbir sey uzerine yazilmiyor.
+       - Yalnizca reference mode'da mock'lari adreslerine etch ediyor.
+       - LIVE_PRECOMPILES=true canli modu zorluyor ve algilamayi atliyor.
+         Otomatik algilama basarisiz olursa diye bir kacis kapisi; tek yol
+         degil.
+
+     BAYRAK TEK BASINA YETMEZ. Base'in kendi rehberi acikca soyluyor:
+     "does NOT deploy precompiles - it only signals the test suite to expect
+     them." Precompile'larin EVM'de zaten var olmasi gerekiyor: base-forge
+     onlari in-process barindirir (base-anvil gerekir, --base bayrakli
+     yamali foundry), ya da `base-anvil --base` ile CALISAN ve gerekli
+     ozellikleri etkinlestirilmis bir node.
+     Kurulum hazir-binary scripti; Base rehberindeki lld / mold linker
+     gereksinimi base-anvil'i KAYNAKTAN DERLEMEK icin, genel bir onkosul
+     degil.
+
+     "Bir anvil node" yeterince acik degil ve bir gun kaybettirir: SIRADAN
+     Anvil, Base precompile'larini barindirmaz. base-anvil olmali, --base
+     ile baslatilmali, feature ID'leri kayitli olmali. Bayragi duz bir
+     fork'a ya da siradan bir Anvil'e karsi set etmek hicbir sey kanitlamaz.
+
+     UYUMLULUK TESTLERI AYRI VE ZORUNLU BIR KAPI
+     [ ] Canli-precompile modunda, kendi kontrolu olarak kostur
+     [ ] Komutu, arac surumlerini VE calisma ortamini kaydet
+     [ ] Modu setup log satirindan DOGRULA - asla cikarsama
+     [ ] Reference mode'dan gelen UYUMLULUK sonucu kanitlanmamis sayilir.
+         Reference mode'dan gelen diger her tur sonuc gecerlidir.
+
+     CIKARILACAK MEKANIKLER
+     [ ] Curve formulu ve parametreleri
+     [ ] Graduation esigi ve graduation isleminin kendisi
+     [ ] Arz dagilimi
+     [ ] Ucret yapisi - bkz. Bolum 11, manset oranlar protokolun geliri DEGIL
+     [ ] LP kilit mekanizmasi
+     [ ] Kurucu ve admin yetkileri - lansman sonrasi ne yapabiliyorlar
+     [ ] rescueSweptGraduation() OZELLIKLE. Kaynakta dogrulandi: onlyOwner,
+         sweep'ten itibaren 7 gunluk GRADUATION_RESCUE_DELAY, ve para
+         serbestce belirtilen bir `recipient` adresine gidiyor. Mezun
+         havuzun LP kilidi ile gecisteki rezervler FARKLI guven varsayimlari
+         tasiyor. Bu fonksiyonu koruyacaksak owner anahtarini kimin
+         tutacagina ve kurtarilan varliklara ne olacagina lansmandan once
+         karar ver - olaydan sonra degil.
+     [ ] Curve'un son fiyati havuzun acilis fiyatiyla nasil eslesiyor
+     [ ] DOGRULA: curve, mezun olacagi havuzun quote asset'ini bastan
+         topluyor mu, yani graduation swap ve oracle gerektirmiyor mu?
+         Bolum 6.1 bunun dogru olmasina dayaniyor.
+     CIKTI: acik bir tablo - aynen al / Base'e uyarla / cikar
+
+  B. DERINLIK OLCUMU - iki yon, butun buyuklukler
+     [ ] Alis: $1K / $10K / $50K / $100K / $250K / $500K - kac bps oynatiyor
+     [ ] SATIS yonu, ayni buyuklukler. Satis derinligi genelde daha kotu ve
+         daha onemli.
+     [ ] Kucuk perakende islem ($50-$500) - gercek kullanici ne odiyor
+     [ ] AAPLc, TSLAc, METAc icin tekrarla
+     [ ] Ucret ve iki hop dahil TOPLAM maliyet, sadece slippage degil
+     NOT: bu bugunku derinligi olcer. Kendi launchpad'imiz TALEP EKLEYECEK,
+     o yuzden hedef hacimde GEREKEN derinligi de yaz.
+
+  C. HAFTA SONU BASIS
+     [ ] 2-3 hafta sonu: Cmt/Paz zincir ustu fiyat vs Cuma kapanis
+     [ ] Pencereye kurumsal islem duserse donma davranisi
+
+  D. REKABET VE TALEP
+     [ ] vvveity'yi gercekten kullan - nerede kiriliyor, ne eksik, kac kullanici
+     [ ] Farcaster'da stock-paired ilgisi var mi - olc, varsayma
+     [ ] base.org/stocks venue listesini tara, kim ne entegre etmis
+
+  E. ALTYAPI SECIMI
+     [ ] Kullan / uyarla / ozel hook - maliyet, audit yuzeyi, sure karsilastir
+     [ ] Her yol icin kabaca audit maliyeti cikar
+     [ ] Faz 1 takvimini secilen yola gore yeniden tahmin et
+
+  FAZ 0 CIKIS SARTLARI - hicbiri Faz 1'e kaydirilamaz:
+     [ ] Referans V2 commit'i, deployment adresleri ve kaynak eslesmesi KAYITLI
+     [ ] Curve sekli ve parametreleri DONDURULDU
+     [ ] Graduation esigi DONDURULDU
+     [ ] Ucret modeli ve kurucu vergisi DONDURULDU (Bolum 11)
+     [ ] Graduation fiyat surekliligi YAZILDI: curve'un son fiyati havuzun
+         acilis fiyatina nasil esitleniyor. Uyusmazlik, ilk bota toplulugun
+         cebinden bedava arbitraj verir.
+     [ ] Altyapi yolu secildi, kabaca audit butcesiyle
+     [ ] Quote asset seti secildi
+     [ ] BASARI OLCUTLERI SAYISAL TANIMLANDI - tekrar kullanim ne demek ve
+         hangi pencerede; pozitif gelir ne demek ve hangi giderler dahil
+         (gas, altyapi, audit amortismani, LP seed). Bunlar Faz 2 kapisi;
+         rasyonalize edilemeden once tanimla.
+     [ ] Faz 1C operasyonel limitleri ve durdurma sartlari belirlendi
+     [ ] Faz 1'e girilir mi karari
+  Bunlar urunun kendisi. Kod yazarken secilecek detaylar degil.
+
+FAZ 1 - DAR MVP  (takvim Faz 0 E'de belirlenir, oncesinde degil)
+
+  INSA SIRASI: butun yasam dongusunu TEK quote asset uzerinde calistir (Faz
+  0 B destekliyorsa NVDAc), sonra baska hisse ekle. Bu gelistirme sirasi,
+  lansman kapsami degil - halka acik lansman yine Faz 1C'ye gore toplam uc
+  isimle acilabilir.
+
+  KAPSAM ICI (v1):
+  [ ] BondingCurve + LaunchFactory
+  [ ] Faz 0'da secilen venue'ye graduation
+  [ ] Graduation basarisizligi yonetimi - bastan tasarlanmis. Bkz. 6.4.
+  [ ] QuoteRouter + derinlik guard'i (yalnizca reddet, 7.1'e gore)
+  [ ] FeeRouter
+  [ ] PriceAdapter, hafta sonu modu ve 7.2'deki bozulma kurallari dahil
+  [ ] Cuzdanla launch akisi
+  [ ] Cuzdanla al / sat akisi
+  [ ] KESIF EKRANI - bu cekirdek, susleme degil. Kullanici yeni launch'lari,
+      graduation'a yaklasanlari ve mezun tokenlari bulabilmeli ve hizlica
+      islem yapabilmeli. Gezilemeyen launchpad, launchpad degildir.
+  [ ] Audit, Bolum 6.3'e gore kapsamli
+
+  KAPSAM DISI - ayri is paketleri, v1 degil:
+  [ ] Token basina sohbet
+  [ ] Kartla giris + embedded wallet
+  [ ] Miniapp
+
+  v1 NEDIR, NE DEGILDIR
+  Onramp'i cikarmak v1'i farklilasmamis yapmaz. Base'de farklilasma hisse
+  eslesmesinin kendisi: Clanker, Flaunch ve Zora sifir tokenize hisse
+  destekliyor, vvveity de tek diger oyuncu. v1 bunun uzerinden yarisir ve bu
+  gercek bir konumdur.
+  Onramp'in ekledigi sey savunulabilirlik - bir sonraki gelene ve
+  StonkFun ayarindaki UX'e karsi. v1'i yarissin diye cikar; onramp'i konumu
+  koru diye cikar.
+
+FAZ 1B - DAGITIM  (Faz 1 ile PARALEL yurur, sonrasinda asla degil)
+  Bolum 9 kitlenin isin buyuk yarisi oldugunu soyluyor; o halde gorevi,
+  sahibi ve kapisi olmali - paragrafi degil.
+  [ ] Lansman oncesi kac toplulukla gorusulecegini SAYI olarak belirle
+  [ ] Ilk launch'lari kimin yapacagini isim isim, onceden anlas
+  [ ] Ilk haftanin launch takvimini hazirla
+  [ ] Dagitim sahibi ata. Kucuk ekipte bunun gelistirme sahibinden farkli
+      kisi olmasi sart degil - ama kendi zamani olan, acikca sahiplenilmis
+      bir is olmali; artan zamanda yapilan bir sey degil.
+  CANLIYA CIKIS KAPISI: hazir launch takvimi var. Takvim yoksa lansman yok.
+
+FAZ 1C - SINIRLI LANSMAN  (limitler sayisaldir ve Faz 0'da belirlenir)
+
+  VARLIK KAPSAMI
+  [ ] TOPLAM UC ISIM: NVDA + iki tane daha (Bolum 9, yogunlasma)
+
+  OPERASYONEL LIMITLER - sayilari canliya cikmadan once belirle
+  [ ] Ilk asamada gunluk maksimum launch sayisi
+  [ ] Maksimum islem buyuklugu ve launch basina maksimum pozisyon
+  [ ] Kullanici icin kabul edilebilir toplam gidis-donus maliyeti
+      (ucretler + iki hop + slippage)
+
+  DURDURMA SARTLARI - etki alanina gore kademeli, tek battal kural degil
+
+    GECICI - alarm ve kontrollu yeniden deneme, DURDURMA
+    Basarisiz otomatik graduation beklenen ve kurtarilabilir bir olay.
+    PonsV2BondingCurve.sol'de dogrulandi: tam da bu yuzden
+    AutoGraduationFailed(token, gasleft()) yayinliyor - "bir keeper'in hazir
+    ama mezun olmamis bir launch'i fark etmesini saglayan sey bu event" - ve
+    "graduation, factory uzerinden izinsiz sekilde tekrar denenebilir
+    kaliyor." Basarisiz otomatik deneme bir muhasebe hatasi ya da
+    platform arizasi degil.
+    [ ] Alarm ver, tekrar dene, tekrar-basari oranini takip et
+
+    VARLIGA OZGU VE KALICI - O quote asset'te yeni launch'lari durdur
+    [ ] Quote asset sapmasi: NVDAc referanstan X bps otede
+    [ ] O varlikta derinlik guard'i reddi, denemelerin %X'inden fazla
+    [ ] O varlikta B20 transfer kisiti (7.2 B)
+    [ ] Gas disi bir sebeple tekrar tekrar basarisiz olan graduation
+
+    PAYLASILAN KONTRAT VEYA MUHASEBE - genel durdurma
+    [ ] Herhangi bir muhasebe uyusmazligi
+    [ ] Launch'lar arasi paylasilan bir kontratta herhangi bir ariza
+
+  SAHIPLIK
+  [ ] Izleyen, durdurma yetkisi olan isim
+  [ ] Tanimli mudahale suresi ve eskalasyon yolu
+
+  OLC - Faz 0 tanimlarina gore
+  [ ] Tekrar kullanim, gunluk launch, tanimli gider seti SONRASI gelir
+  [ ] Varlik setini genisletmeden once kirilan yerleri duzelt
+
+FAZ 2 - TRADING DESTINASYONU  (kosullu, otomatik degil)
+
+  Neden bedava degil: MEME/NVDAc likiditesi, NVDAc/USDC likiditesini cozmuyor.
+  Mezun meme havuzlarinda hook sahibi olmak, hisselerin kendisi icin venue
+  olma yolunda hicbir sey kazandirmiyor - o derinlik zaten Aerodrome'da ve
+  agregatorler oraya yonlendiriyor. Faz 2, kendi likidite problemi olan
+  gercek bir urun.
+
+  GIRIS KAPISI - ucu de, Faz 0'da dondurulan sayilara gore:
+  [ ] Tanimli pencerede tekrar kullanim, lansman gunu zirvesi degil
+  [ ] Tanimli gider seti sonrasi pozitif gelir
+  [ ] Su soruya inandirici cevap: NVDAc akisi neden Aerodrome yerine bize gelsin?
+
+  SONRA:
+  [ ] 13 B20 hissesi first-class varlik olarak
+  [ ] Hafta sonu fiyatlama katmanini urunlestir (basis gostergesi)
+  [ ] Cross-pair: NVDA/TSLA gibi, hicbir yerde yok
+  [ ] Portfoy gorunumu
+
+FAZ 3 - META-BAGIMSIZ KATMAN  (kosullu)
+  [ ] Mag7 sepeti: yedisi de Base'de canli (AAPL AMZN GOOGL META MSFT NVDA
+      TSLA). B20 bilesenlerinden mint edilebilir. Kimse yapmamis.
+      UYARI: ETF benzeri regulasyon yuzeyi, launchpad'den cok daha agir.
+      Redemption eklersen fon olursun. Hukuki gorus olmadan baslama.
+  [ ] Hafta sonu basis araci - kanaatimiz bunun launchpad'den daha zor
+      kopyalanacagi, cunku is kontratta degil fiyatlamayi dogru yapmakta.
+      Test edilmemis bir varsayim, moat iddiasi degil.
+
+
+================================================================================
+11. UCRET MODELI - REFERANSLAR VE FAZ 0 CIKIS SARTI
+================================================================================
+
+  DUZELTME - "%1 protokol ucreti" yanlisti. 11 Eyl 2026'da
+  PonsV2BondingCurve.sol uzerinden dogrulandi:
+
+    feeBps TEMEL ISLEM UCRETI, ve protokol bunun yalnizca bir payini aliyor:
+      uint256 protocolAmount = (pending * protocolFeeShareBps) / BASIS_POINTS;
+      uint256 creatorBucket  = pending - protocolAmount;
+    Kalani (etkinse) buyback'e, sonra kurucuya gidiyor:
+      uint256 buybackAmount = executeBuyback ? min(buybackQuoteBalance, creatorBucket) : 0;
+      uint256 creatorAmount = creatorBucket - buybackAmount + tax;
+
+    creatorTaxBps AYRI ve USTUNE BINIYOR. Kaynak yorumundan: "Kept entirely
+    separate from feeBps: it is layered on top of the base trade fee, not
+    part of the protocol/buyback/creator split, and is paid to the creator
+    in full."
+
+  YANI: "%1 temel islem ucreti" ile "platform %1 kazaniyor" AYNI SEY DEGIL.
+  Iki deger de baz puan cinsinden, dolayisiyla IKISI DE cevrilmeli:
+
+    bu ucret kaleminden brut protokol geliri
+      = ucret matrahi x (feeBps / 10.000) x (protocolFeeShareBps / 10.000)
+
+    Ornek: %1 temel ucret (feeBps = 100) ve %20 protokol payi
+    (protocolFeeShareBps = 2.000), islem tutarinin %0,20'sini protokole
+    birakir. $1.000.000 ucret matrahinda $2.000 brut - giderler dusulmeden.
+
+  Geliri manset orandan degil bu formulden modelle. Asagidaki her orani
+  canli deployment ayarlarindan yeniden dogrulanacak REFERANS DEGER say.
+
+  IKINCI DERECE SONUC: Faz 2 giris kapisi "masraf sonrasi pozitif gelir"
+  istiyor. Gelir, hacmin bir kesrinin kesri oldugu icin o kapiyi gecmek icin
+  gereken hacim manset oranin dusundurdugunden orantili olarak yuksek.
+  Faz 0 sayisal hedeflerini bu formulden kur.
+
+  REFERANS ORANLAR (guvenmeden once canli deployment'tan dogrula)
+  PONS V2   : temel islem ucreti feeBps, protocolFeeShareBps ile bolunuyor;
+              creatorTaxBps 0-300 ustune biniyor ve tamami kurucuya gidiyor
+  Clanker   : kurucu %1-3 havuz ucreti secer, Clanker LP ucretinin %20'sini alir
+  Flaunch   : launch ucreti mcap'in %0.1'i, varsayilan %80/20 kurucu/geri-alim
+
+  PONS modeli (islem basi acik ucret) mi, Clanker modeli (LP ucretinden pay)
+  mi? Ilki seffaf ve tahmin edilebilir, ikincisi kullaniciya gorunmez ama
+  mezun hacimden surekli gelir uretir.
+
+  Bu bir FAZ 0 CIKIS SARTI. Paylasimi belirle, ve beklenen platform gelirini
+  manset orandan degil, paylasimdan hesapla.
+
+  UCRETIN HANGI TOKENDA TAHSIL EDILDIGI - ACIK KONU, AYRINTI DEGIL
+  11 Eylul 2026'da olculdu, test/fork/B20FeeHook.t.sol. CIKIS tarafindan ucret
+  alan bir hook, islem yonune gore FARKLI BIR TOKENDA tahsil eder:
+
+    alis  (NVDAc -> MEME)   ucret MEME olarak gelir
+    satis (MEME  -> NVDAc)  ucret NVDAc olarak gelir
+
+  Tek havuzda arka arkaya yapilan iki islemin sonunda platformun elinde 9.871
+  ham MEME ve 10.068 ham NVDAc kaldi. Bunlarin toplami bir sey ifade etmez.
+  Ikisini tek bir gelir rakamina toplamak, metrik kiligina girmis bir aritmetik
+  hatadir.
+
+  VE MEME TAHSIL ETMEK, HARCANABILIR GELIR ELDE ETMEK DEGILDIR. Her ciftin
+  memecoin tarafi, yeni cikardigimiz tokendir: ince, oynak ve fiyatini bizzat
+  bizim isletttigimiz egri belirler. Onunla alinan ucret, degeri ancak yine
+  bizim sagladigimiz likiditeye satilabilmesine bagli bir alacaktir. Gelir gibi
+  davranan taraf NVDAc tarafidir.
+
+  UC SECENEK, HICBIRI KARARLASTIRILMADI
+    a. yonden bagimsiz cikistan al   - en basiti, su an kurulu olan; her
+                                       aliste platformu memecoinde uzun birakir
+    b. her zaman kote varlikta al    - iki tarafta da gercek gelir; aliste
+       (NVDAc)                         ucretin GIRISTEN alinmasini gerektirir,
+                                       bu farkli bir hook demektir
+    c. cikistan al, memecoin tarafini - hook'u basit tutar, sorunu hazine
+       program dahilinde sat           operasyonuna tasir; kendi fiyat etkisi
+                                       vardir
+  HERHANGI BIR GELIR RAKAMI TELAFFUZ EDILMEDEN ONCE KARARLASTIRILSIN; Faz 2'nin
+  "masraflardan sonra pozitif gelir" esigi dahil. Token bazinda muhasebe hook'ta
+  zaten var, boylece iki akim hicbir zaman sessizce birlesemez.
+
+  UCRET HOOK TESTI NEYI KANITLAR, NEYI KANITLAMAZ
+    KANITLANAN  tahsilat MEKANIZMASI calisiyor: ucret havuzdan cikiyor,
+                alicinin gercek bakiyesine geciyor, brut ciktidan aliniyor,
+                yuvarlamada trader lehine asagi yuvarlaniyor, trader'in asgari
+                cikti kontrolu NET uzerinden baglayici ve swap geri donerse
+                geriye hicbir sey kalmiyor. Exact-output takaslar yanlis
+                taraftan ucretlendirilmek yerine reddediliyor.
+    KANITLANMAYAN  hacim, tahsil edilenin nakde cevrilebilir degeri ve bunun
+                masraflari karsilayip karsilamadigi. Fork uzerinde tek havuz,
+                tek blok, islem basina 1e6 ham birim. Buradan ekonomiye dair
+                hicbir sonuc cikmaz.
+
+
+================================================================================
+12. KARARLAR
+================================================================================
+
+FAZ 0'DA KAPANMAK ZORUNDA - bunlar urunun kendisi
+  [ ] Quote asset seti: sadece NVDAc mi, 3 mu, hepsi mi
+  [ ] Curve: kullan, uyarla, yoksa kendin yaz
+  [ ] Graduation esigi
+  [ ] Ucret modeli (Bolum 11)
+  [ ] Kurucu vergisi olacak mi, tavani ne
+  [ ] Graduation fiyat surekliligi: curve son fiyati -> havuz acilis fiyati
+  [ ] Altyapi yolu: kullan / uyarla / ozel hook
+  [ ] Basari olcutleri, sayisal olarak
+  [ ] Faz 1C operasyonel limitleri ve durdurma sartlari
+
+DAHA UZUN SURE ACIK KALABILIR
+  [ ] Geri alim (buyback) olacak mi
+  [ ] Platform token'i olacak mi - v1'de GEREKMIYOR, dikkat dagitir
+  [ ] Entity ve yargi alani - ama asagidaki cografi karar bunu avukata
+      sorulacak ilk soruya yukseltiyor
+  [ ] Audit FIRMASI - secim bekleyebilir
+  [ ] Audit BUTCESI - sinirsiz degil. Kabaca rakam Faz 0 E'den cikar: ozel
+      hook ile hazir hook'un maliyeti cok farkli.
+
+KARAR VERILDI - COGRAFI ERISIM
+  Kurucu karari, 11 Eyl 2026: cografi engelleme yok. Platform ABD'yi, AB'yi,
+  Ingiltere'yi veya baska hicbir yargi alanini engellemeyecek.
+
+  Plan bunu yansitsin diye kaydedildi. Iki olgusal not tutanakta kaliyor:
+
+  - OFAC / yaptirim taramasi geofencing'den ayri bir konu.
+    DOGRULANDI: pump.fun'in yayinlanmis sartlari Ingiltere, ABD, AB veya BM
+    tarafindan yaptirim uygulanan yargi alanlarindaki kullanicilari yasakliyor;
+    PONS'un sartlari da ayni kumeyi arti isimli ulkeleri listeliyor. Yani
+    benzer platformlar bunu uyguluyor.
+    DOGRULANMADI, ve onceki bir revizyonda fazla iddiali yazilmisti: her
+    onramp, RPC, hosting ve odeme saglayicisinin bunu SOZLESMEYLE zorunlu
+    tuttugu. OFAC'in kendi rehberi isletmeye gore degisen risk temelli bir
+    yaklasim tarif ediyor; bu, tekduze bir sozlesme sarti ile ayni sey degil.
+    AKSIYON: kullanmayi dusundugumuz saglayicilarin gercek sartlarini oku ve
+    butceyi onlardan cikar. Ne opsiyonel ne de evrensel oldugunu varsayma.
+
+  - Bu karar butun tokenize hisse ihraccilarindan ayrisiyor. Quote asset'imiz
+    olan Coinbase B20 hisseleri sadece ABD disi kisilere acik. Robinhood'un
+    sartlari, stock token'larinin ABD kisilerine "dogrudan veya dolayli
+    olarak" sunulamayacagini yaziyor. PONS ABD'yi engellemiyor, ama Pons
+    Labs, LLC bir Delaware sirketi; Delaware hukukuna tabi ve Wilmington'da
+    tahkim yapiyor - ABD yargisindan kacmadi, bilerek kabul etti. ABD disi
+    bir isletmecinin ABD kisilerine hizmet vermesi ayni maruziyeti tasir ama
+    o yapinin hicbirine sahip olmaz.
+
+  Plana etkisi: "Entity ve yargi alani" artik gec kalinmis idari bir is
+  degil. Bu kararin bagli oldugu karar o, ve avukata sorulacak ilk soru.
+
+
+================================================================================
+13. OLDURUCU RISKLER VE IZLEME
+================================================================================
+
+  RISK                        IZLENECEK SINYAL
+  --------------------------  ------------------------------------------------
+  Meta soguyor                Zirveden %50 gelir dususu bir INCELEME
+                              TETIKLEYICISI, hukum degil. Birkac haftalik
+                              PONS + StonkFun geliri, aktif trader sayisi ve
+                              launch egilimiyle BIRLIKTE degerlendir. Bir
+                              launchpad tokeninin %20 dusmesi tek basina
+                              formatin bittigini gostermez.
+
+  Coinbase launchpad kurar    Dusuk olasilik: regule, halka acik bir ihracci
+                              NVDA'nin yanina meme koymaz. Ama Base ekibi
+                              baskasini fonlayabilir.
+
+  vvveity fonlanirsa          Tek gercek rakip. Yatirim/entegrasyon haberi izle.
+
+  NVDAc derinligi artmazsa    Olcek siniri bu. Aylik derinlik olcumu tut,
+                              iki yonde de.
+
+  B20 policy degisikligi      isAuthorized() ve allow/blocklist yetenegi
+                              standartta VAR, su an aktif degil. Aktiflesirse
+                              izinsiz ikincil piyasa varsayimi coker. Base
+                              docs ve Coinbase duyurularini izle.
+
+  Dagitim yoklugu             En buyuk risk. Farcaster'da varlik yoksa en iyi
+                              UX bile bosa gider. Faz 0'da olc, Faz 1'de
+                              cozmeye calisma.
+
+
+================================================================================
+14. TEK CUMLE OZET
+================================================================================
+
+Base'de eksik olan "kullanici dostu" degil, "eglenceli": Aerodrome zaten
+calisiyor, 1inch zaten route ediyor, IPOR zaten borc veriyor - eksik olan
+destinasyon hissi. O bosluk 24 Agustos'tan beri acik, gunde $10M+ donuyor, ve
+okumamiz Coinbase'in oraya girmeyecegi yonunde. Bu son kisim, regule ve
+halka acik bir ihraccinin tesvikleri hakkinda bir KANAAT - olgu degil, ve
+guvenmek yerine tekrar kontrol edilmeli.
+
+Kazanan en iyi kodu yazan degil, ilk bin kullaniciyi getiren olacak.
+
+
+================================================================================
+15. ISIM
+================================================================================
+
+CURB - curb.fun / curb.trade / curb.markets (11 Eyl 2026 itibariyle musait)
+
+Curb Exchange, American Stock Exchange'in atasidir: NYSE'nin icine giremeyen
+tuccarlar disarida, kaldirimda alim satim yapardi; sonra gercek borsa oldular.
+"Kerb trading" ise finansta resmi seans disinda yapilan gayriresmi alim satim
+demektir - 24/7 zincir ustu hisse tam olarak budur. Isim hem disaridaki
+konumlanmayi hem hafta sonu farklilasmasini kendisi anlatiyor.
+
+Alternatif: LIMIT UP - limitup.fun / .app / .trade / .markets musait.
+Kullanici kazanmada daha guclu: borsadaki en arzu edilen terim ve hazir
+slogan. Faz 2'yi tasimada daha zayif.
+
+X handle: buradan dogrulanamiyor. @curb ve @limitup kesinlikle alinmistir.
+Gercekci adaylar: @curbdotfun, @curbfun, @curbmarkets, @trycurb,
+@curbexchange. Domaini almadan ONCE handle'i bul; handle'i olmayan isim
+oludur, tersi degil.
+
+REKLAM NOTU: X'in finansal hizmetler reklam politikasi var ve bu urun menkul
+kiymet bitisigi. Ucretli X reklami buyuk ihtimalle sertifikasyon isteyecek
+veya reddedilecek. Plani organik + Farcaster uzerine kur.
+
+
+================================================================================
+16. UYGULAMA SIRASI VE ILK TESLIMAT
+================================================================================
+
+Bu belge simdilik bitti. Bundan sonraki kararlar bu dosyayi buyuterek degil,
+calisan bir surum uzerinden verilmeli.
+
+TEMEL KURAL - CALISAN SEYI YENIDEN ICAT ETME
+  Kendi launchpad'imizi kuruyoruz; PONS V2 yazmadan once okudugumuz
+  referans. Yeniden kullanim REUSE_ANALYSIS.txt'te dosya bazinda
+  kararlastiriliyor - toptan fork ya da toptan sifirdan yazma ile degil.
+
+  PONS'tan saptigimiz her yerde gerekce yaziya dokulur. "Biz farkli
+  yapardik" gerekce degildir. Curve, graduation ve ucret sistemini AYNI
+  ANDA yeniden tasarlama - bir seyi degistir, digerlerini bilinen birak.
+
+  NOT: PONS hicbir derleme veya test altyapisi ile gelmiyor (foundry.toml
+  yok, remappings.txt yok, *.t.sol yok). "Once mevcut akisi calistir"
+  secenegi mevcut degil; derlenen bir calisma alani ve bizim yazdigimiz
+  testler birinci adim.
+
+IS SIRASI
+  1. PONS V2 akisini oldugu gibi calistir ve ucdan uca anla
+  2. Base/B20 uyarlama farkini cikar - ne degismeli, neden
+  3. Butun yasam dongusunu TEK quote asset uzerinde kur:
+       launch -> alim -> satis -> graduation -> havuzda islem -> ucret cekme
+  4. Ancak ondan sonra baska hisse ekle
+  5. Minimal arayuz, cekirdegi kesif ekrani
+  6. Hazirlanmis takvimle toplam uc isimlik halka acik lansman
+
+DOLAR FIYATINDAN BAGIMSIZ KALMASI GEREKENLER
+  Graduation ESIGI ve tum muhasebe ham B20 birimleriyle calisir. Esik dolar
+  cinsinden tanimlanirsa oracle cekirdek bagimlilik haline gelir; hisse
+  fiyatinin oynamasi veya feed'in durmasi mekanizmanin kendisini etkilemeye
+  baslar. Dolar yalnizca arayuze aittir. Bu, 6.1'deki katmanlamanin pratik
+  sonucu.
+
+ILK TEKNIK KILOMETRE TASI - tam dongu oncesi kabul kriterleri
+  Once daha dar bir sey gosterilebilir olmali: GERCEK bir B20 varligina
+  karsi calisan token onaylama ve transfer akisi. Besinin de gosterilmesi:
+
+  [ ] Sabitlenmis kaynak ve arac surumleri - PONS commit, base-anvil /
+      base-forge, foundry, solc - arti tam komut ve calisma ortami
+  [ ] Setup'tan gelen canli-precompile mod log satiri
+  [ ] Test edilen B20 adresinde OLCULEN codesize. Mainnet 1 diyor (0xef).
+      Bu ayni zamanda ortam saglama kontrolu: test ortamin 0 veya buyuk bir
+      sayi diyorsa gercek B20 servis etmiyordur.
+  [ ] Ayni adreste DAVRANISSAL sonuclar, "revert etmedi" degil DURUM
+      uzerinden dogrulanmis:
+        - decimals() beklenen degeri donuyor
+        - approve() sonrasi allowance() bunu yansitiyor
+        - transfer() sonrasi HEM gonderen HEM alici bakiyesi beklenen
+          miktarda degismis
+  [ ] setPairTokenApproved(), DEGISTIRILMEMIS kontratta gercek bir B20
+      adresini KABUL ETMELI.
+
+      BURADAKI REVERT'I "ORTAM BOZUK" DIYE OKUMA. debbc21f kaynagindan:
+      fonksiyonun BES ayri patlama yolu var:
+
+        1. onlyOwner                                    (cagiran)
+        2. pairToken == address(0)  -> PairTokenValidationFailed
+        3. pairToken.code.length == 0 -> PairTokenValidationFailed
+        4. economics.phantomQuote == 0 || graduationThreshold == 0
+                                    -> PairTokenEconomicsInvalid
+        5. _requireDecimals uyusmazligi -> PairTokenDecimalsMismatch(bek, ger)
+           ya da decimals() okunamiyorsa -> PairTokenDecimalsUnavailable
+
+      Canini yakacak iki tuzak:
+        - PairTokenEconomics, onaydan ONCE yapilandirilmis olmali. Duz bir
+          setPairTokenApproved(NVDAc, true) cagrisi PairTokenEconomicsInvalid
+          ile revert eder ve B20 ile hicbir ilgisi yoktur.
+        - NVDAc decimals = 8, 18 DEGIL (olculdu). economics.decimals'i 8 yap,
+          yoksa _requireDecimals PairTokenDecimalsMismatch ile revert eder.
+          Bu bir YAPILANDIRMA meselesi, algoritma degisikligi degil:
+          matematik ham token birimleriyle calisiyor ve PairTokenEconomics
+          zaten varliga ozgu bir decimals alani tasiyor. NVDAc tutarlarini
+          10^8 olceginde yapilandir. 18-e-karsi-8 farki 10^10'dur;
+          kaynaktaki "on iki basamaklik yanlis fiyatlama" o yorumun kendi
+          ornegi, bizim durumumuz degil. Yanlis olcekleme riski gercek -
+          mevcut matematigin bozuk oldugu sonucu cikmaz.
+
+      Ortam ya da B20 hakkinda sonuc cikarmadan once gercek hatayi teshis et.
+
+  [ ] Bir EOA'yi ve sifir adresi REDDETMEYE DEVAM ETMELI. Sonradan ne
+      degistirirsek degistirelim, reddedilmesi gerekeni reddetmeye devam
+      etmeli - sadece kabulu kanitlayan bir suite, kontrol toptan silinseydi
+      de gecerdi.
+  [ ] Her revert SELECTOR ile dogrulanmali, "revert etti" ile asla.
+      CEKINCE: 2. ve 3. durum ayni PairTokenValidationFailed selector'unu
+      paylasiyor; yani selector tek basina hangi dalin calistigini
+      soylemiyor. code.length dalini ozellikle sinamak icin kodsuz ve sifir
+      olmayan bir adres gerekir, ve o zaman bile selector'den ayirt edemezsin
+      - sectigin girdiden ayirt edersin.
+
+  LOG SATIRI KENDI KENDINI DOGRULAMAZ. LIVE_PRECOMPILES=true algilamayi
+  atlayip ayni satiri bastirabiliyor; yani log, precompile'i olmayan bir
+  ortamda da "canli mod" diyebilir. Bu kriterler ancak BIRLIKTE bir sey
+  kanitlar: log, arti olculen codesize, arti gercek cagrilarin dogru durum
+  dondurmesi. Herhangi biri tek basina ya dairesel ya yetersiz.
+
+ILK TESLIMAT - bu asamanin "bitti" tanimi
+  Test ortaminda, tek bir B20 quote asset uzerinde butun yasam dongusunu
+  calistiran KENDI launchpad'imiz ve uzerinde minimal bir arayuz -
+  REUSE_ANALYSIS.txt'in gerekcelendirdigi PONS parcalari arti kendi
+  kodumuzdan kurulu.
+
+  Daha buyuk bir belge degil. Uc quote asset degil. Onramp degil.
+  Tek varlik, tek calisan dongu, tiklanabilir bir sey.
+
+  Sonraki her karar o calisan surum uzerinden verilir.
+
+
+================================================================================
+REVIZYON GECMISI
+================================================================================
+
+Rev 12 - 11 Eyl 2026, cerceve duzeltildi + lisans ve yeniden kullanim analizi
+  - CERCEVE: "Base'e tasidigimiz sey PONS" yanlisti, her yerden kaldirildi.
+    CURB bizim kendi launchpad'imiz; PONS referans. Fork karari
+    REUSE_ANALYSIS.txt'te dosya bazinda veriliyor.
+  - "Uyarla, yeniden tasarlama / once mevcut akisi calistir" degistirildi.
+    PONS hicbir derleme veya test altyapisi ile GELMIYOR - dogrulandi:
+    foundry.toml yok, remappings.txt yok, test/ yok, sifir *.t.sol. Mevcut
+    testleri kosturmak secenek degil cunku test yok.
+  - LISANS, checkout'tan okundu: PONS'un kendi 15 V2 dosyasi tamamen MIT.
+    Vendored bagimliliklar 69 MIT ve 2 BUSL-1.1 (v4-core Pool.sol ve
+    Position.sol). PonsV2GraduationGuard BUSL olan Pool.sol'u import
+    ediyor; yani "PONS MIT, o halde paket serbest" YANLIS. Butun BUSL
+    maruziyeti tek bir Pool.tickSpacingToMaxLiquidityPerTick cagrisi -
+    kacinilabilir. Ayrica vendored v4-core'da LISANS DOSYASI YOK, yani
+    BUSL'un Change Date ve Additional Use Grant maddeleri bu agacta hic
+    yok; Uniswap bagimliliklarini lisans dosyalariyla birlikte yukaridan al.
+  - 8 DECIMALS IDDIASI DUZELTILDI. "Butun curve matematigine yayiliyor"
+    demek fazla iddialiydi. PairTokenEconomics zaten varliga ozgu decimals
+    alani tasiyor ve matematik ham token birimleriyle calisiyor; yani bu
+    10^8 olceginde bir yapilandirma. 18-e-karsi-8 farki 10^10; kaynaktaki
+    "on iki basamak" o yorumun kendi ornegi. Yanlis olcekleme riski gercek;
+    "matematik bozuk" sonucu cikmaz.
+  - REUSE_ANALYSIS.txt eklendi: dosya bazinda envanter ve oneri. ~6.100
+    satirin ~1.911'i (staking, burn, buyback) MVP ile ilgisiz.
+
+Rev 11 - 11 Eyl 2026, is basladi - kaynak sabitlendi, Rev 10 siklastirildi
+  PONS reference/ponsfamily'ye klonlandi, debbc21f'te sabitlendi (repo HEAD,
+  dogrulanmis deployment eslesmesi degil - oyle kaydedildi).
+
+  Rev 10'a dort duzeltme, hepsi olcumden ya da yerel kaynaktan:
+  - CARPAN ACCESSOR'U multiplier(), NVDAc'de 1e18 donuyor. uiMultiplier()
+    guncel base-std IB20Asset arayuzunde TANIMLI olmasina ragmen revert
+    ediyor - sabitlenmesi gereken bir kaynak-deploy surum uyusmazligi.
+    Rev 10 "gercek accessor'u bul" diyordu; bulundu.
+  - "Harness'ta revert ederse ortam yanlistir" fazla kesindi, degistirildi.
+    setPairTokenApproved'in BES patlama yolu var (onlyOwner; sifir adres;
+    code.length; economics ayarsiz; decimals uyusmazligi). Ikisi ayni
+    PairTokenValidationFailed selector'unu paylasiyor, yani selector
+    dogrulamasi bunlari ayirt edemiyor - not dusuldu.
+    Iki tuzak kaydedildi: economics onaydan once yapilandirilmali, ve NVDAc
+    8 decimals, 18 degil. Kaynak bu riski "sessiz on iki basamaklik yanlis
+    fiyatlama" diye tarif ediyor.
+  - Olculen dort adresi "her B20 adresi" diye genellemekten vazgecildi ve
+    0xef isaretcisinin NEDEN orada oldugu aciklamasi cikarildi. Olcum
+    geçerli; gerekce tahmindi.
+  - Basarisiz transfer sonucu birebir dogrulandi - 0xdb42144d, cast sig
+    "InsufficientBalance(address,uint256,uint256)" ile esitliyor - ve artik
+    acikca "bakiyeli transferin calistiginin kaniti DEGILDIR" diye isaretli.
+  - lld/mold duzeltildi: o gereksinim base-anvil'i kaynaktan derlemek icin,
+    hazir-binary kurulumu icin degil.
+
+Rev 10 - 11 Eyl 2026, ZINCIRE KARSI ILK OLCUM
+  Rev 5-9'un tasidigi "teyit edilmis blokaj" yanlisti. cast, Base mainnet:
+
+    NVDAc / AAPLc / METAc / GOOGLc  ->  codesize 1, code 0xef
+    WETH 2041 (kiyas), EOA 0 (kiyas)
+
+  code.length 0 degil 1; yani PonsV2LaunchFactory'nin pair token kontrolu
+  GECIYOR. Blokaj diye bir sey yok. 0xef, EIP-3541'in rezerve ettigi EOF
+  oneki ve tek baytlik isaretci gorunuse gore extcodesize > 0 olsun,
+  siradan entegrasyonlar kirilmasin diye var - Base'in "B20 mevcut cuzdan
+  ve router'larla degisiklik gerektirmeden calisir" iddiasiyla tutarli.
+  Dokumandaki "no bytecode", Basescan'de dogrulanmis varlik basina kaynak
+  olmadigini anlatiyor.
+
+  Hatanin kok sebebi: ZINCIR DURUMU hakkindaki bir iddia, ikinci bir
+  dokuman getirilerek "dogrulandi". Iki incelemeci ve bu belge bunu bes
+  revizyon boyunca tekrarladi. Tek bir cast cagrisi cozdu. Kural artik
+  Faz 0 A'da kayitli: zincir durumu iddialari once zincire sorulur.
+
+  Ayrica olculup islenenler:
+  - name/symbol/decimals, totalSupply, balanceOf, allowance hepsi dogru
+  - Bakiyesiz hesaptan transfer() 0xdb42144d ile revert ediyor; yani
+    implemente edilmis ve dogru patliyor
+  - NVDAc uzerinde uiMultiplier() REVERT EDIYOR (0xa60bf13d). Bolum 8'e
+    uyari kondu: accessor adi dokumandan geldi, dogrulanmadi.
+
+  Bunlarin sonucu: Faz 0 A blokajdan kontrol listesine cevrildi; kabul
+  kriterlerindeki "code.length == 0" ortam saglama kontrolu gorevi de goren
+  bir OLCUM kaydina donustu; karsilastirmali test yeniden kuruldu, cunku
+  dayandigi onerme (orijinal kontrol B20'yi reddediyor) yanlis - artik
+  degistirilmemis kontratin gercek B20'yi KABUL ETTIGINI, EOA'yi ve sifir
+  adresi reddetmeye devam ettigini kanitliyor.
+
+Rev 9 - 11 Eyl 2026, sekizinci dis inceleme - yalnizca test tasarimi
+  - Karsilastirmali test DOGRU SEBEPLE patlamali: PairTokenValidationFailed
+    selector'u ozellikle dogrulanmali. onlyOwner, sifir adres veya eksik
+    kurulum kaynakli revert B20 hakkinda hicbir sey kanitlamaz.
+  - Uyarlanmis kontrol gecersiz adresleri REDDETMEYE devam etmeli. Sadece
+    kabulu kanitlayan bir suite, kontrol toptan silinseydi de gecerdi - ki
+    Faz 0 A tam olarak buna karsi uyariyor.
+  (Rev 8 kendini son planlama revizyonu ilan etmisti; bu tek madde istisnayi
+  hak etti. Planlama gercekten burada bitiyor.)
+
+Rev 8 - 11 Eyl 2026, yedinci dis inceleme - son planlama revizyonu
+  - "Bir anvil node" kesinlestirildi. Siradan Anvil, Base precompile'larini
+    barindirmaz; --base ile baslatilmis base-anvil olmali ve feature ID'leri
+    kayitli olmali. Belirsiz ifade bir gun kaybettirirdi.
+  - Kabul kriterlerine dairesellik cekincesi eklendi: setup log'u KENDI
+    KENDINI DOGRULAMIYOR, cunku LIVE_PRECOMPILES=true algilamayi atlayip
+    ayni satiri bastiriyor. Bes kriter ancak birlikte bir sey kanitlar -
+    log, arti code.length == 0, arti gercek cagrilarin dogru durum
+    dondurmesi.
+  - Davranissal dogrulamalar "cagri basarili" yerine acikca yazildi:
+    decimals() beklenen degeri donuyor; approve() sonrasi allowance()
+    yansitiyor; transfer() sonrasi hem gonderen hem alici bakiyesi beklenen
+    miktarda degisiyor. "Revert etmedi" bir sonuc degildir.
+  - IDEA.txt baslik revizyon numarasi duzeltildi.
+  Planlama burada bitiyor. Sonraki inceleme kodu, sabitlenen surumleri, tam
+  komutu ve test ciktisini degerlendirecek.
+
+Rev 7 - 11 Eyl 2026, altinci dis inceleme
+  Test konusunda benim uc asiri genellemem, ozetinden degil guncel base-std
+  kaynagindan dogrulanarak duzeltildi.
+  - YANLIS: "bayrak yoksa vm.etch canli precompile'in uzerine mock yazar."
+    setUp() ONCE _detectLivePrecompiles() kosuyor - ActivationRegistry
+    .admin()'e STATICCALL - ve canli precompile bulursa etch'ten once return
+    ediyor. LIVE_PRECOMPILES=true bu algilamayi atliyor; canli moda giden tek
+    yol degil, bir kacis kapisi. Ayrica mock yazilmasi genel olarak Foundry
+    fork testlerinin ozelligi de degil - bu test altyapisinin kurulum
+    davranisi. Dogru ifade: reference mode'da kullanilan bytecode'lu mock,
+    B20'nin bytecode'suz olmasindan kaynaklanan uyumsuzlugu GIZLEYEBILIR.
+  - EKLENDI: bayrak tek basina yetmiyor. Base rehberi: "does NOT deploy
+    precompiles - it only signals the test suite to expect them." Calisma
+    ortaminin onlari gercekten barindirmasi gerekiyor (base-forge in-process
+    ya da bir anvil node). Komut, arac surumleri ve ortam birlikte
+    kaydedilmeli.
+  - YANLIS: "reference mode'da hepsi yalanci gecer." Mock testleri curve
+    matematigini, ucret dagitimini ve hata yollarini duzgun sinaniyor ve o is
+    sayilir. Orada kanitlanmayan sadece UYUMLULUK iddiasi. Uyumluluk, diger
+    testleri durdurma sebebi olmaktan cikip ayri ve zorunlu bir kapi oldu -
+    onceki ifade isi gereksiz yere seri hale getirirdi.
+  - Bolum 16'ya EKLENDI: ilk teknik kilometre tasi icin bes kabul kriteri
+    (sabitlenmis surumler, canli mod kaniti, code.length==0 kaniti,
+    decimals/approve/transfer sonuclari, ve orijinal kontrolun reddedip
+    uyarlanmis kontrolun kabul ettigini gosteren karsilastirmali test).
+
+Rev 6 - 11 Eyl 2026, besinci dis inceleme
+  - Gelir formulu duzeltildi. "feeBps x protocolFeeShareBps" boyutsal olarak
+    yanlisti - ikisi de baz puan ve ikisi de cevrilmeli:
+    ucret matrahi x (feeBps/10.000) x (protocolFeeShareBps/10.000). Ornek
+    hesap ve Faz 2 gelir kapisina ikinci derece etkisi eklendi.
+  - Fork test kurali kesinlestirildi, ve yazilandan daha keskin cikti: duz
+    `forge test` Solidity mock'lari uzerinde kosuyor ve vm.etch precompile
+    adresine mock bytecode yaziyor - yani code.length != 0 DOGRU oluyor ve
+    pair token kontrolu testte geciyor, production'da patliyor. Canli mod
+    (base-forge veya LIVE_PRECOMPILES=true + --fork-url) artik zorunlu ve
+    mod test logundan dogrulanmali.
+  - "TEYIT EDILMIS BLOKAJ" -> "TEYIT EDILMIS UYUMLULUK SORUNU - DEGISTIRILMEMIS
+    PORTU ENGELLER" olarak yeniden adlandirildi. Bulgu gercek; projenin
+    yapilamayacagini gostermiyor ve onceki ifade fazla iddialiydi.
+  - IDEA.txt: "Weekend pricing - unsolved by anyone" yumusatildi. Bu iki yol
+    haritasinda duzeltilmis ama IDEA'da atlanmisti; onceki revizyondaki
+    "kalinti yok" iddiasi taramanin gercekte kontrol ettiginden genisti.
+  - Bolum 3 hala PONS'u "feeBps=100 (%1 protokol) => toplam %1-4 trader
+    maliyeti" diye tarif ediyordu - iki revizyon once Bolum 11'de duzeltilen
+    ayni hata, ikinci bir yerde hayatta kalmis. Duzeltildi ve capraz referans
+    verildi. Bir duzeltmenin yayilmamasi ucuncu kez oluyor: desen-sinirli
+    grep'ler parafrazlari kaciriyor, o yuzden bundan sonraki taramalar tam
+    ifadeyi degil KAVRAMI aramali.
+
+Rev 5 - 11 Eyl 2026, dorduncu dis inceleme (kaynagi okuyan ilk inceleme)
+  - *** TEYIT EDILMIS BLOKAJ Faz 0 A'ya eklendi: degistirilmemis PONS V2 bir
+    B20 tokenini onaylayamaz. setPairTokenApproved() pairToken.code.length
+    != 0 istiyor; B20 tokenleri bytecode'u olmayan precompile'lar. Ikisi de
+    birincil kaynaktan dogrulandi. Bir sinif taramasina genellestirildi
+    (decimals, transfer, allowance, Permit2, SafeERC20), cozum yonu ve test
+    kuraliyla - ERC-20 mock'u B20 uyumlulugunu kanitlayamaz.
+  - Bolum 11 ucret modeli DUZELTILDI. feeBps temel islem ucreti ve protokol
+    bunun yalnizca protocolFeeShareBps kadarini aliyor; creatorTaxBps ayri
+    biniyor ve tamami kurucuya gidiyor. "%1 protokol ucreti" yanlisti.
+    (Rev 5'te buraya yazilan formul de boyutsal olarak yanlisti - baz puan
+    cevrimi yapilmis dogru hali icin yukarida Rev 6'ya bak.)
+  - Faz 1C durdurma sartlari kademelendirildi: basarisiz otomatik graduation
+    beklenen ve tekrar denenebilir bir olay (kaynak, bir keeper'in aksiyon
+    almasi icin AutoGraduationFailed yayinliyor) ve platformu durdurmamali.
+    Gecici / varliga ozgu / paylasilan kontrat kademeleri tanimlandi.
+  - 7.1 ikiye ayrildi: yurutme korumasi (minimum cikti, oracle gerektirmez)
+    ve referanstan sapma korumasi (fiyat gerektirir, 7.2 A'ya gore kapanir).
+    Ikisini "slippage guard" altinda birlestirmek belirsizdi.
+  - 7.2: hafta sonu urun sonucu eklendi - tek referans Chainlink ise USDC
+    yolu her hafta sonu kapanir. Kullanicinin kesfettigi bir hata degil,
+    tasarlanmis bir durum olarak Faz 0 cikis karari yapildi.
+  - Bolum 8: uc durumlu carpan kurali eklendi. Coinbase B20 feed'i zaten
+    carpan uygulanmis fiyat veriyor; tekrar uygulamak sessiz yanlis deger.
+  - Faz 0 A: rescueSweptGraduation() ismiyle eklendi - onlyOwner, 7 gun
+    gecikme, para serbest bir adrese. LP kilidinden farkli guven varsayimi.
+  - Epistemik temizlik: "kimse cozmemis", "Coinbase yapisal olarak giremez",
+    "bu kopyalanmaz" ifadeleri kanaat olarak yeniden yazildi. Butun
+    saglayicilarin yaptirim taramasini sozlesmeyle zorunlu tuttugu iddiasi
+    fazla iddialiydi; dogrulanan ve dogrulanmayan olarak ayrildi.
+
+Rev 4 - 11 Eyl 2026, ucuncu dis inceleme
+  - 7.2 ikiye ayrildi: A (oracle durmasi) ve B (B20 transfer kisiti). Bunlar
+    birbirine karismisti. Kurumsal islem Chainlink GUNCELLEMELERINI durdurur
+    - gosterim ve router katmanlariyla sinirli bir fiyat olayi. Transfer
+    kisiti ise cekirdege ulasan bir TOKEN olayi. Etki alanlari farkli.
+  - 7.2 router davranisi duzeltildi: v1'de dogrulanamayan fiyat referansi
+    router yolunu KAPATIR. Onceki "guard'lari genislet ve kullanicidan onay
+    iste" secenegi kaldirildi - onay teknik korumanin yerine gecmez ve
+    7.1'deki yalnizca-reddet kuraliyla celisiyordu.
+  - StonkFun / Solana'nin tek akista fiat onramp sunamayacagi iddiasi
+    kaldirildi. Coinbase Onramp Solana'yi destekliyor. Farklilasma,
+    baskalarinin yapamadigi degil bizim yapacagimiz sey olarak yazildi.
+  - Lansman varlik sayisi her yerde TOPLAM UC ISIM (NVDA + iki) olarak
+    standartlastirildi; "NVDA + 2-3" ve "2-3 isim" ifadeleri kaldirildi.
+
+Rev 3 - 11 Eyl 2026, ikinci dis inceleme
+  - Gecersiz kalan cumleler not dusulerek degil, belge genelinde silinerek
+    cikarildi. Bolum 5, 9 ve 10 artik Rev 2 duzeltmeleriyle celismiyor.
+  - Bolum 6 CEKIRDEK / KENAR / GOSTERIM katmanlamasi etrafinda yeniden
+    kuruldu: curve ve graduation ham B20 birimleriyle, oracle ve swap
+    olmadan; QuoteRouter ve PriceAdapter kritik yolun disinda. PONS V2
+    kaynagindan dogrulanmak uzere isaretlendi.
+  - Bolum 6.3: her yolun basarisiz B20 transferini "parayi hapsetmeden"
+    atlatacagi sozu kaldirildi - tutulamayacak bir sozdu. Yerine: muhasebe
+    bozulmamali, tekrar denenebilmeli, ihracci blokaji gosterilmeli.
+    Cikis garantisi yok.
+  - Bolum 6.4 eklendi: graduation basarisizligi v1 gereksinimi - tekrar
+    denenebilir, idempotent, paranin yeri acik, gecis sirasindaki kullanici
+    durumu tanimli.
+  - Bolum 7.1: router v1 yalnizca reddetmeye daraltildi. Bolme, zamana yayma
+    ve coklu venue routing v1 sonrasina ertelendi.
+  - Bolum 7.2: "islem duraklat" yerine katman katman bozulma kurallari.
+  - Faz 0 A: V2 surum disiplini (commit, adresler, kaynak eslesmesi) ve dosya
+    bazinda lisans kontrolu eklendi.
+  - Faz 1: onramp'siz v1'in farklilasmamis oldugu iddiasi duzeltildi. Hisse
+    eslesmesi farklilasma; onramp savunulabilirlik.
+  - Faz 1: kesif ekrani "minimal canli akis"tan cekirdek kapsama yukseldi;
+    insa sirasi tek quote asset uzerinden ucdan uca olacak sekilde sabitlendi.
+  - Faz 1C: gercek operasyonel limitler, otomatik durdurma sartlari ve isimli
+    sahip eklendi.
+  - Faz 0 cikis: basari olcutleri Faz 1'den once sayisal tanimlanacak; audit
+    butcesi kabaca mimari secimden cikacak.
+  - Bolum 13: meta sogumasi kurali hukumden inceleme tetikleyicisine cevrildi;
+    token fiyati tek basina sinyal olmaktan cikarildi.
+  - Bolum 16 eklendi: uyarla-yeniden-tasarlama kurali, is sirasi ve ilk
+    teslimat - daha uzun belge degil, calisan tek varlikli dongu.
+
+Rev 2 - 11 Eyl 2026, ilk dis inceleme
+  - PONS sokumu Faz 0 A olarak eklendi; launch ekonomisi Faz 0 cikis sartina
+    tasindi; MVP daraltildi; dagitim paralel faz ve canliya cikis kapisiyla
+    eklendi; Faz 2 giris kapisi eklendi; guvenlik kapsami genisletildi; Faz 0
+    suresi duzeltildi; "Faz 2 neredeyse bedava" ve 4-6 haftalik MVP tahmini
+    geri cekildi; cografi erisim karari kaydedildi.
+
+Rev 1 - 11 Eyl 2026, ilk taslak.
+
+
+================================================================================
+KAYNAKLAR
+================================================================================
+
+Base / B20 / Coinbase tokenize hisseler
+  https://docs.base.org/base-chain/specs/reference/b20/tokenized-stocks-on-base
+  https://docs.base.org/build-on-base/integrate-defi/list-tokenized-stocks
+  https://blog.base.dev/b20-tokenized-stocks-on-base
+  https://www.base.org/stocks
+  https://basehub.org/integration-guides/tokenized-stocks/
+  https://docs.chain.link/data-feeds/tokenized-equity-feeds/coinbase
+  https://www.coindesk.com/business/2026/08/24/coinbase-debuts-tokenized-stocks-on-base-network-joining-race-to-bring-equities-on-blockchain
+  https://www.blockhead.co/2026/08/25/coinbase-debuts-tokenized-stocks-on-base-network/
+  https://www.marketsmedia.com/tokenized-stocks-issued-by-coinbaseare-now-live-natively-on-base/
+
+Hacim
+  https://cryptobriefing.com/coinbase-tokenized-stocks-dex-volume/
+  https://crypto.news/coinbase-adds-six-tokenized-stocks-after-228m-debut/
+  https://www.coingecko.com/en/coins/nvidia-coinbase-tokenized-stock
+  https://coinmarketcap.com/events/tokenized-stocks-cex-vs-onchain/
+
+Referans uygulama
+  https://github.com/ponsdotdev/ponsfamily
+  https://developers.uniswap.org/docs/protocols/v4/concepts/hooks
+  https://developers.uniswap.org/docs/protocols/v4/security
+  https://github.com/base/base-std
+  https://raw.githubusercontent.com/base/base-std/main/test/lib/BaseTest.sol
+  https://raw.githubusercontent.com/base/base-std/main/LIVE_PRECOMPILE_TESTING.md
+
+Rakipler / meta
+  https://stock.vvveity.com/
+  https://www.coingecko.com/learn/memecoin-launchpad-wars-pumpfun-stonkfun-ponsfamily
+  https://incrypted.com/en/stonk-surged-250-after-stonkfun-integrated-with-raydium/
+  https://medium.com/coinmonks/stonkfun-api-track-stock-paired-solana-launches-in-real-time-d21777fc7412
+  https://airdropalert.com/blogs/what-is-long-xyz/
+  https://airdropalert.com/blogs/what-is-flap-launchpad/
+  https://chainwire.org/2026/08/28/bankr-launches-agent-powered-liquidity-for-tokenized-stocks-on-aerodrome/
+  https://clanker.gitbook.io/documentation/references/supported-quote-tokens
+  https://1inch.com/blog/post/coinbase-tokenized-stocks
+  https://cryptobriefing.com/base-carry-trade-vaults-coinbase-tokenized-stocks/
+
+================================================================================
+UYARI: Bu belge arastirma ve urun planlamasidir. Hukuki, mali veya yatirim
+tavsiyesi degildir. Menkul kiymet token'lari uzerine tuketici urunu kurmak
+yargi alanina bagli lisans ve uyum yukumlulugu dogurabilir; Faz 1'e girmeden
+once hukuki gorus alin.
+================================================================================

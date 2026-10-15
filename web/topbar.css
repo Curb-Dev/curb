@@ -1,0 +1,366 @@
+/* THE SITE'S ONE TOP BAR, shared by every page that has one.
+ *
+ * It used to be copied into each page's own <style>, and the copies had
+ * drifted: a different button rule on every page, a bar 80px wider on the one
+ * page without a box-sizing reset, the Connect button on one page only. It is
+ * one file now, and every rule is scoped under #siteBar - an id, so it outranks
+ * each page's own `button` and `a` rules whatever order they load in.
+ *
+ * BIGGER THAN IT WAS, on purpose: 72px rather than 62, a 36px mark, 15px nav
+ * and a filled call to action. It is the one thing on every page, so it is
+ * where the site says what it is and where to start.
+ */
+
+:root { --cb-bar-h: 72px; }
+
+/* THE BAR STAYS ON SCREEN, so an anchor jump must land below it rather than
+   under it. One rule for every page instead of a scroll-margin per element. */
+html { scroll-padding-top: calc(var(--cb-bar-h) + 16px); }
+
+#siteBar, #siteBar * { box-sizing: border-box; }
+#siteBar {
+  position: sticky; top: 0; z-index: 40;
+  margin: 0 0 28px;
+  border-bottom: 1px solid var(--line, #1d2633);
+  /* A LITTLE OF THE PAGE SHOWS THROUGH when it scrolls under the bar, so the
+     bar reads as a layer over the page rather than a band cut out of it. */
+  background: rgba(8, 11, 17, 0.86);
+  -webkit-backdrop-filter: saturate(140%) blur(10px);
+  backdrop-filter: saturate(140%) blur(10px);
+  color: var(--ink, var(--text, #eef2f7));
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+/* THE SAME EXPRESSION EVERY PAGE'S <main> USES, so the bar lines up with what
+   is under it and does not move when you change page. */
+#siteBar .cbInner {
+  display: flex; align-items: center; gap: 22px;
+  min-height: var(--cb-bar-h);
+  padding: 12px clamp(24px, 3vw, 40px);
+  max-width: calc(45% + 540px); margin: 0 auto;
+}
+
+/* ---- the mark and the name */
+#siteBar .cbBrand { display: flex; align-items: center; gap: 11px; flex: none;
+  color: var(--ink, var(--text, #eef2f7)); text-decoration: none; }
+#siteBar .cbBrand svg { display: block; flex: none; overflow: visible; }
+#siteBar .cbBrand span { font-size: 20px; font-weight: 750; letter-spacing: -0.03em; }
+
+/* ---- the pages */
+#siteBar .cbNav { display: flex; align-items: center; gap: 4px; margin-right: auto; }
+#siteBar .cbNav a {
+  font-size: 15px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap;
+  color: var(--dim, #94a0b0); text-decoration: none;
+  padding: 8px 12px; border-radius: 9px;
+  transition: color 0.12s, background 0.12s;
+}
+#siteBar .cbNav a:hover { color: var(--ink, var(--text, #eef2f7)); background: rgba(255, 255, 255, 0.05); }
+#siteBar .cbNav a[aria-current="page"] { color: var(--ink, var(--text, #eef2f7)); background: rgba(255, 255, 255, 0.08); }
+/* The token's ticker keeps the brand's amber, as the mark does. */
+#siteBar .cbNav a.cbTicker { font-weight: 750; }
+#siteBar .cbNav a.cbTicker[aria-current="page"], #siteBar .cbNav a.cbTicker:hover { color: #F5A524; }
+
+/* ---- the actions on the right */
+#siteBar .cbActions { display: flex; align-items: center; gap: 10px; flex: none; }
+#siteBar button {
+  font: inherit; margin: 0; cursor: pointer; white-space: nowrap;
+  -webkit-appearance: none; appearance: none;
+}
+#siteBar button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+#siteBar .cbIcon {
+  display: grid; place-items: center; width: 42px; height: 42px; flex: none;
+  border-radius: 10px; border: 1px solid var(--line, #1d2633);
+  color: var(--ink, var(--text, #eef2f7)); text-decoration: none; background: transparent;
+}
+#siteBar .cbIcon:hover { background: var(--panel2, #131a24); border-color: var(--dimmer, #5f6b7c); }
+#siteBar .cbIcon svg { width: 17px; height: 17px; fill: currentColor; }
+
+/* THE CALL TO ACTION, filled and lit: the one thing the bar most wants
+   pressed. A link, not a button inside a link - that nesting is invalid HTML,
+   and on app.html a button would also be switched off by every action. */
+#siteBar .cbCta {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  height: 42px; padding: 0 18px; border-radius: 10px;
+  font-size: 14.5px; font-weight: 700; letter-spacing: -0.005em; white-space: nowrap;
+  color: #ffffff; text-decoration: none;
+  background: linear-gradient(135deg, #0052ff 0%, #2a6dff 100%);
+  box-shadow: 0 0 0 1px rgba(42, 109, 255, 0.55), 0 8px 24px rgba(0, 82, 255, 0.35);
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+#siteBar .cbCta:hover { transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(90, 140, 255, 0.8), 0 10px 28px rgba(0, 82, 255, 0.5); }
+#siteBar .cbCta .cbShort { display: none; }
+
+/* ---- the wallet */
+#siteBar .cbWallet { position: relative; flex: none; }
+#siteBar #barConnect {
+  display: inline-flex; align-items: center; gap: 9px;
+  height: 42px; padding: 0 16px; border-radius: 10px;
+  font-size: 14.5px; font-weight: 650;
+  color: var(--ink, var(--text, #eef2f7));
+  background: var(--panel, #0e131b);
+  border: 1px solid rgba(42, 109, 255, 0.55);
+}
+#siteBar #barConnect:hover:not(:disabled) { background: var(--panel2, #131a24); border-color: #2a6dff; }
+/* CONNECTED READS DIFFERENTLY FROM NOT CONNECTED at a glance: a green dot and
+   the address, in the neutral border, instead of the blue invitation. */
+#siteBar #barConnect.on { border-color: var(--line, #1d2633);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; }
+#siteBar #barConnect .cbDot { width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: var(--good, #3ddc97); box-shadow: 0 0 0 3px rgba(61, 220, 151, 0.18); }
+#siteBar #barConnect.nowallet { border-color: var(--line, #1d2633); color: var(--dim, #94a0b0); }
+
+#siteBar .cbMenu {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 41; min-width: 230px;
+  padding: 6px; border-radius: 12px;
+  background: var(--panel, #0e131b); border: 1px solid var(--line, #1d2633);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+#siteBar .cbMenu[hidden] { display: none; }
+#siteBar .cbMenu .cbWho { padding: 8px 10px 10px; border-bottom: 1px solid var(--line, #1d2633); margin-bottom: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px;
+  color: var(--dim, #94a0b0); word-break: break-all; }
+#siteBar .cbMenu a, #siteBar .cbMenu button {
+  display: block; width: 100%; text-align: left;
+  padding: 9px 10px; border-radius: 8px; border: 0; background: transparent;
+  font-size: 14px; font-weight: 550; color: var(--ink, var(--text, #eef2f7)); text-decoration: none;
+}
+#siteBar .cbMenu a:hover, #siteBar .cbMenu button:hover { background: rgba(255, 255, 255, 0.06); }
+#siteBar .cbMenu .cbOut { color: var(--bad, #ff6b6b); }
+#siteBar .cbNote {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 41; width: 280px;
+  padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5;
+  background: var(--panel, #0e131b); border: 1px solid var(--line, #1d2633);
+  color: var(--dim, #94a0b0); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+#siteBar .cbNote[hidden] { display: none; }
+
+/* ---- search, on every page: a button that looks like a field. The field
+   itself is a sheet (search.js), because search is a screen, not a filter on
+   the bar - and a sheet has room to say how much it searched. */
+#siteBar .cbSearch {
+  display: flex; align-items: center; gap: 9px; width: 230px; height: 42px;
+  padding: 0 12px; border-radius: 10px; text-align: left;
+  border: 1px solid var(--line, #1d2633); background: var(--panel, #0e131b);
+  color: var(--dimmer, #5f6b7c); font-size: 13.5px;
+}
+#siteBar .cbSearch:hover { border-color: var(--dimmer, #5f6b7c); background: var(--panel2, #131a24); }
+#siteBar .cbSearch .ico { width: 15px; height: 15px; flex: none;
+  stroke: var(--dimmer, #5f6b7c); fill: none; stroke-width: 2; }
+#siteBar .cbSearch .what { flex: 1; }
+#siteBar .cbSearch kbd { font: inherit; font-size: 10.5px; color: var(--dimmer, #5f6b7c);
+  background: var(--panel2, #131a24); border: 1px solid var(--line, #1d2633); border-radius: 5px; padding: 2px 6px; }
+
+@media (max-width: 1180px) { #siteBar .cbSearch { width: 170px; } }
+@media (max-width: 1020px) {
+  #siteBar .cbSearch .what, #siteBar .cbSearch kbd { display: none; }
+  #siteBar .cbSearch { width: 42px; padding: 0; justify-content: center; }
+  #siteBar .cbInner { gap: 14px; }
+}
+/* ON A PHONE THE PAGES MOVE TO A SECOND ROW that scrolls sideways, rather than
+   the bar running past the edge and taking the page with it. The X link is the
+   least load-bearing thing here, so it is what goes. */
+@media (max-width: 760px) {
+  :root { --cb-bar-h: 104px; }
+  #siteBar .cbInner { flex-wrap: wrap; gap: 8px 10px; padding: 10px 16px 6px; min-height: 0; }
+  #siteBar .cbBrand { margin-right: auto; }
+  #siteBar .cbBrand span { font-size: 18px; }
+  #siteBar .cbBrand svg { width: 30px; height: 30px; }
+  #siteBar .cbNav { order: 3; width: 100%; margin: 0 -6px; overflow-x: auto; scrollbar-width: none; }
+  #siteBar .cbNav::-webkit-scrollbar { display: none; }
+  #siteBar .cbNav a { font-size: 14px; padding: 7px 10px; }
+  #siteBar .cbIcon { display: none; }
+  #siteBar .cbCta, #siteBar #barConnect { height: 38px; padding: 0 12px; font-size: 13.5px; }
+  #siteBar .cbCta .cbLong { display: none; }
+  #siteBar .cbCta .cbShort { display: inline; }
+  #siteBar .cbSearch { width: 38px; height: 38px; }
+}
+@media (max-width: 400px) {
+  #siteBar .cbBrand span { display: none; }
+}
+
+/* ---- the search sheet (search.js). Scoped under #cbSearch for the same
+   reason as the bar: each page's own rules must not reach into it. */
+#cbSearch, #cbSearch * { box-sizing: border-box; }
+#cbSearch.cbOverlay { position: fixed; inset: 0; z-index: 60; display: flex; justify-content: center;
+  align-items: flex-start; padding: 80px 20px 20px; background: rgba(4, 7, 12, 0.72);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink, var(--text, #eef2f7)); }
+#cbSearch.cbOverlay[hidden] { display: none; }
+#cbSearch .cbSheet { width: 100%; max-width: 620px; max-height: calc(100vh - 110px);
+  display: flex; flex-direction: column; overflow: hidden; border-radius: 14px;
+  background: var(--panel, #0e131b); border: 1px solid var(--line, #1d2633);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
+#cbSearch .cbSbar { display: flex; align-items: center; gap: 11px; padding: 14px 16px;
+  border-bottom: 1px solid var(--line, #1d2633); }
+#cbSearch .cbSico svg { display: block; width: 16px; height: 16px; stroke: var(--dimmer, #5f6b7c); fill: none; stroke-width: 2; }
+#cbSearch input { flex: 1; min-width: 0; border: 0; background: transparent; padding: 4px 0; margin: 0;
+  color: var(--ink, var(--text, #eef2f7)); font: inherit; font-size: 15px; }
+#cbSearch input:focus { outline: none; }
+#cbSearch input::placeholder { color: var(--dimmer, #5f6b7c); }
+#cbSearch .cbEsc { font: inherit; font-size: 10.5px; font-weight: 500; color: var(--dim, #94a0b0); cursor: pointer;
+  background: transparent; border: 1px solid var(--line, #1d2633); border-radius: 6px; padding: 5px 9px; margin: 0; }
+#cbSearch .cbEsc:hover { color: var(--ink, var(--text, #eef2f7)); border-color: var(--dimmer, #5f6b7c); }
+#cbSearch .cbSresults { overflow-y: auto; padding: 7px; }
+#cbSearch .cbHit { display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 9px 11px; border-radius: 10px; border: 1px solid transparent;
+  color: var(--ink, var(--text, #eef2f7)); text-decoration: none; }
+#cbSearch .cbHit.sel, #cbSearch .cbHit:hover { background: var(--panel2, #131a24); border-color: var(--line, #1d2633); }
+#cbSearch .cbAv { width: 34px; height: 34px; flex: none; border-radius: 10px; display: grid; place-items: center;
+  font-size: 12px; font-weight: 800; color: var(--dim, #94a0b0); border: 1px solid var(--line, #1d2633);
+  position: relative; overflow: hidden; }
+/* THE TOKEN'S OWN PICTURE, over its letters (search.js hitRow). */
+#cbSearch .cbAv img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#cbSearch .cbNames { flex: 1; min-width: 0; }
+#cbSearch .cbSym { font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+#cbSearch .cbWho { font-size: 12px; color: var(--dim, #94a0b0); overflow-wrap: anywhere; }
+#cbSearch .cbAddr { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
+  color: var(--dimmer, #5f6b7c); overflow-wrap: anywhere; }
+#cbSearch .cbRight { display: flex; align-items: center; gap: 9px; flex: none; }
+#cbSearch .cbPct { font-size: 12px; font-weight: 650; color: var(--dim, #94a0b0); font-variant-numeric: tabular-nums; }
+#cbSearch .cbTag { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line, #1d2633);
+  color: var(--dim, #94a0b0); }
+#cbSearch .cbTag.waiting { border-color: rgba(0, 82, 255, 0.55); color: #2a6dff; background: rgba(0, 82, 255, 0.10); }
+#cbSearch .cbTag.graduated { border-color: rgba(61, 220, 151, 0.4); color: var(--good, #3ddc97); background: rgba(61, 220, 151, 0.08); }
+#cbSearch .cbSempty { padding: 30px 16px; text-align: center; font-size: 13px; line-height: 1.55; color: var(--dim, #94a0b0); }
+#cbSearch .cbSfoot { display: flex; align-items: center; gap: 15px; padding: 9px 15px;
+  border-top: 1px solid var(--line, #1d2633); font-size: 11px; color: var(--dimmer, #5f6b7c); }
+#cbSearch .cbSfoot kbd { font: inherit; font-size: 10.5px; background: var(--panel2, #131a24);
+  border: 1px solid var(--line, #1d2633); border-radius: 4px; padding: 1px 5px; margin-right: 4px; }
+#cbSearch .cbScope { margin-left: auto; }
+@media (max-width: 620px) {
+  #cbSearch.cbOverlay { padding: 56px 12px 12px; }
+  #cbSearch .cbSfoot span:not(.cbScope) { display: none; }
+}
+
+/* ---------------------------------------------------------------- notices
+ * An action's result or refusal, pinned under the bar wherever the page is
+ * scrolled (topbar.js toastify). Its body lets clicks through to the page;
+ * only its links, buttons and the close button take them. Faded, never
+ * hidden - the pages read #msg's own state. */
+#cbToast {
+  position: fixed; z-index: 45; left: 50%; top: calc(var(--cb-bar-h) + 12px);
+  width: min(720px, calc(100vw - 32px)); transform: translateX(-50%);
+  pointer-events: none; transition: opacity .35s ease, transform .35s ease;
+}
+#cbToast.cbToastOut { opacity: 0; transform: translate(-50%, -10px); }
+#cbToast.cbToastEmpty { display: none; }
+#cbToast #msg {
+  margin: 0; max-height: 45vh; overflow: auto; padding-right: 46px;
+  background: var(--panel, #0e131b); border: 1px solid var(--line, #1d2633); border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+}
+#cbToast #msg.ok { background: linear-gradient(rgba(61,220,151,.10), rgba(61,220,151,.10)), var(--panel, #0e131b); border-color: rgba(61,220,151,.5); }
+#cbToast #msg.err { background: linear-gradient(rgba(255,107,107,.10), rgba(255,107,107,.10)), var(--panel, #0e131b); border-color: rgba(255,107,107,.55); }
+#cbToast #msg.wait { background: linear-gradient(rgba(0,82,255,.12), rgba(0,82,255,.12)), var(--panel, #0e131b); border-color: rgba(0,82,255,.55); }
+#cbToast.cbToastOut #msg, #cbToast.cbToastOut #cbToastX { pointer-events: none !important; }
+#cbToast #msg a, #cbToast #msg button, #cbToast #msg input { pointer-events: auto; }
+/* THE CLOSE BUTTON: an icon, centred in a square that only shows on hover -
+   the boxed glyph it replaced sat off-centre on the notice's edge. */
+#cbToastX {
+  position: absolute; top: 9px; right: 9px; pointer-events: auto;
+  width: 28px; height: 28px; padding: 0; display: grid; place-items: center;
+  border: 0; border-radius: 8px; background: transparent; color: var(--dim, #94a0b0); cursor: pointer;
+}
+#cbToastX:hover { background: rgba(255, 255, 255, .08); color: var(--ink, #eef2f7); }
+#cbToastX svg { display: block; }
+/* A LONG PLAIN RESULT, SHORTENED to three lines until "Details": three lines
+   at the line's 1.6 height, plus its own padding and border - which the box
+   includes, on every page (the pages differ, so it is set here). The cut one
+   keeps room inside the box, under the text, for the button - open or not. */
+#cbToast #msg { box-sizing: border-box; }
+#cbToast.cbToastClamp:not(.cbToastOpen) #msg { max-height: calc(4.8em + 26px); overflow: hidden; }
+#cbToast.cbToastCut #msg { padding-bottom: 34px; }
+#cbToast.cbToastCut:not(.cbToastOpen) #msg { position: relative; max-height: calc(4.8em + 48px); }
+/* WHAT RUNS ON UNDER THE THIRD LINE, FADED OUT. A box clips at its padding, not
+   at its text, so the next line showed through behind the button. The fade is
+   the box's own background (inherit), so it matches ok, err and wait alike. */
+#cbToast.cbToastCut:not(.cbToastOpen) #msg::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 46px; pointer-events: none;
+  background: inherit; border-radius: 0 0 11px 11px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 45%); mask-image: linear-gradient(to bottom, transparent, #000 45%);
+}
+#cbToast .cbToastMore {
+  position: absolute; left: 14px; bottom: 9px; pointer-events: auto;
+  padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line, #1d2633);
+  background: rgba(8, 11, 17, .55); color: var(--ink, #eef2f7); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer;
+}
+#cbToast .cbToastMore:hover { border-color: var(--dim, #94a0b0); }
+#cbToast.cbToastOut .cbToastMore { pointer-events: none !important; }
+#cbToast .cbToastMore[hidden] { display: none; }
+/* The call to action a notice can carry: "View token" after a create. */
+#cbToast #msg .toastCta {
+  display: inline-block; margin: 8px 8px 0 0; padding: 7px 14px; border-radius: 9px;
+  background: var(--paint, #0052ff); color: #fff; font-weight: 650; text-decoration: none;
+}
+#cbToast #msg .toastCta:hover { background: var(--paint-hi, #2a6dff); }
+/* SELECTABLE, AND IT TAKES THE POINTER (the owner could not copy from a
+   notice): a drag selects, a click closes nothing. Only the strip round the
+   line lets clicks through to the page. Not once it has faded. */
+#cbToast:not(.cbToastOut) #msg { pointer-events: auto; -webkit-user-select: text; user-select: text; cursor: text; }
+#cbToast #msg a, #cbToast #msg button { cursor: pointer; }
+#cbToast #msg code { overflow-wrap: anywhere; }
+/* THE COPY BUTTON after every address and hash (topbar.js addCopyButtons). */
+#cbToast #msg button.cbCopy {
+  display: inline-grid; place-items: center; vertical-align: -3px; width: 22px; height: 20px; padding: 0;
+  margin: 0 2px 0 4px; border: 1px solid var(--line, #1d2633); border-radius: 6px; background: rgba(8, 11, 17, .35);
+  color: var(--dim, #94a0b0); box-shadow: none; min-height: 0;
+}
+#cbToast #msg button.cbCopy:hover { color: var(--ink, #eef2f7); border-color: var(--dim, #94a0b0); }
+#cbToast #msg button.cbCopy svg { display: block; }
+#cbToast #msg button.cbCopy[data-copied="yes"] { color: var(--good, #3ddc97); border-color: rgba(61,220,151,.6); }
+#cbToast #msg button.cbCopy[data-copied="no"] { color: var(--bad, #ff6b6b); border-color: rgba(255,107,107,.6); }
+/* THE CREATE'S NOTICE, ONE COMPACT LINE (the owner's call): name and symbol,
+   the short address with its copy button, and a small "View". The box fits
+   its content instead of the notices' full width. */
+#cbToast:has(.toastLaunch) { width: max-content; max-width: calc(100vw - 32px); }
+#cbToast #msg:has(.toastLaunch) { padding: 8px 40px 8px 12px; border-radius: 10px; }
+#cbToast:has(.toastLaunch) #cbToastX { top: 50%; transform: translateY(-50%); right: 6px; width: 26px; height: 26px; }
+#cbToast #msg .toastLaunch { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 13px; line-height: 1.4; }
+#cbToast #msg .toastLaunch strong { color: var(--good, #3ddc97); }
+#cbToast #msg .toastWho { color: var(--ink, #eef2f7); font-weight: 650; }
+#cbToast #msg .toastLaunch code { color: var(--dim, #94a0b0); white-space: nowrap; }
+#cbToast #msg .toastLaunch button.cbCopy { margin: 0; }
+#cbToast #msg .toastLaunch .toastCta { margin: 0; padding: 3px 10px; border-radius: 7px; font-size: 12px; }
+#cbToast #msg .toastMore { display: block; margin-top: 4px; }
+/* A TRANSACTION'S RESULT, ONE LINE (the owner's call): what went and what came,
+   and the transaction on chain in the bottom-right corner. The full account
+   stays in the line for the page to read, never shown in the notice. */
+#cbToast:has(.toastShort) { width: max-content; min-width: 280px; max-width: calc(100vw - 32px); }
+#cbToast #msg:has(.toastShort) { padding: 12px 44px 10px 14px; border-radius: 12px; }
+/* THE HEAD: a tick in a green disc, the title, and what went and came under it. */
+#cbToast #msg .toastShort { display: flex; align-items: flex-start; gap: 11px; }
+#cbToast #msg .toastIcon { display: grid; place-items: center; flex: none; width: 26px; height: 26px; margin-top: 1px;
+  border-radius: 50%; background: rgba(61,220,151,.16); color: var(--good, #3ddc97); }
+#cbToast #msg .toastIcon svg { display: block; }
+#cbToast #msg .toastBody { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#cbToast #msg .toastTitle { font-size: 13px; font-weight: 700; color: var(--ink, #eef2f7); letter-spacing: .01em; }
+#cbToast #msg .toastLine { font-size: 15px; font-weight: 600; color: var(--ink, #eef2f7); line-height: 1.35;
+  white-space: nowrap; font-variant-numeric: tabular-nums; }
+#cbToast #msg .toastLine strong { color: var(--good, #3ddc97); font-weight: 700; }
+#cbToast #msg .toastArrow { color: var(--dim, #94a0b0); font-weight: 500; margin: 0 4px; }
+#cbToast #msg .toastBack { display: block; font-size: 12px; font-weight: 500; color: var(--dim, #94a0b0); white-space: normal; }
+#cbToast #msg .toastChain { display: block; text-align: right; margin-top: 6px; font-size: 11.5px; color: var(--dim, #94a0b0); }
+#cbToast #msg a.toastChain { color: var(--dim, #94a0b0); text-decoration: none; }
+#cbToast #msg a.toastChain:hover { color: var(--ink, #eef2f7); }
+#cbToast #msg .toastChain code { color: var(--dim, #94a0b0); }
+#cbToast #msg .toastLong { display: none; }
+@media (max-width: 480px) { #cbToast #msg .toastLine { white-space: normal; } }
+
+/* ---- the incident notice (web/config.js banner): one line under the bar on
+   every page, amber like the mark, as wide as the bar's content. */
+#siteBar .cbBanner {
+  max-width: calc(45% + 540px); margin: 0 auto;
+  padding: 9px clamp(24px, 3vw, 40px);
+  border-top: 1px solid rgba(245, 165, 36, 0.35);
+  color: #ffd38a; background: rgba(245, 165, 36, 0.10);
+  font-size: 14px; line-height: 1.45; overflow-wrap: anywhere;
+}
+/* A HIDDEN LAUNCH'S OWN PAGE says so above everything else on it (token.js). */
+.cbHiddenNote {
+  margin: 0 0 16px; padding: 12px 14px; border-radius: 10px;
+  border: 1px solid rgba(245, 165, 36, 0.45); background: rgba(245, 165, 36, 0.10);
+  color: #ffd38a; font-size: 14px; line-height: 1.5;
+}

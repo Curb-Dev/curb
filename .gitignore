@@ -1,0 +1,56 @@
+cache/
+out/
+broadcast/
+node_modules/
+.env
+
+# THE KEEPER'S SECRETS ARE NEVER COMMITTED, wherever they are put. The runbook
+# has a secrets/ folder made next to services/sharer/deploy/ inside this
+# public repository, and one `git add -A` would publish the publisher and
+# pusher keys, the RPC URLs, the data-repo token and the pin tokens - the
+# publisher would then have to be revoked and sharing frozen. So any folder
+# named secrets/, and every secret file name the service reads, is ignored
+# at any depth (services/sharer/test/ops-deploy.test.ts holds this).
+**/secrets/
+publisher_key
+pusher_key
+guardian_key
+rpc_urls
+verifier_rpc_urls
+data_repo_token
+pin_tokens
+alert_webhooks
+
+# Read-only third-party reference, re-clonable at the commit pinned in
+# ROADMAP.txt Phase 0 A (ponsdotdev/ponsfamily @ debbc21f). Not our code,
+# and it carries its own .git.
+reference/
+
+# Local fork deployment records - addresses differ on every run
+broadcast/
+
+# Playwright: installed browsers, run output, and the addresses a run prepared
+web/e2e/.state.json
+web/e2e/test-results/
+web/e2e/playwright-report/
+
+# The addresses a hand-driven real-wallet session produced
+script/b20/.wallet-session.json
+web/e2e/.run.json
+test-results/
+
+# python bytecode from script/b20/*.py
+__pycache__/
+*.pyc
+
+# the cost-display mutation harness writes its reports here
+web/e2e/.mut/
+
+# a failed case's records are kept here for reading
+web/e2e/.mut-failed/
+
+# the conversation copy, kept locally rather than in the repo, and the script
+# that writes it (it names the local transcript's path)
+KONUSMA-*.md
+script/dump-konusma.py
+web/e2e/test-results-codex-audit/

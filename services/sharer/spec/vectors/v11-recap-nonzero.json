@@ -1,0 +1,193 @@
+{
+  "name": "v11-recap-nonzero",
+  "description": "I0 = 5000 and the keeper cost is far above the cap, so K = 100 and H = 4900. Weights 10 : 9990 : 1 give shares 4, 4894 and 0 (dH0 = 4898). 100 * 10000 > 4998 * 200, so K is re-capped to floor(4898 * 200 / 9800) = 99; the shares are NOT recomputed from the larger H (that would give bob 4895). carol has weight but no share: she counts in W, is not listed in accounts and has no leaf.",
+  "covers": [
+    "re-cap to a non-zero fee",
+    "shares not recomputed after the re-cap",
+    "weight without a share is not listed"
+  ],
+  "setup": {
+    "chainId": "8453",
+    "distributor": "0xd157000000000000000000000000000000000001",
+    "factory": "0xfac7000000000000000000000000000000000001",
+    "launchToken": "0x70ce000000000000000000000000000000000001",
+    "quoteToken": "0x4200000000000000000000000000000000000006",
+    "quoteIsWeth": true,
+    "quoteDecimals": "18",
+    "rules": {
+      "version": "1",
+      "exclusions": [
+        {
+          "address": "0xc0be000000000000000000000000000000000001",
+          "reason": "the launch curve"
+        },
+        {
+          "address": "0x400c000000000000000000000000000000000001",
+          "reason": "the launch hook"
+        },
+        {
+          "address": "0xe5c0000000000000000000000000000000000001",
+          "reason": "the launcher FeeEscrow"
+        },
+        {
+          "address": "0x96ad000000000000000000000000000000000001",
+          "reason": "the Graduator"
+        },
+        {
+          "address": "0x0b4a000000000000000000000000000000000001",
+          "reason": "the v4 PoolManager"
+        },
+        {
+          "address": "0x0b4b000000000000000000000000000000000001",
+          "reason": "the v4 PositionManager"
+        },
+        {
+          "address": "0x7e91000000000000000000000000000000000001",
+          "reason": "the LaunchRegistry"
+        },
+        {
+          "address": "0x10c0000000000000000000000000000000000001",
+          "reason": "the launch PositionLock"
+        },
+        {
+          "address": "0xea20c3266229a01cd0f45d9c7921a45d5b359561",
+          "reason": "CurbRouter"
+        }
+      ],
+      "keeperKeys": [
+        "0xcee9000000000000000000000000000000000001",
+        "0xcee9000000000000000000000000000000000002"
+      ],
+      "ammFactories": [
+        {
+          "address": "0xa33f000000000000000000000000000000000002",
+          "reason": "listed v2-style factory"
+        },
+        {
+          "address": "0xa33f000000000000000000000000000000000003",
+          "reason": "listed v3-style factory"
+        }
+      ]
+    },
+    "contracts": {},
+    "keeperTxs": [
+      {
+        "hash": "0x00000000000000000000000000000000000000000000000000000000000000d1",
+        "from": "0xcee9000000000000000000000000000000000001",
+        "to": "0xd157000000000000000000000000000000000001",
+        "block": "101",
+        "gasUsed": "1000000",
+        "effectiveGasPrice": "1000",
+        "l1Fee": "0"
+      }
+    ],
+    "sharingSince": "100",
+    "opening": {
+      "block": "99",
+      "balances": {
+        "0xa100000000000000000000000000000000000001": "10",
+        "0xb000000000000000000000000000000000000002": "9990",
+        "0xca00000000000000000000000000000000000003": "1"
+      }
+    },
+    "timestamps": {
+      "99": "2000",
+      "100": "2002",
+      "101": "2004"
+    }
+  },
+  "epochs": [
+    {
+      "input": {
+        "toBlock": "101",
+        "harvestTx": "0x0000000000000000000000000000000000000000000000000000000000000101",
+        "uri": "ipfs://v11-epoch-1",
+        "received0": "5000",
+        "received1": "0",
+        "price": null
+      },
+      "expected": {
+        "result": "epoch",
+        "epoch": "1",
+        "fromBlock": "100",
+        "toBlock": "101",
+        "supply": "10001",
+        "floor": "0",
+        "W": "40004",
+        "I0": "5000",
+        "I1": "0",
+        "supersedes": [],
+        "keeperCostWei": "1000000000",
+        "priceValue": "1000000000000000000",
+        "C": "1000000000",
+        "K": "99",
+        "recapped": true,
+        "H": "4900",
+        "dH0": "4898",
+        "dH1": "0",
+        "unallocated0": "3",
+        "unallocated1": "0",
+        "cumHolders0": "4898",
+        "cumHolders1": "0",
+        "cumKeeper0": "99",
+        "excluded": [
+          "0x000000000000000000000000000000000000dead",
+          "0x0b4a000000000000000000000000000000000001",
+          "0x0b4b000000000000000000000000000000000001",
+          "0x10c0000000000000000000000000000000000001",
+          "0x400c000000000000000000000000000000000001",
+          "0x4200000000000000000000000000000000000006",
+          "0x70ce000000000000000000000000000000000001",
+          "0x7e91000000000000000000000000000000000001",
+          "0x96ad000000000000000000000000000000000001",
+          "0xc0be000000000000000000000000000000000001",
+          "0xd157000000000000000000000000000000000001",
+          "0xe5c0000000000000000000000000000000000001",
+          "0xea20c3266229a01cd0f45d9c7921a45d5b359561",
+          "0xfac7000000000000000000000000000000000001"
+        ],
+        "accounts": [
+          {
+            "a": "0xa100000000000000000000000000000000000001",
+            "w": "40",
+            "s0": "4",
+            "s1": "0",
+            "cum0": "4",
+            "cum1": "0"
+          },
+          {
+            "a": "0xb000000000000000000000000000000000000002",
+            "w": "39960",
+            "s0": "4894",
+            "s1": "0",
+            "cum0": "4894",
+            "cum1": "0"
+          }
+        ],
+        "leaves": [
+          [
+            "0xd157000000000000000000000000000000000001",
+            "0xa100000000000000000000000000000000000001",
+            "4",
+            "0"
+          ],
+          [
+            "0xd157000000000000000000000000000000000001",
+            "0xb000000000000000000000000000000000000002",
+            "4894",
+            "0"
+          ]
+        ],
+        "leafHashes": [
+          "0x198b488372484acf536f3b9848a78e172816446aa69b5e4cb89a3f0fca8f9451",
+          "0x428cb18f98b353f732853a7947d012a3cf6449a87a43f6597d78694f79bc8d70"
+        ],
+        "merkleRoot": "0x09f7b95146c27bcd5d28c0c80cc9309ed73ec146289c83e8aead3949ccbbb25b",
+        "contentHash": "0xf8bf98f782be8693472aa600e3d4d6b9af9cf3de69080391634e0249aa67876a",
+        "chunks": [],
+        "file": "files/v11-recap-nonzero/1.json",
+        "chunkFiles": []
+      }
+    }
+  ]
+}
