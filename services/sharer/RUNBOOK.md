@@ -967,6 +967,19 @@ the same way. Do this again after every change to the repository's settings.
 - GitHub **switches scheduled workflows off after 60 days without a commit**
   to the repository. If that happens, GitHub emails you; press "Enable
   workflow" in the Actions tab.
+- **THE STANDBY ALONE.** By the owner's decision of 16 October 2026 there is
+  no keeper host yet: the `sharing-keeper` workflow is the only keeper. With
+  no `ops/status.json` ever written it acts on every run ("no primary
+  heartbeat at all; standby acts"), and says so once a week rather than every
+  hour (`STANDBY_ALONE_COOLDOWN_SEC`). A keeper host started later takes over
+  by itself, and the standby goes back to standing by.
+- **CHECK THE SECRETS** after entering or changing any of them: Actions →
+  `secrets-check` → Run workflow (from `main`). Every secret is used the way
+  the keeper uses it and reported PASS, WARN or FAIL, and no value is printed.
+  On 16 October 2026 both RPC providers were free plans and answered getLogs
+  over only 10 (Alchemy) and 5 (QuickNode) blocks - a WARN: the services page
+  through it, but once a launch shares with holders a paid plan or a provider
+  with wide getLogs is needed.
 
 ---
 

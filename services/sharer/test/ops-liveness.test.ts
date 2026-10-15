@@ -15,6 +15,7 @@ import { tick, js, lying, alertKeys } from './sim/helpers.ts';
 import { watchTick } from '../src/ops/verify.ts';
 import { STATUS_PATH, STANDBY_STATUS_PATH, GUARDIAN_STATUS_PATH } from '../src/ops/lease.ts';
 import { main } from '../src/cli.ts';
+import { STANDBY_ALONE_COOLDOWN_SEC } from '../src/ops/keeper.ts';
 
 type W = ReturnType<typeof opsWorld>;
 const beat = (w: W, path: string) => JSON.parse(w.net.text(path)!);
@@ -88,6 +89,36 @@ test('one provider down: every keeper tick fails, the heartbeat says so at once,
   assert.match(s2.notes.join(' '), /beats but has had no clean tick for \d+s \(.*provider b answered HTTP 429.*\); standby acts/, js(s2.notes));
   assert.equal(s2.published.length, 1, js(s2));
   assert.ok(alertKeys(standby).includes('standby-acting'));
+});
+
+test('a standby with no primary at all says it is acting once a week; a primary gone silent still warns hourly', async () => {
+  // ALONE: the owner's GitHub-only deployment - nothing ever writes ops/status.json
+  const w = opsWorld();
+  const alone = w.make('keeper', { holder: 'gha', role: 'standby' });
+  const first = await tick(w, alone);
+  assert.match(first.notes.join(' '), /no primary heartbeat at all; standby acts/, js(first.notes));
+  assert.equal(raisedOf(alone, 'standby-acting').length, 1, 'said once when it starts acting');
+  for (let i = 0; i < 12; i++) {
+    w.pass(900);
+    await tick(w, alone);
+  }
+  assert.equal(raisedOf(alone, 'standby-acting').length, 1, 'three hours of 15-minute ticks: not said again');
+  w.pass(STANDBY_ALONE_COOLDOWN_SEC);
+  await tick(w, alone);
+  assert.equal(raisedOf(alone, 'standby-acting').length, 2, 'said again a week later');
+
+  // SILENT: a primary that beat once and stopped - news, at the usual cooldown
+  const w2 = opsWorld();
+  const primary = w2.make('keeper', { holder: 'vps' });
+  assert.equal((await tick(w2, primary)).ok, true);
+  w2.pass(2800);
+  const standby = w2.make('keeper', { holder: 'gha', role: 'standby' });
+  const s1 = await tick(w2, standby);
+  assert.match(s1.notes.join(' '), /the primary is silent for \d+s; standby acts/, js(s1.notes));
+  assert.equal(raisedOf(standby, 'standby-acting').length, 1);
+  w2.pass(3700);
+  await tick(w2, standby);
+  assert.equal(raisedOf(standby, 'standby-acting').length, 2, 'an hour later it warns again');
 });
 
 test('the ticks recover: the failing streak ends and the heartbeat says so at once', async () => {

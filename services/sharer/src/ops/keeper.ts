@@ -110,6 +110,8 @@ const ACTIVATE_DATA = encodeFunctionData({ abi: opsDistributorAbi, functionName:
 const PAY_KEEPER_DATA = encodeFunctionData({ abi: opsDistributorAbi, functionName: 'payKeeper' });
 const ROOT_ACTIVATED = keccak256(toHex('RootActivated(uint32,bytes32)'));
 const ROOT_VETOED = keccak256(toHex('RootVetoed(uint32,bytes32)'));
+/** How often a standby with no primary at all says it is acting (below). */
+export const STANDBY_ALONE_COOLDOWN_SEC = 7 * 86400;
 
 interface Due {
   d: Address;
@@ -161,7 +163,17 @@ export async function keeperTick(ctx: OpsContext, keys: KeeperKeys, o: TickOptio
           ? `the primary is silent for ${age}s; standby acts`
           : `the primary (${beat?.holder}) beats but has had no clean tick for ${cleanAge}s (${beat?.errors?.[0] ?? 'no error given'}); standby acts`,
     );
-    await ctx.alerts.raise({ key: 'standby-acting', severity: 'warn', title: 'The standby keeper is acting', text: rep.notes[rep.notes.length - 1] });
+    // NO PRIMARY HEARTBEAT AT ALL is the deployment where the standby IS the
+    // keeper: the owner's decision of 16 October 2026, no keeper host, the
+    // GitHub standby running alone (RUNBOOK part 9). Acting is then its normal
+    // state, not news, and at the usual hourly cooldown it filled the alert
+    // chat with 24 warnings a day. It is said once a week instead. A primary
+    // that beat and went silent, or beats with no clean tick, is news: that
+    // still warns at the usual cooldown.
+    await ctx.alerts.raise(
+      { key: 'standby-acting', severity: 'warn', title: 'The standby keeper is acting', text: rep.notes[rep.notes.length - 1] },
+      age === Infinity ? { cooldownSec: STANDBY_ALONE_COOLDOWN_SEC } : {},
+    );
   }
   /** Another keeper held the lease: this one wrote nothing, so it reports nothing. */
   let blocked = false;
