@@ -2,7 +2,8 @@
   "rewrites": [
     { "source": "/", "destination": "/browse.html" },
     { "source": "/token/:address", "destination": "/app.html" },
-    { "source": "/sharing", "destination": "/sharing.html" }
+    { "source": "/sharing", "destination": "/sharing.html" },
+    { "source": "/sharing/:chain(\\d+)/:path*", "destination": "https://raw.githubusercontent.com/Curb-Dev/curb-sharing-data/main/sharing/:chain/:path*" }
   ],
   "headers": [
     {

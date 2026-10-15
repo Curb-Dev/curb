@@ -729,9 +729,11 @@ AHEAD OF THE DAY
     its sha256 in both vercel.json and _headers: whoever edits that script
     updates both, or this check and the browser suite fail). On deploy day
     it runs with --addresses (STEP 5).
-    THE DOMAIN. The pages' link previews name https://curb.fun/og.png, and
-    og.png itself shows curb.fun. If the domain is another one, change every
-    page that names it (grep -rln 'curb.fun/og.png' web - seven today) and
+    THE DOMAIN IS curbfun.xyz (the owner's, registered at Namecheap on
+    15 September 2026). The pages' link previews name
+    https://curbfun.xyz/og.png, and og.png itself shows curbfun.xyz; both were
+    changed from curb.fun on 15 October 2026. If the domain ever changes, change
+    every page that names it (grep -rln 'curbfun.xyz/og.png' web - seven) and
     the image in one commit.
     THE CHECKS, once the domain points at the project - STEP 8 runs them.
   SITE RPC ENDPOINT - THE OWNER'S CHOICE OF PROVIDER

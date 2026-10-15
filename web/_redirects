@@ -6,6 +6,9 @@
 /token/*  /app.html  200
 # Every distributor, its roles and its changes.
 /sharing  /sharing.html  200
+# The keeper's epoch files, served from the data repository (RUNBOOK 4.3). The
+# chain number comes first, so /sharing itself never matches.
+/sharing/:chain/*  https://raw.githubusercontent.com/Curb-Dev/curb-sharing-data/main/sharing/:chain/:splat  200
 # THE TEST PAGES ARE NEVER SERVED. They take ?rpc= and talk to a wallet, and they
 # sit in web/ beside the site because the browser tests serve web/ whole. Vercel
 # never uploads them (web/.vercelignore); Netlify uploads the folder as it is, so
