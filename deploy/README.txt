@@ -31,6 +31,13 @@ curb-first-uri.txt
     5b5e4d9c4dc80bfae7d42a4a096835e991775896b53617961a4e8fe01ee18c63
   ADDRESSES.txt records the file and this hash with $CURB's other settings.
 
+  CHECKED on a fork of live Base the same day, in the deploy rehearsal:
+  $CURB launched with it inside the run, its tokenURI() was this file byte
+  for byte, and the site served against that fork showed it as a visitor
+  would - the Launches page's hero and grid card with the image and the
+  three links, and /token/<$CURB> with the name, the description, the image
+  and Website, X and Telegram, through web/token-meta.js parseMeta.
+
   THE TELEGRAM LINK IS IN IT FOR GOOD. If https://t.me/CurbCommunity is not
   the project's own group on the day, make the file again without it (or
   with the right one) in a commit of its own before STEP 2, and record the

@@ -104,12 +104,18 @@ WHAT IS LEFT
         The URI is the committed deploy/curb-first-uri.txt (deploy/README.txt
         says how it was made); DEPLOY.txt decision 6 lists every value. It
         is launched inside the deployment, so it is the registry's first ETH
-        launch.
+        launch. Rehearsed on a fork of live Base on 2026-10-16: launchAt(0)
+        on the WETH factory, the treasury Safe its creator and refund
+        address, 100 bps (50 to the platform), no distributor, and its
+        token page showing the URI's name, description, image and links.
      c. THE SAFES - CREATED 2026-10-15, Safe v1.5.0 on Base: Safe A
         0x97D3be57653B4E14ECEe182Bf0B754AAAF47BfcE, 2 of 3; Safe B
         0xF48DD1274f78bB072fa3D8fa9e03daAB74A002CF, 1 of 2 (SAFE_OPS.txt,
         committed). Who signs, and who covers the payout veto hour at night,
-        are in SAFE_OPS.txt's private copy.
+        are in SAFE_OPS.txt's private copy. Safe A accepting the registry
+        through Safe v1.5.0's own execTransaction (two owners' approveHash,
+        relayed by a non-owner; one alone refused GS020) was rehearsed on a
+        fork of live Base on 2026-10-16 - the suites' Safe is 1.4.1.
      d. THE PLATFORM RECIPIENT - DECIDED: the treasury Safe
         0x6724eb5C59D617B1c65d88Cc6734B19b9E0eB7eE (Safe v1.5.0, 2 of 3),
         ticked in SAFE_OPS.txt, and $CURB's creator wallet too. It replaces
@@ -120,7 +126,10 @@ WHAT IS LEFT
         fallback guardian on a separate server with its own key, RPC and
         alerts, never on the keeper's machine.
      f. THE SITE'S RPC ENDPOINT, which every visitor's browser reads
-        (web/config.js, DEPLOY.txt PREP 3).
+        (web/config.js, DEPLOY.txt PREP 3) - CHOSEN 2026-10-15: an Alchemy
+        app of its own, its key restricted by Alchemy to curbfun.xyz,
+        www.curbfun.xyz and curb-web-eight.vercel.app. Its URL goes into
+        config.js rpc at STEP 5, and nowhere before.
      g. THE SECURITY CONTACT, for docs.md and security.txt.
      h. D6'S ONE OPEN QUESTION - ANSWERED 2026-10-15: stock-paired pools stay
         open while the stock's market is closed, as thestonks.exchange's do.
@@ -147,7 +156,12 @@ WHAT IS LEFT
        (SAFE_OPS.txt, ACCOUNTS);
      - the signing machine: WSL with base-forge, the hardware wallet reaching
        it through usbipd, and the signer check printing the deployer
-       (DEPLOY.txt PREP 2).
+       (DEPLOY.txt PREP 2). The owner signs with a keystore,
+       curb-mainnet-deployer in WSL's ~/.foundry/keystores, so its option is
+       --account curb-mainnet-deployer and no usbipd is needed. ON 2026-10-16
+       WSL HAD NO node AT ALL, and npm resolved to Windows' under /mnt/c -
+       PREP 2's check fails there until Node 22.18 or later is installed in
+       WSL itself (the preflight's suites run the keeper's npm suite).
 
   3. THE FINAL INTERNAL AUDIT, on the commit to be deployed, which ends the
      in-house reviews. There is no outside audit, by the owner's decision of

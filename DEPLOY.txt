@@ -54,12 +54,31 @@ WHAT IS ALREADY PROVEN, so you know what this rests on
     factory and the distributor implementation it builds, lens) and four per
     quote asset. This line said 16 while the list had grown to eleven
     assets, and four shared until core v2 added the sharing contracts.
-  - the cost is whatever the simulation prints on the day - about 0.0015 ETH
-    for fourteen assets when last measured (15 October 2026, simulated
-    against live Base without $CURB: 150,933,500 gas at ~0.0103 gwei,
-    0.00155 ETH; it was 0.0011 ETH for eleven). No fixed figure here:
-    this line said 0.00033 ETH, which was the THREE-asset run, and an operator
-    who funded to it was stopped by the preflight.
+  - the cost is whatever the simulation prints on the day - 0.00167 ETH for
+    fourteen assets with $CURB in the rehearsal of 16 October 2026 (below),
+    and the funding check then asks THREE TIMES that, 0.0050 ETH, before it
+    prints the command; the router is one transaction more (about 2.6M
+    gas). It was 0.00155 ETH without $CURB on 15 October, and 0.0011 ETH for
+    eleven assets. No fixed figure here: this line said 0.00033 ETH, which
+    was the THREE-asset run, and an operator who funded to it was stopped by
+    the preflight.
+  - THE RUNBOOK ITSELF WAS REHEARSED ON 16 OCTOBER 2026, on a fork of live
+    Base (block 52,655,082) with the owner's real addresses and $CURB's
+    settings: STEP 0, STEP 2 three times (cbZEC past its band, re-priced in
+    a commit of its own; then the funding check; then the command), STEP 3,
+    the printed STEP 4 command run as printed - but for --unlocked in place
+    of the keystore, whose password is the owner's, and without --verify,
+    since a fork has no explorer - STEP 4A, STEP 4B through the real Safe A
+    (v1.5.0, 2 of 3, its own execTransaction; one signature refused GS020),
+    and STEP 5: config-from-run, check-deployment.sh (506 checks, PENDING
+    and then --accepted), every size-gate line it printed,
+    check-publish-set.sh --addresses, and the site served against the fork
+    with $CURB in the hero and its links on its page. A buy and a sale of
+    $CURB through CurbRouter paid 50 + 50 bps, which the treasury Safe swept
+    and claimed. NOT rehearsed: STEP 1's full suites, the keystore's
+    password, STEP 6 (no explorer), the domain (STEP 8 was read off the
+    hosting project's own address) and the keeper's and guardian's hosts
+    (STEP 9), whose secrets are the owner's.
   - every suite - non-fork, fork and browser - passes on the code being
     deployed, with nothing failed and nothing skipped. No counts here: this
     line said "61, 255 and 54" and every correct tree failed it once tests
@@ -373,6 +392,13 @@ BEFORE YOU RUN ANYTHING - SIX DECISIONS
                            with the treasury. The treasury Safe can switch it
                            on later, once and for good
                            (Graduator.enableHolderSharing, sent by the Safe).
+     REHEARSED ON 16 OCTOBER 2026 with exactly these values, inside the
+     rehearsal of the whole run (WHAT IS ALREADY PROVEN, above): $CURB was
+     launchAt(0) on the WETH factory, its record named the treasury Safe as
+     beneficiary and refund address at 100 bps with 50 to the platform, no
+     distributor, and its token page showed the file's name, description,
+     image and three links. A rehearsal of your own is still how a CHANGED
+     value is seen before it is permanent:
      REHEARSE IT ONCE with the same values on a node of your own (never the
      suite's pinned node; see the header of script/DeployCurb.s.sol), and
      open /token/<that token> on the local site: the name, image and links
@@ -1160,7 +1186,7 @@ THE RUN
     CURB_FIRST_* setting, each shell-quoted as the preflight checked it - so
     the broadcast launches the $CURB the simulation launched; and --slow,
     which sends one transaction at a time, each after the last one's
-    receipt: without it forge sends the sixty-odd in a burst, and one that
+    receipt: without it forge sends the eighty-odd in a burst, and one that
     an endpoint drops strands every one after it behind a nonce gap.
     BELOW IT THE PREFLIGHT PRINTS A SECOND COMMAND, THE RESUME: the same
     lines with --resume, behind --recheck-resume <the commit> <CURB_DEPLOYER>
@@ -1173,10 +1199,10 @@ THE RUN
     private key in a shell command, in a file, or in an environment variable
     that survives the session. The preflight refuses --private-key.
     A KEYED RPC OF YOUR OWN SENDS THE BROADCAST MORE RELIABLY than the public
-    endpoint, which rate-limits: about sixty transactions go out, and one
-    refused send strands the rest (IF SOMETHING GOES WRONG, A PARTIAL
-    DEPLOYMENT). Set CURB_MAINNET_RPC to it at STEP 2, with a key you will
-    revoke afterwards, as STEP 2 says.
+    endpoint, which rate-limits: 79 transactions went out in the rehearsal of
+    16 October (this said about sixty), and one refused send strands the rest
+    (IF SOMETHING GOES WRONG, A PARTIAL DEPLOYMENT). Set CURB_MAINNET_RPC to
+    it at STEP 2, with a key you will revoke afterwards, as STEP 2 says.
     THE MOMENT IT ENDS - success or not - copy the record before anything else:
       mkdir -p deployments/base-mainnet && \
         cp broadcast/DeployCurb.s.sol/8453/run-latest.json deployments/base-mainnet/run.json
@@ -1800,7 +1826,7 @@ IF SOMETHING GOES WRONG
        becomes --recheck-resume <commit> <CURB_DEPLOYER> <the endpoint, as
        --rpc-url gives it>, its expected line "resume recheck passed
        <commit>", and --resume goes after --slow.
-       Use the keyed endpoint of STEP 4: a resume is sixty-odd sends at most,
+       Use the keyed endpoint of STEP 4: a resume is eighty-odd sends at most,
        one at a time. --resume sends nothing new that the simulation did not
        record, and it rewrites the record as it goes: when it ends, copy
        run-latest.json to deployments/base-mainnet/run.json again and commit

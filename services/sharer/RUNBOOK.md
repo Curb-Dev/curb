@@ -374,6 +374,13 @@ Use four **different companies**:
 | the GitHub Actions standby and verifier | A and B, or C and D |
 | the guardian | its operator's own choice (not A or B) |
 
+**The owner's decision of 2026-10-16: two for now** - Alchemy (A) and
+QuickNode (B), used by the keeper, the verifier and the guardian alike. It
+is a decision, not this part changed: a fault at either provider then
+reaches the keeper and the guardian together, and C, D and the guardian's
+own are added (free Infura and dRPC were named) if `check` or a provider's
+limits refuse two (`PRE_MAINNET.txt` item 2).
+
 The keeper reads every epoch on both of its providers and **refuses to write
 anything if they disagree**. That is why they must be two different
 companies. The guardian reads every distributor's roots, and each root's

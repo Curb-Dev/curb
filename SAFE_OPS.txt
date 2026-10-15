@@ -149,6 +149,19 @@ BEFORE ANY SIGNATURE
     0xe318b52b  swapOwner(address,address,address)   the Safe itself
     0x694e80c3  changeThreshold(uint256)             the Safe itself
     0x0d582f13  addOwnerWithThreshold(address,uint256)  the Safe itself
+  AND THE TREASURY SAFE'S OWN, as the platform recipient and $CURB's creator
+  (THE PLATFORM RECIPIENT - CUSTODY, below):
+    0x3729bb9a  sweepFees(uint256)             a launch's curve - $CURB's -
+                                               from its creator wallet,
+                                               argument 0
+    0x32f289cf  claimToken(address)            an asset's FeeEscrow, argument
+                                               the asset (WETH: paid as ETH)
+    0x1e83409a  claim(address)                 the FeeHook, after graduation:
+                                               the pool's legs, argument the
+                                               asset
+    0x4d1be3ef  enableHolderSharing(address,address)  the Graduator: $CURB's
+                                               holder sharing, ONCE AND FOR
+                                               GOOD - only on a decision
   A selector that is not in this list is a reason to stop and ask, not to
   look it up and carry on.
 
@@ -226,6 +239,20 @@ THE PLATFORM RECIPIENT - CUSTODY
         gas               a little ETH kept on it for the claims
   [x] MOVE TO A TREASURY SAFE  0x6724eb5C59D617B1c65d88Cc6734B19b9E0eB7eE
         threshold 2 of 3 (Safe v1.5.0)
+        HOW ITS MONEY ARRIVES - two signatures each time, rehearsed on a fork
+        of live Base on 16 October 2026 with this Safe itself:
+          - a launch's curve fees stay IN THE CURVE until its creator sweeps
+            them (or it graduates): the platform's half of every launch,
+            and for $CURB both halves. $CURB's are swept by this Safe as
+            its creator - sweepFees(0) to $CURB's curve - which credits both
+            halves to it in the WETH FeeEscrow (the rehearsal: a 0.1 ETH buy
+            and a sale left 0.000755 + 0.000755 WETH, both credited here).
+          - then claimToken(WETH) to the WETH FeeEscrow pays it out, as ETH;
+            claimToken(<asset>) on each other asset's escrow the same way.
+          - after a launch graduates, its pool's legs: claim(<asset>) on the
+            FeeHook.
+        Each call is checked as BEFORE ANY SIGNATURE says; the selectors are
+        in its table.
         Cheapest before STEP 2: pass it as CURB_PLATFORM_RECIPIENT and update
         DEPLOY.txt decision 1's recorded choice. Afterwards it is Safe A's
         announcePlatformRecipient, 24 hours, execute - and only launches made

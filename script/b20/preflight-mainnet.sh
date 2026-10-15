@@ -829,7 +829,7 @@ sim_logs() { # sim log
 # before forge.
 #
 # --slow, SO ONE TRANSACTION IS SENT AT A TIME, each after the last one's
-# receipt. Without it forge sends the sixty-odd in a burst, and one that an
+# receipt. Without it forge sends the eighty-odd in a burst, and one that an
 # endpoint drops or rate-limits strands every one after it behind a nonce gap.
 #
 # AND A SECOND COMMAND, TO RESUME (print_command ... resume): the same lines,
@@ -888,7 +888,7 @@ CMD
 endpoint_note() {
   if [ "$RPC" = "https://mainnet.base.org" ]; then
     echo
-    echo " THE COMMAND USES THE PUBLIC ENDPOINT, which rate-limits. Sixty-odd"
+    echo " THE COMMAND USES THE PUBLIC ENDPOINT, which rate-limits. Eighty-odd"
     echo " transactions, one at a time, are what it limits: for the broadcast, use"
     echo " an endpoint of your own with a key (CURB_MAINNET_RPC=..., then run this"
     echo " again so the command carries it)."
