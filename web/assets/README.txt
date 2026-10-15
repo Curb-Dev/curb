@@ -30,6 +30,17 @@ and centred it on its disc. So each mark keeps the provenance below:
     weth.svg    the Ethereum diamond (ours, see below), white facets on #627EEA
     cbbtc.svg   unchanged: gilbarbara/logos (CC0), already a round coin
 
+THE THREE ADDED ON 16 OCTOBER 2026 (USDC, VIRTUAL, AERO, with the fourteen-
+asset list) WERE DRAWN HERE, nothing fetched, in the same 64x64 disc form:
+    usdc.svg    USDC's coin read as its parts - a "$" between two arcs -
+                white on Circle's blue #2775CA, drawn as strokes
+    virtual.svg a "V" in #4FE3D3 on #0F2A2E, a letter badge, not the
+                Virtuals Protocol mark
+    aero.svg    an "A" in white on #1B3BFF, a letter badge, not the
+                Aerodrome mark
+Before them the three assets showed the coloured tile, and their token pages
+asked for the files and got a 404 (the fork rehearsal of 16 October).
+
 The earlier files - the upstream marks as fetched - are in git history
 (before 29 September 2026). To rebuild a badge from an upstream mark, run the
 script against that copy, not against a badge.
