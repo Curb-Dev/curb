@@ -34,7 +34,9 @@ const DATA_REPO = 'Curb-Dev/curb-sharing-data';
 const BASE_CHAIN_ID = 8453;
 
 let failed = 0;
+let warned = 0;
 const pass = (name, what) => console.log(`PASS  ${name.padEnd(28)} ${what}`);
+const warn = (name, what) => { warned++; console.log(`WARN  ${name.padEnd(28)} ${what}`); };
 const fail = (name, what) => { failed++; console.log(`FAIL  ${name.padEnd(28)} ${what}`); };
 const env = (name) => {
   const v = process.env[name];
@@ -93,16 +95,20 @@ async function checkRpcs(name) {
       // getLogs: the services adapt to a provider's range limit by
       // themselves, so the widest window that answers is reported, and only a
       // provider refusing even ten blocks fails.
+      // A window of n blocks is from head-n+1 to head: free plans count both
+      // ends (Alchemy's free tier allows 10, QuickNode's 5).
       let span = 0;
-      for (const n of [2000, 500, 100, 10]) {
+      for (const n of [2000, 500, 100, 10, 5, 2]) {
         try {
-          await rpc(u, 'eth_getLogs', [{ fromBlock: `0x${(head - n).toString(16)}`, toBlock: `0x${head.toString(16)}`, address: '0x4200000000000000000000000000000000000006', topics: ['0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c'] }]);
+          await rpc(u, 'eth_getLogs', [{ fromBlock: `0x${(head - n + 1).toString(16)}`, toBlock: `0x${head.toString(16)}`, address: '0x4200000000000000000000000000000000000006', topics: ['0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c'] }]);
           span = n;
           break;
         } catch { /* try a narrower window */ }
       }
-      if (!span) { fail(label, `${url.hostname}: getLogs refuses even a 10-block window`); continue; }
-      pass(label, `${url.hostname}: Base, head ${head}, archive, safe tag, eth_call without to; getLogs over ${span} blocks${span < 2000 ? ' (the services page through narrower windows; slower but works)' : ''}`);
+      if (!span) { fail(label, `${url.hostname}: getLogs refuses even a 2-block window`); continue; }
+      const what = `${url.hostname}: Base, head ${head}, archive, safe tag, eth_call without to; getLogs over ${span} blocks`;
+      if (span >= 500) pass(label, what);
+      else warn(label, `${what} - a free plan's ceiling: the services page through it, but replaying a token's history takes thousands of requests; a paid plan or a provider with wide getLogs is needed once launches share with holders`);
     } catch (e) {
       fail(label, `${url.hostname}: ${errText(e)}`);
     }
@@ -187,5 +193,5 @@ if (which === 'mainnet') {
   await checkRpcs('SHARING_VERIFY_RPC_URLS');
   await checkAlerts('SHARING_ALERT_WEBHOOKS');
 }
-console.log(failed ? `\n${failed} check(s) FAILED` : '\nevery check passed');
+console.log(failed ? `\n${failed} check(s) FAILED` : warned ? `\nevery check passed, ${warned} with a warning` : '\nevery check passed');
 process.exit(failed ? 1 : 0);
