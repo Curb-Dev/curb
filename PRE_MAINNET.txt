@@ -88,17 +88,26 @@ WHAT IS LEFT
         checked by the run itself: requireDepthMatchesClaim refuses a list
         that calls an asset fillable when live Base cannot price a threshold
         of it.
-     b. $CURB'S LAUNCH SETTINGS: name, symbol, image and links, tax, creator
-        wallet (a treasury Safe - never zero, never the deployer), dev buy,
-        holder sharing at launch (DEPLOY.txt decision 6). It is launched
-        inside the deployment, so it is the registry's first ETH launch.
-     c. THE SAFES: Safe A's and Safe B's signers, devices and thresholds, and
-        who covers the payout veto hour at night (SAFE_OPS.txt: addresses and
-        thresholds committed in it, the rest in its private copy).
-     d. THE PLATFORM RECIPIENT'S CUSTODY: keep the recorded EOA [A6] with its
-        custody written down, or move to a treasury Safe before signing
-        (SAFE_OPS.txt: the choice committed in it, the custody in its private
-        copy). Changeable later only for later launches.
+     b. $CURB'S LAUNCH SETTINGS - DECIDED 2026-10-15: Curb / CURB, the
+        description "Real pairs. Open launches.", web/curb-mark.svg as its
+        image, https://curbfun.xyz, https://x.com/CurbFun and
+        https://t.me/CurbCommunity, tax 100 bps (the floor), no dev buy,
+        holder sharing OFF at launch - the owner keeps the whole 1%, the
+        creator half included - and the treasury Safe as its creator wallet.
+        The URI is the committed deploy/curb-first-uri.txt (deploy/README.txt
+        says how it was made); DEPLOY.txt decision 6 lists every value. It
+        is launched inside the deployment, so it is the registry's first ETH
+        launch.
+     c. THE SAFES - CREATED 2026-10-15, Safe v1.5.0 on Base: Safe A
+        0x97D3be57653B4E14ECEe182Bf0B754AAAF47BfcE, 2 of 3; Safe B
+        0xF48DD1274f78bB072fa3D8fa9e03daAB74A002CF, 1 of 2 (SAFE_OPS.txt,
+        committed). Who signs, and who covers the payout veto hour at night,
+        are in SAFE_OPS.txt's private copy.
+     d. THE PLATFORM RECIPIENT - DECIDED: the treasury Safe
+        0x6724eb5C59D617B1c65d88Cc6734B19b9E0eB7eE (Safe v1.5.0, 2 of 3),
+        ticked in SAFE_OPS.txt, and $CURB's creator wallet too. It replaces
+        the EOA recorded at A6, which is never used. Changeable later only
+        for later launches.
      e. THE GUARDIAN'S OPERATOR, a second person running the vetoing bot
         (services/sharer/RUNBOOK.md part 10) - or, if there is nobody, a
         fallback guardian on a separate server with its own key, RPC and
@@ -116,8 +125,16 @@ WHAT IS LEFT
      - the public code repository on GitHub, main as its default branch (the
        keeper's standby and verifier workflows act only on the default
        branch), with branch protection;
-     - holder sharing's data repo, pinning accounts, four RPC providers and
-       alert sinks (services/sharer/RUNBOOK.md parts 2 to 6);
+     - holder sharing's data repo, pinning accounts, RPC providers and
+       alert sinks (services/sharer/RUNBOOK.md parts 2 to 6). RUNBOOK part 6
+       asks for four RPC companies - the keeper on A and B, the verifier on
+       C and D, the guardian on neither A nor B. THE OWNER'S DECISION OF
+       2026-10-16: TWO FOR NOW, Alchemy and QuickNode, which the keeper, the
+       verifier and the guardian all use. This is a decision, not a fix: a
+       fault at either provider then reaches the keeper and the guardian
+       together, and the keeper's two-provider agreement is the only
+       cross-check left. If check or a provider's limits refuse it, a free
+       third and fourth (Infura, dRPC) are added then;
      - the hosting project and the domain;
      - hardware-key 2FA and a registrar lock on every one of them
        (SAFE_OPS.txt, ACCOUNTS);
@@ -255,10 +272,9 @@ A1  NOTHING IS DEPLOYED, AND THE MAINNET ADDRESSES DO NOT EXIST YET
     WHAT IS STILL MISSING, AND WHY THIS STAYS OPEN
               Nothing has been deployed to the real chain, no address book
               exists and no contract is verified. The PLATFORM RECIPIENT is
-              nominated but its shape is still a live decision [A6] - a Safe
-              is cheapest before this item (afterwards it is a policy change
-              that reaches only later launches), and both kinds are measured
-              to work.
+              decided: the treasury Safe, made before this item as A6 asked
+              (2026-10-16) - afterwards it would have been a policy change
+              that reaches only later launches.
               AND THE DEPLOYMENT ITSELF NEEDS A FUNDED KEY ON BASE. That is
               not a task anybody can hand off: it is the signature, and it is
               the founder's. DEPLOY.txt is the runbook written so that is the
@@ -267,6 +283,7 @@ A1  NOTHING IS DEPLOYED, AND THE MAINNET ADDRESSES DO NOT EXIST YET
               rather than only the fork. What is left is the part no simulation
               can stand in for:
                 - A6 settled, so the script has a recipient to be given
+                  (DONE 2026-10-16: the treasury Safe)
                 - the stack deployed to Base itself, signed by a funded key
                 - the address book filled in - ADDRESSES.txt is written and
                   empty, with every blank named and a list of what to read back
@@ -587,6 +604,12 @@ A5  WHO MAY CREATE A LAUNCH - DECIDED AND BUILT. ANYONE CAN.
 A6  THE PLATFORM'S FEE RECIPIENT - DECIDED FOR NOW, 2026-09-20
     (an EOA, with a Safe intended later - read the deadline below, because
      "later" stops being free at A1)
+    CLOSED 2026-10-16: THE SAFE CAME BEFORE A1. The treasury Safe
+    0x6724eb5C59D617B1c65d88Cc6734B19b9E0eB7eE (Safe v1.5.0, 2 of 3, created
+    on Base 2026-10-15) is CURB_PLATFORM_RECIPIENT and $CURB's creator
+    wallet, ticked in SAFE_OPS.txt; the EOA below is never used, and no
+    CURB_ALLOW_EOA_RECIPIENT is set. What follows is the record of how the
+    choice was reached.
     Every trade pays this address: the curve's protocol leg through the escrow,
     and the pool's platform leg directly. It is the hook's starting recipient,
     settable by the policy owner behind a 24-hour announcement, and each launch

@@ -2,7 +2,13 @@
 CURB - THE SAFES, THE SIGNERS AND THE ACCOUNTS
 ================================================================================
 Written   8 October 2026
-Status    Nothing here is deployed or created yet. The owner fills in the
+Filled    16 October 2026: the three Safes exist on Base (created 15
+          October 2026, Safe v1.5.0), and their public facts are below -
+          Safe A's and Safe B's address and threshold, and the platform
+          recipient's choice, the treasury Safe. Each was read back off a
+          fork of live Base that day: code, VERSION() 1.5.0, getOwners(),
+          getThreshold(), no module and no guard.
+Status    Nothing of CURB's is deployed yet. The owner fills in the
           blanks (........) before DEPLOY.txt STEP 0, in two places:
           - IN THIS FILE, COMMITTED, ONLY PUBLIC FACTS: each Safe's address and
             threshold, and the platform recipient's choice (its tick, and the
@@ -37,9 +43,9 @@ WHAT THIS IS
 THE SAFES
 ================================================================================
   SAFE A - THE POLICY SAFE (CURB_POLICY_OWNER)
-    address               0x............................................
+    address               0x97D3be57653B4E14ECEe182Bf0B754AAAF47BfcE
     signers               private copy: ........  ........  ........
-    threshold             .. of ..
+    threshold             2 of 3
     owns                  the FeeHook (the platform's share and recipient for
                           future launches, behind 24 hours), the
                           SharingCatalog, the HolderDistributorFactory, and -
@@ -65,9 +71,9 @@ THE SAFES
                           a freeze (48 hours); a new distributor version (7
                           days)
   SAFE B - THE VETOER SAFE (one of CURB_SHARING_VETOERS)
-    address               0x............................................
-    signers               private copy: ........  ........  ........
-    threshold             .. of ..
+    address               0xF48DD1274f78bB072fa3D8fa9e03daAB74A002CF
+    signers               private copy: ........  ........
+    threshold             1 of 2
     can                   veto a pending payout root inside its hour, and
                           freeze. Nothing else: it cannot publish, pay or
                           unfreeze.
@@ -194,12 +200,19 @@ THE PLATFORM RECIPIENT - CUSTODY
 ================================================================================
   Every launch made while an address is the platform recipient pays it for as
   long as the launch exists. One key losing or leaking that address loses or
-  leaks all of it. The recorded choice (DEPLOY.txt decision 1, A6) is
-  0x52483b53c8C08Ece00932A65DaE70487dcCD21E0, a fresh EOA. Keeping it, or
-  moving to a treasury Safe, is THE OWNER'S DECISION. Tick one here and
-  commit it, with the Safe's address if that is the choice - every launch's
-  record names its recipient, so the choice is public anyway. The EOA's
-  custody goes in the private copy (Status above), never here.
+  leaks all of it. The choice recorded until 15 October 2026 (DEPLOY.txt
+  decision 1, A6) was 0x52483b53c8C08Ece00932A65DaE70487dcCD21E0, a fresh
+  EOA. Keeping it, or moving to a treasury Safe, is THE OWNER'S DECISION.
+  Tick one here and commit it, with the Safe's address if that is the
+  choice - every launch's record names its recipient, so the choice is
+  public anyway. The EOA's custody goes in the private copy (Status above),
+  never here.
+  TICKED 16 October 2026: the treasury Safe, made before STEP 2, so it is
+  CURB_PLATFORM_RECIPIENT from the run's first block and the old EOA is
+  never used. The same Safe is $CURB's creator wallet (CURB_FIRST_CREATOR,
+  DEPLOY.txt decision 6), so $CURB's whole 1% - the platform's half and the
+  creator's half - lands in it. It is not Safe A: one holds revenue, the
+  other decides where revenue goes (DEPLOY.txt decision 3).
 
   [ ] KEEP THE EOA, with its custody written in the private copy:
         device            private copy: ........ (a hardware wallet used for
@@ -211,7 +224,8 @@ THE PLATFORM RECIPIENT - CUSTODY
                           from that address; on WETH it is paid as ETH
         how often         private copy: ........
         gas               a little ETH kept on it for the claims
-  [ ] MOVE TO A TREASURY SAFE  0x............................................
+  [x] MOVE TO A TREASURY SAFE  0x6724eb5C59D617B1c65d88Cc6734B19b9E0eB7eE
+        threshold 2 of 3 (Safe v1.5.0)
         Cheapest before STEP 2: pass it as CURB_PLATFORM_RECIPIENT and update
         DEPLOY.txt decision 1's recorded choice. Afterwards it is Safe A's
         announcePlatformRecipient, 24 hours, execute - and only launches made

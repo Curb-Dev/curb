@@ -82,22 +82,25 @@ BEFORE YOU RUN ANYTHING - SIX DECISIONS
      correction pays the old address forever.
      This paragraph used to call the recipient "immutable on the hook". It has
      been settable since the announce/execute policy landed.
-     RECORDED CHOICE (A6): 0x52483b53c8C08Ece00932A65DaE70487dcCD21E0, an EOA.
-     It has no code, no balance and no nonce on Base - it has never been used.
-     An EOA means ONE KEY: whoever holds it takes every fee the protocol earns,
-     and losing it loses them all. The script refuses a code-less address
-     unless you also set CURB_ALLOW_EOA_RECIPIENT=true, which is deliberate:
-     accepting it has to be an act, not a default.
+     RECORDED CHOICE, 16 October 2026: THE TREASURY SAFE,
+     0x6724eb5C59D617B1c65d88Cc6734B19b9E0eB7eE - Safe v1.5.0, 2 of 3, ticked
+     in SAFE_OPS.txt, PLATFORM RECIPIENT. It is also $CURB's creator wallet
+     (decision 6). Being a Safe, it needs no opt-in: leave
+     CURB_ALLOW_EOA_RECIPIENT unset.
+     It replaces the choice recorded until then (A6),
+     0x52483b53c8C08Ece00932A65DaE70487dcCD21E0, an EOA that has never been
+     used and now never will be. An EOA means ONE KEY: whoever holds it takes
+     every fee the protocol earns, and losing it loses them all. The script
+     refuses a code-less address unless you also set
+     CURB_ALLOW_EOA_RECIPIENT=true, which is deliberate: accepting it has to
+     be an act, not a default.
      A SAFE IS CHEAPEST NOW. Afterwards it is a policy change - announce, wait
      24 hours, execute - and it reaches only launches created after it.
      CUSTODY IS WRITTEN DOWN EITHER WAY. SAFE_OPS.txt, PLATFORM RECIPIENT,
-     holds the choice - keep the recorded EOA with its custody written out
-     (device, seed backups, who claims), or switch to a treasury Safe before
-     STEP 2. The owner ticks one in SAFE_OPS.txt, with the Safe's address if
-     that is the choice, and commits it before STEP 0; the custody goes in
-     SAFE_OPS.txt's private copy, kept outside the repository (its Status
-     says why: the repository is public, and an uncommitted edit stops STEP
-     0). Nothing in this runbook decides it.
+     holds the choice, committed before STEP 0, with the Safe's address; who
+     signs for it goes in SAFE_OPS.txt's private copy, kept outside the
+     repository (its Status says why: the repository is public, and an
+     uncommitted edit stops STEP 0).
 
   NO LAUNCH FEE. DeployCurb sets launchFee 0 for every factory: launching
   costs gas only, and a launch that sends ether is refused. Immutable per
@@ -351,6 +354,25 @@ BEFORE YOU RUN ANYTHING - SIX DECISIONS
                            creator share then goes to $CURB's holders, for
                            good); 0 leaves it off, and the creator wallet can
                            switch it on later, once.
+     THE VALUES, DECIDED 15 OCTOBER 2026 (PRE_MAINNET decision 1b):
+       CURB_FIRST_LAUNCH=1
+       CURB_FIRST_NAME=Curb   CURB_FIRST_SYMBOL=CURB
+       CURB_FIRST_URI="$(cat deploy/curb-first-uri.txt)"   the committed file;
+                           deploy/README.txt says what is in it and how it was
+                           made (the create form's own encoding of
+                           web/curb-mark.svg, "Real pairs. Open launches.",
+                           https://curbfun.xyz, https://x.com/CurbFun and
+                           https://t.me/CurbCommunity)
+       CURB_FIRST_TAX_BPS=100   the floor: 50 bps to the platform, 50 to the
+                           creator wallet
+       CURB_FIRST_CREATOR=0x6724eb5C59D617B1c65d88Cc6734B19b9E0eB7eE   the
+                           treasury Safe, also the platform recipient
+                           (decision 1) - so the whole 1% lands there
+       CURB_FIRST_DEV_BUY=0     no dev buy: the deployer needs gas only
+       CURB_FIRST_SHARE=0       holder sharing OFF - the creator half stays
+                           with the treasury. The treasury Safe can switch it
+                           on later, once and for good
+                           (Graduator.enableHolderSharing, sent by the Safe).
      REHEARSE IT ONCE with the same values on a node of your own (never the
      suite's pinned node; see the header of script/DeployCurb.s.sol), and
      open /token/<that token> on the local site: the name, image and links
