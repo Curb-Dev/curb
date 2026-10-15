@@ -309,6 +309,14 @@ contract DeployCurb is Script {
     /// a day's prices: the preflight's section 6 prices them again at
     /// Chainlink when it runs, and stops past 5%.
     ///
+    /// cbZEC WAS RE-PRICED ALONE THE SAME DAY, at 21:25 UTC (block
+    /// 52,655,082), the same way: the preflight's section 6, run against a
+    /// fork of live Base for the deploy rehearsal, put 3.40 / 9.20 at $4,215
+    /// to $57,888, +5.4% and +5.3% - ZEC had gone from $1,177.59 to
+    /// $1,239.72. Every other asset was still inside the band and kept its
+    /// figures. Its deepest pool's slot0 said $1,236.18 that block, 0.29%
+    /// from the feed.
+    ///
     /// THE BAR, and it is the same one B20MultiAsset's E1 test uses: THE
     /// LARGEST MEASURED POOL MUST HOLD AT LEAST ONE THRESHOLD. A pool that
     /// cannot supply one threshold cannot fill a launch, and picking any
@@ -322,7 +330,9 @@ contract DeployCurb is Script {
     ///   cbBTC        0.132              50.39    WETH/0.3%           382  fillable
     ///   VIRTUAL     16,100         799,714.72    USDC/0.3%          49.7  fillable
     ///   AERO        12,200         552,191.37    WETH/0.3%          45.3  fillable
-    ///   cbZEC         9.20              68.67    WETH/1%            7.46  fillable
+    ///   cbZEC         8.74              48.08    WETH/1%            5.50  fillable
+    ///                 (re-priced, and measured, at 21:25 UTC: it held 68.67,
+    ///                 7.46 thresholds of the 9.20 before it, at 16:41)
     ///   cbXRP        8,150          38,735.89    USDC/1%            4.75  fillable
     ///   GOOGLc        31.1              73.51    USDC/1%            2.36  fillable
     ///   AMZNc         42.9              41.80    USDC/1%            0.97  thin
@@ -477,8 +487,9 @@ contract DeployCurb is Script {
     function quoteAssets() internal pure returns (Asset[] memory list) {
         list = new Asset[](14);
         // EVERY FIGURE BELOW WAS PRICED ON 2026-10-15 at Chainlink's answer on
-        // live Base (block 52,646,580), and every depth is the largest Uniswap
-        // v3 pool's holding that day - the table above quoteAssets() says how.
+        // live Base (block 52,646,580; cbZEC's at block 52,655,082, the same
+        // day), and every depth is the largest Uniswap v3 pool's holding that
+        // day - the table above quoteAssets() says how.
         // The dollars beside each pair are what it gives at that day's price.
         //
         // ---- COINS. ETH is the primary pair, decided 2026-09-22.
@@ -518,11 +529,14 @@ contract DeployCurb is Script {
         // measures depth when a creator chooses, so it will say so rather
         // than this file pretending to know.
         list[3] = Asset(0xcb585250f852C6c6bf90434AB21A00f02833a4af, "cbXRP", 3010e6, 8150e6, true, 6);
-        // cbZEC at $1,177.59 (ZEC / USD): 3.40 / 9.20, $4,004 to $54,987,
-        // against 68.67 held (WETH/1%), seven and a half thresholds. Note the
-        // address - it is in the 0xb2 family with the equities, not the 0xcb
-        // family with the other wrapped coins.
-        list[4] = Asset(0xB2000000000000000000008501b13360000cb2EC, "cbZEC", 3.4e8, 9.2e8, true, 8);
+        // cbZEC at $1,239.72 (ZEC / USD, 21:25 UTC): 3.23 / 8.74, $4,004 to
+        // $54,993, against 48.08 held (WETH/1%), five and a half thresholds.
+        // Re-priced alone that evening: at 16:41's $1,177.59 it was 3.40 /
+        // 9.20, which the preflight's section 6 put at $4,215 to $57,888 five
+        // hours later, past its 5% band. Note the address - it is in the 0xb2
+        // family with the equities, not the 0xcb family with the other
+        // wrapped coins.
+        list[4] = Asset(0xB2000000000000000000008501b13360000cb2EC, "cbZEC", 3.23e8, 8.74e8, true, 8);
         // VIRTUAL AND AERO, ADDED 2026-10-15: plain eighteen-decimal ERC-20s -
         // no issuer policy, no blacklist (the router's isBlacklisted question
         // reverts on both, and a token without the function keeps no list).

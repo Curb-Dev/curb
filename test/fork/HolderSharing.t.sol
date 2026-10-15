@@ -173,7 +173,7 @@ abstract contract HolderSharingForkBase is B20ForkTest {
             0x70aCDF2Ad0bf2402C957154f944c19Ef4e1cbAE1, 8);
         list[3] = Asset(0xcb585250f852C6c6bf90434AB21A00f02833a4af, "cbXRP", 3010e6, 8150e6,
             0x40EbC1Ac8d4Fedd2E144b75fe9C0420BE82750c6, 6);
-        list[4] = Asset(0xB2000000000000000000008501b13360000cb2EC, "cbZEC", 3.4e8, 9.2e8,
+        list[4] = Asset(0xB2000000000000000000008501b13360000cb2EC, "cbZEC", 3.23e8, 8.74e8,
             0x40EbC1Ac8d4Fedd2E144b75fe9C0420BE82750c6, 8);
         list[5] = Asset(0xb2000000000000000000007b9fcbd005511aCBd5, "SPCXc", 27.5e8, 74.5e8,
             0x0bf58fe0FAc935Ac69595c19B12Ba0d75E3F8c0E, 8);

@@ -300,10 +300,11 @@ contract B20MultiAssetTest is B20ForkTest {
             0x40EbC1Ac8d4Fedd2E144b75fe9C0420BE82750c6, 6);
     }
     /// cbZEC: in the 0xb2 family with the equities, not the 0xcb one. The same
-    /// EOA held 22.86, against the 19.41 one lifecycle spends at 9.20 - the
-    /// tightest holder here, as DEPLOY.txt PREP 1 warns.
+    /// EOA held 22.86, against the 19.41 one lifecycle spent at the 9.20 of
+    /// 2026-10-15 16:41 UTC, and less at the 8.74 it was re-priced to at 21:25
+    /// - still the tightest holder here, as DEPLOY.txt PREP 1 warns.
     function _cbzec() internal pure returns (Asset memory) {
-        return Asset(0xB2000000000000000000008501b13360000cb2EC, "cbZEC", 3.4e8, 9.2e8,
+        return Asset(0xB2000000000000000000008501b13360000cb2EC, "cbZEC", 3.23e8, 8.74e8,
             0x40EbC1Ac8d4Fedd2E144b75fe9C0420BE82750c6, 8);
     }
 
@@ -809,7 +810,8 @@ contract B20MultiAssetTest is B20ForkTest {
     /// apart would be worth nothing. (The size history: D1's cbZEC threshold
     /// of 8.2 was past both pools here, the 2026-10-03 shape's 6.68 was not -
     /// the 7.55 pool priced it at 3.29 ETH, measured - and the 2026-10-15
-    /// price's 9.20 is past them again.)
+    /// price's 9.20 was past them again, as is the 8.74 cbZEC was re-priced
+    /// to that evening; its best pool then held 5.50 thresholds of it.)
     function test_theDeploymentPricesOneThresholdWhereTheMarketCan() public onlyFork {
         DepthProbe probe = new DepthProbe();
 
@@ -825,14 +827,15 @@ contract B20MultiAssetTest is B20ForkTest {
 
     function test_theDeploymentFindsNoRouteWhereThereIsNone() public onlyFork {
         DepthProbe probe = new DepthProbe();
-        // cbZEC AT ITS SHIPPED 9.20 (2026-10-15), more than either of its pools
-        // holds at this block - and at D1's 8.2, which was the size named here
-        // while the shipped threshold sat under the line.
-        assertEq(probe.thresholdOf("cbZEC"), 9.2e8, "the premise moved: cbZEC does not ship at 9.20");
+        // cbZEC AT ITS SHIPPED 8.74 (re-priced 2026-10-15 21:25 UTC, from the
+        // 9.20 of that afternoon), more than either of its pools holds at this
+        // block - and at D1's 8.2, which was the size named here while the
+        // shipped threshold sat under the line.
+        assertEq(probe.thresholdOf("cbZEC"), 8.74e8, "the premise moved: cbZEC does not ship at 8.74");
         assertEq(
             probe.cost(0xB2000000000000000000008501b13360000cb2EC, probe.thresholdOf("cbZEC")),
             0,
-            "a route priced cbZEC's shipped 9.20, which its pools cannot supply at this block"
+            "a route priced cbZEC's shipped 8.74, which its pools cannot supply at this block"
         );
         assertEq(
             probe.cost(0xB2000000000000000000008501b13360000cb2EC, 8.2e8),

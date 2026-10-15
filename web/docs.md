@@ -90,7 +90,7 @@ it sets the graduation threshold. The choice is permanent.
 | VIRTUAL | Virtuals Protocol's token | 16,100 VIRTUAL |
 | AERO | Aerodrome's token | 12,200 AERO |
 | cbXRP | Coinbase-wrapped XRP | 8,150 cbXRP |
-| cbZEC | Coinbase-wrapped ZEC | 9.2 cbZEC |
+| cbZEC | Coinbase-wrapped ZEC | 8.74 cbZEC |
 | NVDAc | Tokenized stock | 50 NVDAc |
 | GOOGLc | Tokenized stock | 31.1 GOOGLc |
 | SPCXc | Tokenized stock | 74.5 SPCXc |

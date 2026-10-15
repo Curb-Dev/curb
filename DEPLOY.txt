@@ -477,13 +477,14 @@ AHEAD OF THE DAY
                                            the threshold ("the recorded holder
                                            no longer holds enough"); cbZEC's,
                                            22.86 at the pinned block against
-                                           the 19.41 one lifecycle spends at
-                                           9.20, is the tightest.
+                                           the 19.41 one lifecycle spent at
+                                           9.20 (less at today's 8.74), is the
+                                           tightest.
                                            test_theDeploymentPricesOneThresholdWhereTheMarketCan
                                            and test_theDeploymentFindsNoRouteWhereThereIsNone
                                            read NVDAc's and cbZEC's thresholds
                                            by label. The second pins cbZEC's
-                                           at 9.20 and needs the pinned fork
+                                           at 8.74 and needs the pinned fork
                                            NOT to price it - its deeper pool
                                            holds 7.55 cbZEC there - while it
                                            still prices 6.68. Dropping cbZEC
@@ -586,8 +587,11 @@ AHEAD OF THE DAY
        25% low; only AMZNc and AAPLc inside); the list was re-priced on 15
        October, with the three added, and a read-only run of this section
        against live Base that day put all fourteen inside (PRE_MAINNET
-       decision 1a). It is one day's prices: this step runs again before the
-       day.
+       decision 1a). Five hours later the rehearsal's STEP 2, on a fork of
+       live Base, stopped here on cbZEC alone - starting at $4,215, +5.4%,
+       ZEC up from $1,177.59 to $1,239.72 - and cbZEC alone was re-priced,
+       this way, in a commit of its own (3.40 / 9.20 to 3.23 / 8.74). It is
+       one day's prices: this step runs again before the day.
     CHECK, after PREP 3: the commit is on main, STEP 1 passed on it, and the
     keyless STEP 2, the deployer holding the dev buy, passed section 6 and
     reached the funding check.
