@@ -27,7 +27,8 @@ curb-first-uri.txt
        the form's own note). The image is the string the picker's preview
        then showed, byte for byte.
     3. The JSON above, empty fields dropped, base64 of its UTF-8 bytes.
-  Made twice, byte-identical both times. sha256 of the file:
+  Made twice, byte-identical both times, and again by make-curb-uri.js
+  below. sha256 of the file:
     5b5e4d9c4dc80bfae7d42a4a096835e991775896b53617961a4e8fe01ee18c63
   ADDRESSES.txt records the file and this hash with $CURB's other settings.
 
@@ -39,6 +40,19 @@ curb-first-uri.txt
   and Website, X and Telegram, through web/token-meta.js parseMeta.
 
   THE TELEGRAM LINK IS IN IT FOR GOOD. If https://t.me/CurbCommunity is not
-  the project's own group on the day, make the file again without it (or
-  with the right one) in a commit of its own before STEP 2, and record the
-  new hash: nothing can change it after the broadcast.
+  the project's own group on the day, make the file again without it
+  (make-curb-uri.js --no-telegram, below; another link is an edit of its
+  WORDS) in a commit of its own before STEP 2, and record the new hash:
+  nothing can change it after the broadcast.
+
+make-curb-uri.js
+  The three steps above as one command, from a Windows PowerShell in the
+  checkout (it drives Edge through web/e2e's Playwright, as STEP 1's browser
+  suite does; PREP 2's `cd web\e2e; npm ci` installs it):
+    node deploy/make-curb-uri.js --check
+  makes the URI again and says "same" or "DIFFERENT" against the committed
+  file (shown failing on 16 October for a description one comma apart and
+  for an image that did not come through the form's picker). And
+    node deploy/make-curb-uri.js --out deploy/curb-first-uri.txt --no-telegram
+  writes it without the Telegram link (1,645 characters). The words are
+  decision 6's, written in the script once.

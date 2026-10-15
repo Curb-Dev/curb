@@ -378,9 +378,11 @@ BEFORE YOU RUN ANYTHING - SIX DECISIONS
        CURB_FIRST_NAME=Curb   CURB_FIRST_SYMBOL=CURB
        CURB_FIRST_URI="$(cat deploy/curb-first-uri.txt)"   the committed file;
                            deploy/README.txt says what is in it and how it was
-                           made (the create form's own encoding of
-                           web/curb-mark.svg, "Real pairs. Open launches.",
-                           https://curbfun.xyz, https://x.com/CurbFun and
+                           made, and node deploy/make-curb-uri.js --check
+                           makes it again and compares (the create form's
+                           own encoding of web/curb-mark.svg, "Real pairs.
+                           Open launches.", https://curbfun.xyz,
+                           https://x.com/CurbFun and
                            https://t.me/CurbCommunity)
        CURB_FIRST_TAX_BPS=100   the floor: 50 bps to the platform, 50 to the
                            creator wallet
