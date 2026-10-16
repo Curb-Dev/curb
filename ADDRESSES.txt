@@ -7,7 +7,8 @@ STATUS: DEPLOYED to Base mainnet on 16 October 2026. Filled in at DEPLOY.txt
         factory or its getter, and check-deployment.sh --accepted ending
         "check-deployment: ok, 506 checks passed". The run's console output
         was not kept, so the "as printed" lines below are the same getters the
-        script prints, read again. Explorer verification is still open.
+        script prints, read again. Every contract is verified on Sourcify;
+        Basescan and Blockscout are still open (EXPLORER VERIFICATION).
 
         Filling this in is step 5 of DEPLOY.txt and is part of A1, not an
         afterthought: an address book written later from recollection is how a
@@ -341,17 +342,33 @@ EXPLORER VERIFICATION
   was submitted. The Uniswap hook allowlist requires this and will not take a
   hook that is not verified [PRE_MAINNET C7].
 
-  [ ] LaunchRegistry      [ ] Graduator        [ ] LaunchLens     [ ] FeeHook
-  [ ] SharingCatalog      [ ] HolderDistributorFactory
-  [ ] HolderFeeDistributor implementation
-  [ ] CurbRouter (verified by hand with --compilation-profile router, DEPLOY.txt
+  WHERE, AS OF 16 OCTOBER 2026: SOURCIFY (sourcify.dev, chain 8453), from
+  c26d22ac with forge verify-contract --verifier sourcify. Basescan's API
+  needs a paid plan on Base (STEP 4's --verify failed there, as expected),
+  and Blockscout's API answered forge with a Cloudflare challenge; Blockscout
+  did not yet show the Sourcify matches when this was written. A tick below
+  means Sourcify serves the source; "exact" is a full match, metadata
+  included. Basescan and Blockscout are still open, and the hook allowlist
+  wants a block explorer [PRE_MAINNET C7].
+
+  [x] LaunchRegistry      [x] Graduator        [x] LaunchLens     [x] FeeHook
+  [x] SharingCatalog      [x] HolderDistributorFactory          (all exact)
+  [x] HolderFeeDistributor implementation                       (exact)
+  [x] CurbRouter (verified by hand with --compilation-profile router, DEPLOY.txt
       STEP 4A: --verify does not see a contract created through the proxy)
-  [ ] one line per asset in the run's output: factory / escrow / policy / vault
+      - a runtime match: its profile has no metadata hash, and Sourcify
+      cannot see a creation made through the deployment proxy
+  [x] one line per asset in the run's output: factory / escrow / policy / vault
       Three symbols used to be named here; the list is fourteen now and naming
       them twice is how the two fall out of step.
+      All 56, exact (14 of each kind).
   ONCE THE FIRST LAUNCH GRADUATES (DEPLOY.txt, IMMEDIATELY AFTER, 4) - one of
   each per-launch contract, so the explorer matches every later copy:
-  [ ] CurbLaunchToken     [ ] PonsV2BondingCurve    [ ] PositionLock
+  [x] CurbLaunchToken ($CURB's, exact)
+  [x] PonsV2BondingCurve ($CURB's) - a partial match Sourcify already held
+      from another submission (solc 0.8.35, same runtime code); it refused
+      this build's as "already verified"
+  [ ] PositionLock        (made at graduation)
   [ ] HolderFeeDistributor clone (a launch that shares)
 
 
