@@ -2006,7 +2006,54 @@ const QUOTE_READS_AT_ONCE = 6;
 ///         order it admitted them, since it only ever appends (LaunchRegistry) -
 ///         and, as `.unread`, the indices whose factory could not be read, so
 ///         nothing drawn from the rest pretends to know what those were
-async function quoteChoices(registry, callFn, live) {
+/// THE LIST, SHARED AND KEPT - on the site's own endpoint only (config.js rpc).
+/// A launch's page asked for it twice at the same moment (its factory and the
+/// asset picker), 56 reads each; and a factory, its asset and that asset's
+/// name and symbol never change, while the registry only ever appends. So two
+/// callers within a minute share one read, and what was read is kept in this
+/// browser by registry and index: the next visit asks the count and only the
+/// factories admitted since. Elsewhere - a fork, a link's endpoint, the tests'
+/// nodes - every call reads everything, as before.
+const QUOTE_LISTS = new Map();
+const QUOTE_LIST_MS = 60_000;
+const QUOTE_KEEP = "curb.quoteChoices.v1";
+function quoteListKey(registry, url) {
+  const site = window.CURB_SITE || {};
+  const own = typeof site.rpc === "string" ? site.rpc.trim() : "";
+  return own && String(url || "").trim() === own && isAddr(registry) ? own + "|" + String(registry).toLowerCase() : "";
+}
+function keptQuotes(key) {
+  try {
+    const all = JSON.parse(localStorage.getItem(QUOTE_KEEP) || "{}");
+    return Array.isArray(all[key]) ? all[key] : [];
+  } catch { return []; }
+}
+function keepQuotes(key, list) {
+  try {
+    const all = JSON.parse(localStorage.getItem(QUOTE_KEEP) || "{}") || {};
+    all[key] = list.map((c) => ({ factory: c.factory, quote: c.quote, sym: c.sym, name: c.name, index: c.index }));
+    const keys = Object.keys(all);
+    while (keys.length > 8) delete all[keys.shift()];
+    localStorage.setItem(QUOTE_KEEP, JSON.stringify(all));
+  } catch { /* storage refused: nothing kept */ }
+}
+async function quoteChoices(registry, callFn, live, url) {
+  const key = quoteListKey(registry, url);
+  if (!key) return readQuoteChoices(registry, callFn, live, []);
+  const hit = QUOTE_LISTS.get(key);
+  let p = hit && Date.now() - hit.at < QUOTE_LIST_MS ? hit.promise : null;
+  if (!p) {
+    p = readQuoteChoices(registry, callFn, null, keptQuotes(key)).then((list) => { keepQuotes(key, list); return list; });
+    QUOTE_LISTS.set(key, { at: Date.now(), promise: p });
+    p.catch(() => { if (QUOTE_LISTS.get(key) && QUOTE_LISTS.get(key).promise === p) QUOTE_LISTS.delete(key); });
+  }
+  const list = await p;
+  if (live && !live()) throw new Error("superseded");
+  const out = list.map((c) => ({ ...c }));
+  out.unread = (list.unread || []).slice();
+  return out;
+}
+async function readQuoteChoices(registry, callFn, live, kept) {
   const w = words(await callFn(registry, SEL.launcherCount));
   const out = [];
   out.unread = [];
@@ -2030,6 +2077,13 @@ async function quoteChoices(registry, callFn, live) {
       if (live && !live()) throw new Error("superseded");
       const i = next++;
       if (i >= n) return;
+      // KEPT FROM AN EARLIER VISIT (quoteChoices): the same index of the same
+      // registry is the same factory, asset, name and symbol for good.
+      const k = kept[i];
+      if (k && k.index === i && isAddr(k.factory) && isAddr(k.quote) && typeof k.sym === "string" && typeof k.name === "string") {
+        got[i] = { factory: k.factory, quote: k.quote, sym: k.sym, name: k.name, index: i };
+        continue;
+      }
       try {
         const idx = BigInt(i).toString(16).padStart(64, "0");
         const f = oneAddress(await callFn(registry, SEL.launcherAt + idx), "launcherAt");
@@ -2068,7 +2122,8 @@ async function quoteChoices(registry, callFn, live) {
 ///              reads, and the answer is then null
 /// @return the quoteChoices entry, or null when no listed factory matches
 async function launchFactoryOf(registry, quote, curveEscrow, callFn, live) {
-  const choices = await quoteChoices(registry, callFn, live).catch(() => []);
+  // SHARED ONLY WHEN IT READS THE PAGE'S OWN ENDPOINT (call): a pinned pair reads its own.
+  const choices = await quoteChoices(registry, callFn, live, callFn === call ? chainCfg.rpc : "").catch(() => []);
   for (const c of choices) {
     if (live && !live()) return null;
     if (!same(c.quote, quote)) continue;
@@ -3165,7 +3220,7 @@ async function fillQuotePicker() {
       fromFactory ? "The factory's registry()" : "The lens's registry()");
     if (!live()) return;
     const atUrl = (to, data) => callAt(url, to, data);
-    const listed = await quoteChoices(registry, atUrl, live);
+    const listed = await quoteChoices(registry, atUrl, live, url);
     // A FACTORY THE SITE NO LONGER OFFERS (config.js hiddenFactories - the
     // halt PRE_MAINNET D4 names for an asset) is not a choice: the registry
     // cannot drop a launcher, so the page does. Only here - a launch already

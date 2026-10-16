@@ -1152,6 +1152,39 @@ async function creationNear(latest, floor, factory) {
 /// it. Null when there is none to use.
 const INDEX_SCHEMA = "curb.history/1";
 const INDEX_MAX_LOGS = 200000;
+const INDEX_MISMATCH = "the history index disagrees with the chain";
+/// WHAT EACH LIST'S COUNTING READS, so a log the count would stumble on is
+/// refused with its file instead (scanHistory): topics at least, data words
+/// at least, by first topic where it differs.
+const INDEX_SHAPE = {
+  [TOPIC.curveBuy]: [3, 4], [TOPIC.curveSell]: [3, 4], [TOPIC.feesSwept]: [1, 3], [TOPIC.feesRescued]: [1, 2],
+  [TOPIC.transfer]: [3, 1], [TOPIC.routerSold]: [3, 2], [TOPIC.swap]: [2, 6], [TOPIC.feeCharged]: [2, 3],
+};
+
+/// THE INDEX AGAINST THE CHAIN, after a pass counted it: the token balances its
+/// transfers (and the chain's after it) add up to, for the curve and the five
+/// largest holders, against balanceOf at the block the pass read to. A file
+/// that left a transfer out or made one up moves at least two balances, and
+/// the curve is party to every curve trade. True when they agree, or when the
+/// chain could not be asked (nothing then says the file is wrong).
+async function indexAgrees(v, latest) {
+  const h = T.hist;
+  if (!h) return true;
+  const bal = new Map();
+  const add = (a, x) => { const k = a.toLowerCase(); bal.set(k, (bal.get(k) || 0n) + x); };
+  for (const t of h.transfers) { add(t.from, -t.amount); add(t.to, t.amount); }
+  bal.delete(ZERO.toLowerCase());
+  const who = [v.curve.toLowerCase(),
+    ...[...bal.entries()].filter(([a]) => a !== v.curve.toLowerCase()).sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0)).slice(0, 5).map(([a]) => a)];
+  const got = await rpcBatch(who.map((a) => ({ method: "eth_call", params: [{ to: T.token, data: SEL.balanceOf + pad(a) }, hex(latest)] })));
+  for (let i = 0; i < who.length; i++) {
+    if (got[i] === null || got[i] === undefined) continue;
+    let onChain;
+    try { onChain = wordToBig(words(got[i])[0]); } catch { continue; }
+    if (onChain !== (bal.get(who[i]) || 0n)) return false;
+  }
+  return true;
+}
 async function historyIndex(v, from, latest, routerAddr) {
   const site = window.CURB_SITE || {};
   if (!site.rpc || endpoint() !== String(site.rpc).trim() || T.chainId !== site.chainId) return null;
@@ -1176,18 +1209,25 @@ async function historyIndex(v, from, latest, routerAddr) {
   ];
   const out = { to: j.to };
   let total = 0;
+  const lower = (t) => typeof t === "string" && t === t.toLowerCase();
   for (const [key, address, topics, extra] of lists) {
     const arr = j[key];
     if (!Array.isArray(arr)) return null;
     total += arr.length;
     if (total > INDEX_MAX_LOGS) return null;
     if (arr.length && !isAddr(address)) return null;
+    const seen = new Set();
     for (const l of arr) {
-      if (!l || !same(l.address, address) || !Array.isArray(l.topics) || !l.topics.length || !l.topics.every((t) => isHex(t, 64))) return null;
-      if (!topics.includes(String(l.topics[0]).toLowerCase()) || (extra && !extra(l))) return null;
-      if (!isHex(l.data) || !isHex(l.blockNumber) || !isHex(l.logIndex) || !isHex(l.transactionHash, 64)) return null;
+      if (!l || !same(l.address, address) || !Array.isArray(l.topics) || !l.topics.length || !l.topics.every((t) => isHex(t, 64) && lower(t))) return null;
+      if (!topics.includes(l.topics[0]) || (extra && !extra(l))) return null;
+      if (!isHex(l.data) || l.data.length % 2 || !isHex(l.blockNumber) || !isHex(l.logIndex) || !isHex(l.transactionHash, 64)) return null;
+      const [minTopics, minWords] = INDEX_SHAPE[l.topics[0]] || [99, 99];
+      if (l.topics.length < minTopics || (l.data.length - 2) / 64 < minWords) return null;
       const b = parseInt(l.blockNumber, 16);
       if (!(b >= j.from && b <= j.to)) return null;
+      const k = b + ":" + parseInt(l.logIndex, 16);
+      if (seen.has(k)) return null;
+      seen.add(k);
     }
     out[key] = arr;
   }
@@ -1203,6 +1243,10 @@ async function scanHistory() {
   const v = view();
   if (!v || T.scanning) return;
   T.scanning = true;
+  // WHETHER THE PASS HAS STARTED COUNTING INTO T.hist, and whether it counted
+  // the index: a pass that fails after that point leaves no half-counted
+  // history behind (see the catch).
+  let counting = false, retry = false;
   try {
     const latest = parseInt(await rpc("eth_blockNumber", []), 16);
     if (!T.hist) {
@@ -1225,9 +1269,13 @@ async function scanHistory() {
     // THE INDEX (historyIndex), read once a visit and counted by the first
     // pass that succeeds - and only by it: a pass that fails leaves it to the
     // next, which reads the chain after it again.
+    // NOT ON A PARTIAL HISTORY: the file starts at the launch, and the page
+    // then says it counts from a later block. NOT WHILE THE NODE IS BEHIND IT:
+    // a pass counted to a block below the file's would read part of it again.
     const routerAddr = App.CURB_ROUTER ? App.CURB_ROUTER.address : "";
-    if (T.index === undefined) T.index = await historyIndex(v, h.from, latest, routerAddr).catch(() => null);
+    if (T.index === undefined) T.index = h.partial || T.indexRefused ? null : await historyIndex(v, h.from, latest, routerAddr).catch(() => null);
     const pre = T.index && !T.indexUsed ? T.index : null;
+    if (pre && pre.to > latest) return;
     const from = pre ? pre.to + 1 : T.scannedTo + 1;
     if (from > latest && !pre) return;
     const qd = quoteDec();
@@ -1254,6 +1302,8 @@ async function scanHistory() {
       fees = pre.fees.concat(fees);
       transfers = pre.transfers.concat(transfers);
     }
+    T.indexUsing = !!pre;
+    counting = true;
 
     // A SALE THROUGH THE CURB ROUTER: the curve pays the router, so its
     // CurveSell names the router as the recipient - for every such sale. The
@@ -1314,7 +1364,11 @@ async function scanHistory() {
 
     h.trades.sort((a, b) => a.block - b.block || a.index - b.index);
     T.scannedTo = latest;
-    if (pre) T.indexUsed = true;
+    if (pre) {
+      T.indexUsed = true;
+      if (!(await indexAgrees(v, latest))) throw new Error(INDEX_MISMATCH);
+    }
+    counting = false;
     await timeTrades();
     if (h.partial && !h.fromDate) {
       const b = await rpc("eth_getBlockByNumber", [hex(h.from), false]).catch(() => null);
@@ -1322,14 +1376,25 @@ async function scanHistory() {
     }
     T.histErr = "";
   } catch (e) {
-    // THE FAILURE STAYS SAID UNTIL A PASS SUCCEEDS. drawHistory below wrote
-    // over it at once, so it showed for an instant until the next pass.
-    T.histErr = "The trade history could not be read from this endpoint just now (" +
-      ((e && e.message) || e) + "). Prices above are read directly and are current.";
-    $("tvHistNote").textContent = T.histErr;
+    // A PASS THAT FAILED WHILE COUNTING LEAVES NOTHING HALF-COUNTED: the
+    // history starts again from the launch, and an index it counted - one
+    // that broke the count, or that the chain contradicts (indexAgrees) - is
+    // set aside for the visit and the chain read at once in its place.
+    if (counting) {
+      if (T.indexUsing) { T.indexRefused = true; retry = true; }
+      T.hist = null;
+    }
+    if (!(e && e.message === INDEX_MISMATCH)) {
+      // THE FAILURE STAYS SAID UNTIL A PASS SUCCEEDS. drawHistory below wrote
+      // over it at once, so it showed for an instant until the next pass.
+      T.histErr = "The trade history could not be read from this endpoint just now (" +
+        ((e && e.message) || e) + "). Prices above are read directly and are current.";
+      $("tvHistNote").textContent = T.histErr;
+    }
   } finally {
     T.scanning = false;
   }
+  if (retry) return scanHistory();
   drawHistory();
 }
 
