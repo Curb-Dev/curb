@@ -1982,6 +1982,10 @@ function decodeAbiString(raw) {
 /// The most factories one registry may list before this page refuses to read
 /// them: the number browse.js uses for the same read.
 const MAX_LAUNCHERS = 256;
+/// How many factories quoteChoices reads at once: the site's Alchemy endpoint
+/// answered forty calls in parallel without a refusal (17 October 2026), and
+/// two lists can be read at the same moment.
+const QUOTE_READS_AT_ONCE = 6;
 
 /// EVERY FACTORY THE REGISTRY ADMITS, and the asset each one prices against.
 /// READ, NOT CONFIGURED: a quote asset added to the registry appears here
@@ -2012,19 +2016,39 @@ async function quoteChoices(registry, callFn, live) {
     throw new Error("The registry reports " + count + " factories, more than the " + MAX_LAUNCHERS +
       " this page will read from one registry.");
   }
-  for (let i = 0; i < Number(count); i++) {
-    if (live && !live()) throw new Error("superseded");
-    try {
-      const idx = BigInt(i).toString(16).padStart(64, "0");
-      const f = oneAddress(await callFn(registry, SEL.launcherAt + idx), "launcherAt");
-      const quote = oneAddress(await callFn(f, SEL.quoteToken), "quoteToken");
-      // THE NAME IS FOR THE CARD'S SECOND LINE and is allowed to be missing:
-      // a launch whose asset will not answer name() still gets a card.
-      let name = "";
-      try { name = decodeAbiString(await callFn(quote, SEL.name)); } catch { name = ""; }
-      if (!/^[\x20-\x7e]{1,40}$/.test(name)) name = "";
-      out.push({ factory: f, quote, sym: await symbolOf(quote, callFn), name, index: i });
-    } catch { out.unread.push(i); /* keep going */ }
+  // A FEW FACTORIES AT A TIME, each one's name and symbol together. One by
+  // one, fourteen factories were 56 reads end to end, about five seconds on
+  // Base, and a launch's page read the list twice before it showed the launch
+  // (measured on curbfun.xyz, 17 October 2026: status at 10.5 s). The order
+  // is the registry's whatever finishes first, and `live` is still asked
+  // before every factory.
+  const n = Number(count);
+  const got = new Array(n).fill(null);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      if (live && !live()) throw new Error("superseded");
+      const i = next++;
+      if (i >= n) return;
+      try {
+        const idx = BigInt(i).toString(16).padStart(64, "0");
+        const f = oneAddress(await callFn(registry, SEL.launcherAt + idx), "launcherAt");
+        const quote = oneAddress(await callFn(f, SEL.quoteToken), "quoteToken");
+        // THE NAME IS FOR THE CARD'S SECOND LINE and is allowed to be missing:
+        // a launch whose asset will not answer name() still gets a card.
+        const [rawName, sym] = await Promise.all([
+          callFn(quote, SEL.name).then((r) => { try { return decodeAbiString(r); } catch { return ""; } }, () => ""),
+          symbolOf(quote, callFn),
+        ]);
+        const name = /^[\x20-\x7e]{1,40}$/.test(rawName) ? rawName : "";
+        got[i] = { factory: f, quote, sym, name, index: i };
+      } catch { got[i] = null; /* keep going */ }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(QUOTE_READS_AT_ONCE, n) }, worker));
+  for (let i = 0; i < n; i++) {
+    if (got[i]) out.push(got[i]);
+    else out.unread.push(i);
   }
   return out;
 }

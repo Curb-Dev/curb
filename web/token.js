@@ -989,11 +989,23 @@ function withinCap(most) {
   const c = capNow();
   return c.blocks ? Math.min(most, c.blocks) : most;
 }
+/// THE CEILING A RANGE REFUSAL STATES, when it states one: "maximum 1000
+/// blocks" (Tenderly, in the error's data), "limited to a 2,000 range",
+/// "up to a 10 block range". Halving from 50,000 instead landed on 594 under
+/// a 1,000 ceiling, half again the windows. 0 when no number is said.
+function statedLimit(e) {
+  const text = String((e && e.message) || "") + " " + (e && typeof e.data === "string" ? e.data : "");
+  const m = /maximum (?:of )?([\d,]+) blocks|limited to (?:a )?([\d,]+)(?:[ -]block)? range|up to (?:a )?([\d,]+)[ -]block range/i.exec(text);
+  const n = m ? Number(String(m[1] || m[2] || m[3]).replace(/,/g, "")) : 0;
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}
 /// A window of `span` blocks refused for its range or its result size: the
-/// next window to ask for, learnt as the ceiling - or 0 at the floor.
-function refusedSpan(span, kind) {
+/// next window to ask for, learnt as the ceiling - or 0 at the floor. A
+/// range refusal that states its ceiling is taken at its word.
+function refusedSpan(span, kind, stated = 0) {
   if (span <= WINDOW_MIN) return 0;
-  const next = Math.max(WINDOW_MIN, Math.floor(span / 2));
+  const said = kind === "range" && stated > 0 && stated < span ? stated : 0;
+  const next = Math.max(WINDOW_MIN, said || Math.floor(span / 2));
   const c = capNow();
   Object.assign(c, { blocks: c.blocks ? Math.min(c.blocks, next) : next, isSize: kind === "size", served: 0 });
   return next;
@@ -1032,7 +1044,7 @@ async function getLogs(filter, from, to) {
       }
       // A RANGE OR RESULT LIMIT: ask for less, down to a floor, and keep the
       // ceiling so no later window asks for too much again.
-      if (!refusedSpan(end - start + 1, kind)) throw e;
+      if (!refusedSpan(end - start + 1, kind, statedLimit(e))) throw e;
       continue;
     }
     busy = 0;
@@ -1066,6 +1078,8 @@ async function creationBlock(latest) {
   const factory = S().chainCfg.factory;
   if (!isAddr(factory)) return null;
   const floor = Math.max(0, latest - MAX_LOOKBACK, await forkFloor());
+  const near = await creationNear(latest, floor, factory);
+  if (near !== null) return near;
   let end = latest;
   let size = withinCap(2000);
   let busy = 0;
@@ -1082,7 +1096,7 @@ async function creationBlock(latest) {
         await sleep(LOG_BACKOFF_MS * 2 ** (busy - 1));
         continue;
       }
-      size = refusedSpan(end - start + 1, kind);
+      size = refusedSpan(end - start + 1, kind, statedLimit(e));
       if (!size) throw e;
       continue;
     }
@@ -1093,6 +1107,37 @@ async function creationBlock(latest) {
     size = withinCap(Math.min(WINDOW * 4, size * 2));
   }
   return null;
+}
+
+/// THE CREATION BLOCK FROM THE LAUNCH'S OWN TIME, in a few reads: the
+/// registry records when it registered the launch (launchOf's launchedAt,
+/// word 11 of its record), and Base makes a block every 2 seconds, so the
+/// block is about (now - then) / 2 below the head. One window around that
+/// guess is asked; a guess that misses (a fork, whose blocks keep no such
+/// pace) gives null and the backwards search runs as before. $CURB's page,
+/// one day old, spent 39 windows of searching on it (17 October 2026).
+async function creationNear(latest, floor, factory) {
+  try {
+    const reg = wordToAddress(words(await call(factory, SEL.registry))[0]);
+    const rec = words(await call(reg, SEL.launchOf + pad(T.token)));
+    const at = rec.length >= 12 ? Number(wordToBig(rec[11])) : 0;
+    if (!at) return null;
+    const head = await rpc("eth_getBlockByNumber", [hex(latest), false]);
+    const now = head ? parseInt(head.timestamp, 16) : NaN;
+    if (!(now >= at)) return null;
+    const guess = latest - Math.floor((now - at) / 2);
+    // A WINDOW OF EXACTLY THE SPAN, the guess in its middle: guess +/- span/2
+    // is one block more, and a 1,000-block ceiling refused it.
+    const span = withinCap(1000);
+    const start = Math.max(floor, guess - Math.floor((span - 1) / 2));
+    const end = Math.min(latest, start + span - 1);
+    if (start > end) return null;
+    const logs = await rpc("eth_getLogs", [{ address: factory, topics: [TOPIC.launchCreated, "0x" + pad(T.token)],
+      fromBlock: hex(start), toBlock: hex(end) }]);
+    return Array.isArray(logs) && logs.length ? parseInt(logs[0].blockNumber, 16) : null;
+  } catch {
+    return null;
+  }
 }
 
 const sgn128 = (w) => { const x = BigInt("0x" + w); return x >= (1n << 127n) ? x - (1n << 128n) : x; };
@@ -1129,15 +1174,17 @@ async function scanHistory() {
     // part-way leaves the pass to be made again from the same block; counted
     // as they came, the curve's trades and the creator's earnings read before
     // the failure were counted a second time on the next pass.
-    const curveLogs = await getLogs({ address: v.curve,
-      topics: [[TOPIC.curveBuy, TOPIC.curveSell, TOPIC.feesSwept, TOPIC.feesRescued]] }, from, latest);
+    // THE CURVE'S, THE POOL'S AND THE TOKEN'S LOGS ARE READ TOGETHER: none of
+    // them needs another, and one after the other they were the page's
+    // longest wait (17 October 2026).
     const inPool = v.status === 3 && !!v.poolKey;
     if (inPool) h.poolId = h.poolId || App.poolId(v.poolKey);
-    const [swaps, fees] = inPool ? await Promise.all([
-      getLogs({ address: POOL_MANAGER, topics: [TOPIC.swap, h.poolId] }, from, latest),
-      getLogs({ address: v.poolKey.hooks, topics: [TOPIC.feeCharged, h.poolId] }, from, latest),
-    ]) : [[], []];
-    const transfers = await getLogs({ address: T.token, topics: [TOPIC.transfer] }, from, latest);
+    const [curveLogs, swaps, fees, transfers] = await Promise.all([
+      getLogs({ address: v.curve, topics: [[TOPIC.curveBuy, TOPIC.curveSell, TOPIC.feesSwept, TOPIC.feesRescued]] }, from, latest),
+      inPool ? getLogs({ address: POOL_MANAGER, topics: [TOPIC.swap, h.poolId] }, from, latest) : [],
+      inPool ? getLogs({ address: v.poolKey.hooks, topics: [TOPIC.feeCharged, h.poolId] }, from, latest) : [],
+      getLogs({ address: T.token, topics: [TOPIC.transfer] }, from, latest),
+    ]);
 
     // A SALE THROUGH THE CURB ROUTER: the curve pays the router, so its
     // CurveSell names the router as the recipient - for every such sale. The
@@ -1222,9 +1269,13 @@ async function scanHistory() {
 /// no such event keeps the address the curve gave (the router's), and a read
 /// that fails leaves every one of them as it was.
 async function namedByRouter(routed, routerAddr, from, to) {
+  // ONLY THE BLOCKS THOSE SALES ARE IN: the router's SoldForEth is in the same
+  // transaction as the CurveSell it names, so nothing outside them can match.
+  const lo = Math.max(from, Math.min(...routed.map((t) => t.block)));
+  const hi = Math.min(to, Math.max(...routed.map((t) => t.block)));
   let logs;
   try {
-    logs = await getLogs({ address: routerAddr, topics: [TOPIC.routerSold, null, "0x" + pad(T.token)] }, from, to);
+    logs = await getLogs({ address: routerAddr, topics: [TOPIC.routerSold, null, "0x" + pad(T.token)] }, lo, hi);
   } catch { return; }
   for (const t of routed) {
     const ev = logs.find((l) => l.transactionHash === t.tx && l.topics.length > 2 &&
