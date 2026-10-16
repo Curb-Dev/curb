@@ -389,6 +389,18 @@
      row has no room for it. */
   .tvSymRow { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12px; color: var(--dim); }
   .tvPair:empty { display: none; }
+  /* THE CONTRACT, ONE CLICK FROM THE NAME: copies the token's address. Beside
+     the name, so the symbol's row keeps its badge on one line. */
+  .tvNameRow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .tvNameRow .tvName { min-width: 0; }
+  .tvCopy { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border-radius: 6px;
+    border: 1px solid var(--line); background: transparent; color: var(--dim); cursor: pointer; }
+  .tvCopy[hidden] { display: none; }
+  .tvCopy:hover { color: var(--ink); border-color: var(--dim); }
+  .tvCopy svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .tvCopy .i-done, .tvCopy.done .i-copy { display: none; }
+  .tvCopy.done .i-done { display: block; }
+  .tvCopy.done { color: var(--good); border-color: rgba(61,220,151,.45); }
   .tvPair { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); color: var(--dim);
     white-space: nowrap; }
   .tvStatus { flex: none; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: 4px 9px;
@@ -569,7 +581,7 @@
         <div class="tvHead">
           <span class="tvImg" id="tvImgWrap"><img id="tvImg" alt="" hidden /><i id="tvImgLetter">?</i></span>
           <div class="tvWho">
-            <div class="tvName" id="tvName">—</div>
+            <div class="tvNameRow"><div class="tvName" id="tvName">—</div><button type="button" class="tvCopy" id="tvCopy" aria-label="Copy the contract address" hidden><svg class="i-copy" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="2"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg><svg class="i-done" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7"/></svg></button></div>
             <div class="tvSymRow"><span id="tvSym">—</span><span class="tvPair" id="tvPair"></span></div>
           </div>
           <span class="tvStatus" id="tvStatus">—</span>

@@ -324,16 +324,27 @@ function drawHead(v) {
   if (safe(m.website)) links.append(link("Website", disp(m.website)));
   if (safe(m.twitter)) links.append(link("X", disp(m.twitter)));
   if (safe(m.telegram)) links.append(link("Telegram", disp(m.telegram)));
-  const copy = document.createElement("button");
-  copy.type = "button";
-  copy.textContent = "Contract " + short(T.token);
-  copy.title = "Copy the token's address";
-  copy.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(T.token); copy.textContent = "Copied"; }
-    catch { copy.textContent = T.token; }
-    setTimeout(() => { copy.textContent = "Contract " + short(T.token); }, 1500);
-  });
-  links.append(copy);
+  // THE CONTRACT IS COPIED FROM BESIDE THE SYMBOL (the owner's call, 17
+  // October 2026), not from About. Assigned, not added: this runs on every
+  // refresh. Where the clipboard is refused the symbol shows the address for
+  // a few seconds, to be selected by hand.
+  const copy = $("tvCopy");
+  if (copy) {
+    copy.hidden = false;
+    copy.title = "Copy the contract address: " + T.token;
+    copy.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(T.token);
+        copy.classList.add("done");
+        setTimeout(() => copy.classList.remove("done"), 1500);
+      } catch {
+        const sym = $("tvSym");
+        const was = sym.textContent;
+        sym.textContent = T.token;
+        setTimeout(() => { if (sym.textContent === T.token) sym.textContent = was; }, 5000);
+      }
+    };
+  }
   // THE EXPLORER ONLY ON BASE ITSELF. A fork serves its own chain id, and its
   // launches exist nowhere an explorer could show.
   if (T.chainId === 8453) links.append(link("Basescan", "https://basescan.org/token/" + T.token));
