@@ -521,7 +521,7 @@ was held, block by block, from the epoch's first block to its harvest block; exc
 epoch's new income, less the keeper's fee - the gas of its transactions, priced by Chainlink, at most 2% - is split
 in proportion to weight, rounding down; dust joins the next epoch. The full rules and golden test vectors are in
 `services/sharer/spec` in the repository. To recompute a payout from the chain and compare it byte for byte, run
-this in `services/sharer` of the repository at `https://github.com/Curb-Dev/curb/tree/c26d22acd2fa7faca115d43a3eeb656cc4e7f84e/services/sharer`,
+this in `services/sharer` of the repository at `https://github.com/Curb-Dev/curb/tree/f41194461e1e25906da2ce1e0f3fd6ed7fb4dbcb/services/sharer`,
 with Node 22.18 or later, after `npm ci --omit=dev`:
 
 ```

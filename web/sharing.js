@@ -68,12 +68,13 @@ const HISTORY_MAX = 12;
 /// runs - a branch moves on, and a reader must run the code that made the
 /// files - as
 ///   https://github.com/<org>/<repo>/tree/<the deployed commit, 40 hex>/services/sharer
-/// The deployed commit is c26d22ac; STEP 5's commit adds only
-/// deploy/sharer.json and leaves the code under services/sharer as it is. A
-/// keeper rebuilt from a commit that changes that code moves this to that
-/// commit in the same change.
+/// The contracts were deployed from c26d22ac. The keeper and the guardian run
+/// f4119446, which changes services/sharer only in how a refused eth_getLogs
+/// is read (src/chain/logs.ts): the epoch files it makes are byte for byte
+/// what c26d22ac makes. A keeper rebuilt from a commit that changes that code
+/// moves this to that commit in the same change.
 /// Left "", the page names the repository without an address.
-const CODE_AT = "https://github.com/Curb-Dev/curb/tree/c26d22acd2fa7faca115d43a3eeb656cc4e7f84e/services/sharer";
+const CODE_AT = "https://github.com/Curb-Dev/curb/tree/f41194461e1e25906da2ce1e0f3fd6ed7fb4dbcb/services/sharer";
 const VERIFY_WHERE = "In services/sharer of the CURB repository" + (CODE_AT ? " (" + CODE_AT + ")" : "") +
   ", with Node 22.18 or later, after npm ci --omit=dev:";
 function verifyCommand({ d, epoch, chainId, origin }) {

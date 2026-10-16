@@ -43,6 +43,12 @@ THE DEPLOYMENT
   chain                 Base mainnet, chain id 8453
   commit                c26d22acd2fa7faca115d43a3eeb656cc4e7f84e
                         (git rev-parse HEAD, step 0 of DEPLOY.txt)
+  services commit       f41194461e1e25906da2ce1e0f3fd6ed7fb4dbcb
+                        (what the keeper, the verifiers and the guardian
+                         run, and what web/sharing.js CODE_AT names: c26d22ac
+                         plus the reading of a getLogs refusal's data field,
+                         src/chain/logs.ts, 16 October 2026 - Tenderly's
+                         public gateway says why only there)
   block                 52662669 to 52662780 (79 transactions, all status 1)
   date                  2026-10-16, 01:38:05 to 01:41:47 UTC
   deployer              0xf7bbb6559EcB5cBb0aFf372413a316C26b280426
