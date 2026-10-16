@@ -91,12 +91,23 @@ const cfg = { rpc: "", lens: "" };
 // ---------------------------------------------------------------- transport
 
 let rpcId = 0;
+/// WHERE A LOG READ GOES. The site's own endpoint (web/config.js rpc) may be a
+/// plan that refuses all but a few blocks of eth_getLogs; web/config.js
+/// logsRpc then names the endpoint the site's log reads go to instead. Only
+/// for the site's own endpoint: a link or a saved setting that names another
+/// sends every read, logs included, where it says.
+function logsUrl(url) {
+  const c = window.CURB_SITE || {};
+  const own = typeof c.rpc === "string" ? c.rpc.trim() : "";
+  const logs = typeof c.logsRpc === "string" ? c.logsRpc.trim() : "";
+  return logs && own && String(url || "").trim() === own ? logs : url;
+}
 /// One JSON-RPC request. A failure carries what kind it was - the HTTP status
 /// and the endpoint's error code - because the launch-time scan treats a range
 /// it was refused differently from a request that was merely refused NOW (a
 /// 429, a timeout, a page that is not JSON). See logError.
 async function rpcAt(url, method, params) {
-  const res = await fetch(url, {
+  const res = await fetch(method === "eth_getLogs" ? logsUrl(url) : url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
@@ -111,6 +122,7 @@ async function rpcAt(url, method, params) {
     const e = new Error(body.error.message || JSON.stringify(body.error));
     e.code = body.error.code;
     e.status = res.status;
+    e.data = body.error.data;
     throw e;
   }
   return body.result;
@@ -614,8 +626,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /// this block range [..]", Alchemy's "Log response size exceeded. You can make
 /// eth_getLogs requests with up to a 2K block range ..." - and asked the other
 /// way round they were filed as fixed ceilings that never grow back.
+///
+/// THE ERROR'S DATA IS READ TOO, when it is a string: Tenderly's public gateway
+/// answers a window above 1,000 blocks with the bare message "invalid params"
+/// and says why only there ("Block range too large for public access: maximum
+/// 1000 blocks ..."). Read without it the refusal was "busy", the same window
+/// was asked again, and the scan gave up (services/sharer/src/chain/logs.ts
+/// reads it the same way).
 function logError(e) {
-  const msg = String((e && e.message) || "");
+  const msg = String((e && e.message) || "") + (e && typeof e.data === "string" ? " | " + e.data : "");
   if ((e && (e.status === 429 || e.code === 429)) || /rate|too many requests|timeout|timed out/i.test(msg)) return "busy";
   if ((e && e.code === -32005) ||
       /more than [\d,]+ (results|logs)|query returned|too many (results|logs)|response size|size exceed/i.test(msg)) {

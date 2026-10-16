@@ -173,11 +173,20 @@ const REFUSALS = {
 
 // ---------------------------------------------------------------- the node
 let rpcId = 0;
+/// WHERE A LOG READ GOES: web/config.js logsRpc when the endpoint is the
+/// site's own (web/config.js rpc), as web/browse.js logsUrl says; any other
+/// endpoint takes every read, logs included.
+function logsUrl(url) {
+  const c = window.CURB_SITE || {};
+  const own = typeof c.rpc === "string" ? c.rpc.trim() : "";
+  const logs = typeof c.logsRpc === "string" ? c.logsRpc.trim() : "";
+  return logs && own && String(url || "").trim() === own ? logs : url;
+}
 /// One JSON-RPC request. A node's error is marked fromNode, with its code and
 /// data, so app.js's isRevert and revertSentence read it the way they read
 /// their own.
 async function rpcAt(url, method, params) {
-  const res = await fetch(url, {
+  const res = await fetch(method === "eth_getLogs" ? logsUrl(url) : url, {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
   });
@@ -345,9 +354,11 @@ async function readCatalog(r, c) {
 // ---------------------------------------------------------------- logs
 /// WHAT KIND OF REFUSAL, as web/browse.js logError sorts them: a result-size
 /// refusal halves the window and grows back, a block-range refusal halves it
-/// and holds, anything else is asked again after a pause.
+/// and holds, anything else is asked again after a pause. The error's data is
+/// read as well when it is a string - where Tenderly's public gateway says a
+/// range was too wide, under the bare message "invalid params".
 function logError(e) {
-  const msg = String((e && e.message) || "");
+  const msg = String((e && e.message) || "") + (e && typeof e.data === "string" ? " | " + e.data : "");
   if ((e && (e.status === 429 || e.code === 429)) || /rate|too many requests|timeout|timed out/i.test(msg)) return "busy";
   if ((e && e.code === -32005) ||
       /more than [\d,]+ (results|logs)|query returned|too many (results|logs)|response size|size exceed/i.test(msg)) return "size";

@@ -1821,8 +1821,11 @@ test("the real providers' log refusals are told apart: result size, block range,
   await page.goto(browseUrl(APP.lens));
   await page.waitForFunction(() => window.CurbBrowse && typeof window.CurbBrowse.logError === "function");
   const kinds = await page.evaluate(() => {
-    const k = (code, message, status) => window.CurbBrowse.logError(Object.assign(new Error(message), { code, status }));
+    const k = (code, message, status, data) => window.CurbBrowse.logError(Object.assign(new Error(message), { code, status, data }));
     return {
+      // Tenderly's public gateway: the reason only in the error's data
+      tenderlyRange: k(-32602, "invalid params", undefined, "Block range too large for public access: maximum 1000 blocks. Try with this block range [0x3240d6a, 0x3241152], or use an access key for larger ranges."),
+      bareInvalid: k(-32602, "invalid params"),
       infuraSize: k(-32005, "query returned more than 10000 results. Try with this block range [0x1, 0x2]."),
       alchemySize: k(-32602, "Log response size exceeded. You can make eth_getLogs requests with up to a 2K block range and no limit on the response size, or you can request any block range with a cap of 10K logs in the response."),
       baseRange: k(-32614, "eth_getLogs is limited to a 10,000 range"),
@@ -1833,6 +1836,7 @@ test("the real providers' log refusals are told apart: result size, block range,
     };
   });
   expect(kinds).toEqual({
+    tenderlyRange: "range", bareInvalid: "busy",
     infuraSize: "size", alchemySize: "size", baseRange: "range", blocksRange: "range",
     rate: "busy", infuraRate: "busy", other: "busy",
   });

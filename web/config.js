@@ -17,6 +17,13 @@
 //                    restricted to this site's domain - it is in every visitor's
 //                    browser and in every link a person copies from a page that
 //                    carried it
+//   logsRpc          where the pages send eth_getLogs while they read through rpc
+//                    ("" sends them to rpc too): the free plan behind rpc answers
+//                    no more than 10 blocks of logs, and the history, the chart,
+//                    the holders and Just bought ask for 250 at the least
+//                    (browse.js, token.js, sharing.js logsUrl). Keyless and
+//                    public, read-only. A link or saved setting naming another
+//                    endpoint sends its logs there as well.
 //   lens             the LaunchLens address
 //   registry         the LaunchRegistry address, as ADDRESSES.txt lists it
 //   factories        every factory the registry admits, as ADDRESSES.txt lists them
@@ -49,6 +56,7 @@
 window.CURB_SITE = {
   chainId: 8453,
   rpc: "https://base-mainnet.g.alchemy.com/v2/alch_pHLEFLyKJGS9aGggDpuTQ",
+  logsRpc: "https://base.gateway.tenderly.co",
   lens: "0xE6F85A3e97dD2F1a58acBA7A68a663E1f66C52c8",
   registry: "0x86e9a01F3959A96469051AE1a73D5C09b0BaC110",
   factories: [

@@ -98,14 +98,23 @@ function endpoint() { return (S().chainCfg && S().chainCfg.rpc) || ""; }
 /// One JSON-RPC request. A failure carries the HTTP status or the endpoint's
 /// error code, because the log reads tell a refused range from a request
 /// refused only for now by them (logKind).
+/// WHERE A LOG READ GOES: web/config.js logsRpc when the endpoint is the
+/// site's own (web/config.js rpc), as web/browse.js logsUrl says; any other
+/// endpoint takes every read, logs included.
+function logsUrl(url) {
+  const c = window.CURB_SITE || {};
+  const own = typeof c.rpc === "string" ? c.rpc.trim() : "";
+  const logs = typeof c.logsRpc === "string" ? c.logsRpc.trim() : "";
+  return logs && own && String(url || "").trim() === own ? logs : url;
+}
 async function rpc(method, params) {
-  const res = await fetch(endpoint(), {
+  const res = await fetch(method === "eth_getLogs" ? logsUrl(endpoint()) : endpoint(), {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
   });
   if (!res.ok) throw Object.assign(new Error("the endpoint answered HTTP " + res.status), { status: res.status });
   const j = await res.json();
-  if (j.error) throw Object.assign(new Error(j.error.message || "the node refused " + method), { code: j.error.code });
+  if (j.error) throw Object.assign(new Error(j.error.message || "the node refused " + method), { code: j.error.code, data: j.error.data });
   return j.result;
 }
 /// Several reads in one request where the endpoint takes a batch, one by one
