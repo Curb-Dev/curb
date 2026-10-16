@@ -126,6 +126,26 @@ for (const name of ['sharing-keeper.yml', 'sharing-verify.yml']) {
   });
 }
 
+test('history-index.yml: scheduled and manual only, default branch only, pinned actions, one at a time, no key, secrets only in its step', () => {
+  const y = wf('history-index.yml').replace(/^\s*#.*$/gm, '');
+  const on = /\non:\n([\s\S]*?)\n\S/.exec(y)![1];
+  assert.ok(!/pull_request/.test(y), 'never on a pull request');
+  assert.ok(!/\bpush:/.test(on) && !/workflow_run|issue|repository_dispatch/.test(on), 'no other trigger');
+  assert.match(on, /schedule:\n\s+- cron:/);
+  assert.match(on, /workflow_dispatch/);
+  assert.match(y, /\npermissions:\n\s+contents: read\n\n/);
+  assert.match(y, /\nconcurrency:\n\s+group: history-index\n\s+cancel-in-progress: false/);
+  assert.equal(/\n    if: (.+)\n/.exec(y)?.[1], "github.event_name == 'schedule' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)");
+  assert.match(y, /timeout-minutes: 20/);
+  assert.match(y, /environment: sharing-mainnet/);
+  for (const u of [...y.matchAll(/uses: (\S+)/g)].map((m) => m[1])) assert.match(u, /^actions\/[a-z-]+@[0-9a-f]{40}$/, `${u} is pinned to a commit`);
+  assert.match(y, /persist-credentials: false/);
+  assert.ok(!/secrets\.\w+/.test(y.split('steps:')[0]), 'no secret outside a step');
+  assert.ok(!/\$\{\{\s*runner\./.test(y.split('steps:')[0]), 'no runner context outside a step');
+  assert.ok(!/_KEY:/.test(y), 'no key: it only reads the chain and writes the data repo');
+  assert.match(y, /run: node scripts\/index-history\.ts\n/);
+});
+
 test('the keeper workflow: the sharing-mainnet environment, the standby flag, the keys from secrets', () => {
   const y = wf('sharing-keeper.yml');
   assert.match(y, /environment: sharing-mainnet/);

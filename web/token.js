@@ -1140,6 +1140,60 @@ async function creationNear(latest, floor, factory) {
   }
 }
 
+/// THE HISTORY INDEX: the launch's logs up to a recent block, as the keeper
+/// read them from the chain (services/sharer/scripts/index-history.ts), served
+/// by the site at /sharing/<chain>/history/<token>.json. Only on the site's own
+/// chain and endpoint - a fork or a link's endpoint reads the chain alone - and
+/// only every log of it checked against the launch drawn here: the contract
+/// it came from, its first topic, the pool it names, its block inside what the
+/// file says it covers. One that fails any check drops the whole file and the
+/// page reads the chain from the launch's first block, as it did before the
+/// index. Read once a visit. Display only: nothing sent from this page reads
+/// it. Null when there is none to use.
+const INDEX_SCHEMA = "curb.history/1";
+const INDEX_MAX_LOGS = 200000;
+async function historyIndex(v, from, latest, routerAddr) {
+  const site = window.CURB_SITE || {};
+  if (!site.rpc || endpoint() !== String(site.rpc).trim() || T.chainId !== site.chainId) return null;
+  let j;
+  try {
+    const res = await fetch("/sharing/" + T.chainId + "/history/" + String(T.token).toLowerCase() + ".json",
+      { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return null;
+    j = await res.json();
+  } catch { return null; }
+  const isHex = (s, n) => typeof s === "string" && (n ? new RegExp("^0x[0-9a-fA-F]{" + n + "}$") : /^0x[0-9a-fA-F]*$/).test(s);
+  if (!j || j.schema !== INDEX_SCHEMA || j.chainId !== T.chainId || !same(j.token, T.token) || !same(j.curve, v.curve)) return null;
+  if (!Number.isInteger(j.from) || !Number.isInteger(j.to) || j.from > from || j.to < j.from || j.to > latest) return null;
+  const inPool = v.status === 3 && !!v.poolKey;
+  const poolId = inPool ? App.poolId(v.poolKey).toLowerCase() : "";
+  const lists = [
+    ["curveLogs", v.curve, [TOPIC.curveBuy, TOPIC.curveSell, TOPIC.feesSwept, TOPIC.feesRescued], null],
+    ["transfers", T.token, [TOPIC.transfer], null],
+    ["routerSold", routerAddr, [TOPIC.routerSold], (l) => l.topics.length > 2 && l.topics[2].toLowerCase() === "0x" + pad(T.token)],
+    ["swaps", POOL_MANAGER, [TOPIC.swap], (l) => inPool && l.topics.length > 1 && l.topics[1].toLowerCase() === poolId],
+    ["fees", inPool ? v.poolKey.hooks : "", [TOPIC.feeCharged], (l) => inPool && l.topics.length > 1 && l.topics[1].toLowerCase() === poolId],
+  ];
+  const out = { to: j.to };
+  let total = 0;
+  for (const [key, address, topics, extra] of lists) {
+    const arr = j[key];
+    if (!Array.isArray(arr)) return null;
+    total += arr.length;
+    if (total > INDEX_MAX_LOGS) return null;
+    if (arr.length && !isAddr(address)) return null;
+    for (const l of arr) {
+      if (!l || !same(l.address, address) || !Array.isArray(l.topics) || !l.topics.length || !l.topics.every((t) => isHex(t, 64))) return null;
+      if (!topics.includes(String(l.topics[0]).toLowerCase()) || (extra && !extra(l))) return null;
+      if (!isHex(l.data) || !isHex(l.blockNumber) || !isHex(l.logIndex) || !isHex(l.transactionHash, 64)) return null;
+      const b = parseInt(l.blockNumber, 16);
+      if (!(b >= j.from && b <= j.to)) return null;
+    }
+    out[key] = arr;
+  }
+  return out;
+}
+
 const sgn128 = (w) => { const x = BigInt("0x" + w); return x >= (1n << 127n) ? x - (1n << 128n) : x; };
 
 /// Reads what happened to this launch since it was created (or since the last
@@ -1157,6 +1211,8 @@ async function scanHistory() {
       T.hist = { from, partial: born === null, fromDate: "", trades: [], transfers: [], creatorEarned: 0n,
         sweeps: 0, poolFees: 0, times: new Map(), poolId: "" };
       T.scannedTo = from - 1;
+      T.index = undefined;
+      T.indexUsed = false;
     }
     const h = T.hist;
     // THE CHAIN'S CLOCK, read every scan (see chainNow), and the launch's birth once.
@@ -1166,8 +1222,14 @@ async function scanHistory() {
       const b = await rpc("eth_getBlockByNumber", [hex(h.from), false]).catch(() => null);
       if (b) h.bornTs = parseInt(b.timestamp, 16);
     }
-    const from = T.scannedTo + 1;
-    if (from > latest) return;
+    // THE INDEX (historyIndex), read once a visit and counted by the first
+    // pass that succeeds - and only by it: a pass that fails leaves it to the
+    // next, which reads the chain after it again.
+    const routerAddr = App.CURB_ROUTER ? App.CURB_ROUTER.address : "";
+    if (T.index === undefined) T.index = await historyIndex(v, h.from, latest, routerAddr).catch(() => null);
+    const pre = T.index && !T.indexUsed ? T.index : null;
+    const from = pre ? pre.to + 1 : T.scannedTo + 1;
+    if (from > latest && !pre) return;
     const qd = quoteDec();
 
     // EVERY LOG OF THE PASS IS READ BEFORE ANY IS COUNTED. A read that fails
@@ -1179,18 +1241,24 @@ async function scanHistory() {
     // longest wait (17 October 2026).
     const inPool = v.status === 3 && !!v.poolKey;
     if (inPool) h.poolId = h.poolId || App.poolId(v.poolKey);
-    const [curveLogs, swaps, fees, transfers] = await Promise.all([
+    const live = from <= latest;
+    let [curveLogs, swaps, fees, transfers] = live ? await Promise.all([
       getLogs({ address: v.curve, topics: [[TOPIC.curveBuy, TOPIC.curveSell, TOPIC.feesSwept, TOPIC.feesRescued]] }, from, latest),
       inPool ? getLogs({ address: POOL_MANAGER, topics: [TOPIC.swap, h.poolId] }, from, latest) : [],
       inPool ? getLogs({ address: v.poolKey.hooks, topics: [TOPIC.feeCharged, h.poolId] }, from, latest) : [],
       getLogs({ address: T.token, topics: [TOPIC.transfer] }, from, latest),
-    ]);
+    ]) : [[], [], [], []];
+    if (pre) {
+      curveLogs = pre.curveLogs.concat(curveLogs);
+      swaps = pre.swaps.concat(swaps);
+      fees = pre.fees.concat(fees);
+      transfers = pre.transfers.concat(transfers);
+    }
 
     // A SALE THROUGH THE CURB ROUTER: the curve pays the router, so its
     // CurveSell names the router as the recipient - for every such sale. The
     // seller is the router's own SoldForEth in the same transaction, for this
     // token and the same tokens in (a buy through it already names the buyer).
-    const routerAddr = App.CURB_ROUTER ? App.CURB_ROUTER.address : "";
     const viaRouter = (who) => !!routerAddr && same(who, routerAddr);
     const routed = [];
     for (const l of curveLogs) {
@@ -1215,7 +1283,7 @@ async function scanHistory() {
         if (creatorsLine(base.block, base.index)) { h.creatorEarned += wordToBig(w[1]); h.sweeps += 1; }
       }
     }
-    if (routed.length) await namedByRouter(routed, routerAddr, from, latest);
+    if (routed.length) await namedByRouter(routed, routerAddr, from, latest, pre ? pre.routerSold : []);
 
     // IN THE POOL: the PoolManager's swaps and the hook's fee lines for it.
     if (inPool) {
@@ -1246,6 +1314,7 @@ async function scanHistory() {
 
     h.trades.sort((a, b) => a.block - b.block || a.index - b.index);
     T.scannedTo = latest;
+    if (pre) T.indexUsed = true;
     await timeTrades();
     if (h.partial && !h.fromDate) {
       const b = await rpc("eth_getBlockByNumber", [hex(h.from), false]).catch(() => null);
@@ -1268,15 +1337,19 @@ async function scanHistory() {
 /// SoldForEth names, matched by transaction and by the tokens sold. A sale with
 /// no such event keeps the address the curve gave (the router's), and a read
 /// that fails leaves every one of them as it was.
-async function namedByRouter(routed, routerAddr, from, to) {
+async function namedByRouter(routed, routerAddr, from, to, known = []) {
+  // THE INDEX'S FIRST (historyIndex), then the chain for the sales after it.
   // ONLY THE BLOCKS THOSE SALES ARE IN: the router's SoldForEth is in the same
   // transaction as the CurveSell it names, so nothing outside them can match.
-  const lo = Math.max(from, Math.min(...routed.map((t) => t.block)));
-  const hi = Math.min(to, Math.max(...routed.map((t) => t.block)));
-  let logs;
-  try {
-    logs = await getLogs({ address: routerAddr, topics: [TOPIC.routerSold, null, "0x" + pad(T.token)] }, lo, hi);
-  } catch { return; }
+  const later = routed.filter((t) => t.block >= from);
+  let logs = known.slice();
+  if (later.length && from <= to) {
+    const lo = Math.max(from, Math.min(...later.map((t) => t.block)));
+    const hi = Math.min(to, Math.max(...later.map((t) => t.block)));
+    try {
+      if (lo <= hi) logs = logs.concat(await getLogs({ address: routerAddr, topics: [TOPIC.routerSold, null, "0x" + pad(T.token)] }, lo, hi));
+    } catch { /* the sales keep the address the curve gave */ }
+  }
   for (const t of routed) {
     const ev = logs.find((l) => l.transactionHash === t.tx && l.topics.length > 2 &&
       words(l.data).length >= 2 && wordToBig(words(l.data)[1]) === t.tokens);

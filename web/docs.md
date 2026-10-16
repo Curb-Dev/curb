@@ -45,7 +45,11 @@ wallet's own sale, so nobody else can use the allowance. You can revoke it at an
 your wallet or with a token-approval tool.
 
 The site is a static page with no CURB server. It reads everything from Base through an RPC endpoint and sends
-every transaction through your wallet. A token's name, image and links are stored on chain with it.
+every transaction through your wallet. A token's name, image and links are stored on chain with it. To draw a
+token's chart, trades and holders quickly, a launch's page first reads a copy of its past logs that CURB's keeper
+publishes every 15 minutes, checks each one against the launch, and reads the chain itself after it; a copy that
+fails a check is set aside and the chain is read from the launch's start. That copy is for display only: nothing
+the site sends is built from it.
 
 A link can name another RPC endpoint (`?rpc=`), for a fork or a review. A page read through any endpoint but the
 site's own says so under the top bar and sends nothing: what a transaction is built from - its minimum, its route

@@ -158,7 +158,10 @@ FACTS docs.md AND curb.html MUST AGREE ON
     keeper's, not the contract's.
   - THE SITE IS STATIC. There is no CURB server behind the site; holder
     sharing's keeper is a separate service that only sends transactions and
-    publishes the payout files.
+    publishes the payout files - and, since 17 October 2026, each launch's
+    past logs (services/sharer/scripts/index-history.ts), which a launch's
+    page checks and draws from before reading the chain after them. Display
+    only: nothing sent is built from that copy.
 
 
 FACTS docs.md AND terms.html MUST AGREE ON
