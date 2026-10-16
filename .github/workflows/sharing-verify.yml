@@ -33,11 +33,17 @@ jobs:
         working-directory: services/sharer
     env:
       CURB_SHARER_CONFIG: deploy/sharer.json
-      CURB_SHARER_DATA: ${{ runner.temp }}/sharer-data
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # WHERE /data LIVES. runner.temp is no context of a job's env - GitHub
+      # refused the whole file at startup ("Unrecognized named-value: 'runner'",
+      # 17 October 2026, the first run ever) - so a step sets it from
+      # RUNNER_TEMP, the same directory the cache steps name as runner.temp.
+      - name: Where /data lives
+        run: echo "CURB_SHARER_DATA=$RUNNER_TEMP/sharer-data" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

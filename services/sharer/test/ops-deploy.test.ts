@@ -101,6 +101,11 @@ for (const name of ['sharing-keeper.yml', 'sharing-verify.yml']) {
     for (const u of uses) assert.match(u, /^actions\/[a-z-]+(\/(restore|save))?@[0-9a-f]{40}$/, `${u} is pinned to a commit`);
     assert.match(y, /persist-credentials: false/);
     assert.ok(!/secrets\.\w+/.test(y.split('steps:')[0]), 'no secret outside a step');
+    // GitHub refuses the whole file at startup when a job's env names the
+    // runner context ("Unrecognized named-value: 'runner'"): the first run of
+    // both, 17 October 2026, never started. A step sets /data instead.
+    assert.ok(!/\$\{\{\s*runner\./.test(y.split('steps:')[0]), 'no runner context outside a step');
+    assert.match(y, /\n\s+run: echo "CURB_SHARER_DATA=\$RUNNER_TEMP\/sharer-data" >> "\$GITHUB_ENV"\n/, 'a step says where /data lives');
   });
 
   test(`${name}: /data is restored first and SAVED EVEN WHEN THE RUN FAILS`, () => {
