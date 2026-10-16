@@ -88,7 +88,7 @@ it sets the graduation threshold. The choice is permanent.
 | USDC | Circle's dollar stablecoin | 10,800 USDC |
 | cbBTC | Coinbase-wrapped BTC | 0.132 cbBTC |
 | VIRTUAL | Virtuals Protocol's token | 16,100 VIRTUAL |
-| AERO | Aerodrome's token | 12,200 AERO |
+| AERO | Aerodrome's token | 11,600 AERO |
 | cbXRP | Coinbase-wrapped XRP | 8,150 cbXRP |
 | cbZEC | Coinbase-wrapped ZEC | 8.74 cbZEC |
 | NVDAc | Tokenized stock | 50 NVDAc |

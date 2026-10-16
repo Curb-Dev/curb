@@ -329,7 +329,9 @@ contract DeployCurb is Script {
     ///   USDC        10,800      58,833,186.30    WETH/0.3%         5,448  fillable
     ///   cbBTC        0.132              50.39    WETH/0.3%           382  fillable
     ///   VIRTUAL     16,100         799,714.72    USDC/0.3%          49.7  fillable
-    ///   AERO        12,200         552,191.37    WETH/0.3%          45.3  fillable
+    ///   AERO        11,600         487,224.44    WETH/0.3%          42.0  fillable
+    ///                 (re-priced, and measured, at 00:07 UTC on 16 October;
+    ///                 it was 12,200 against 552,191 the day before)
     ///   cbZEC         8.74              48.08    WETH/1%            5.50  fillable
     ///                 (re-priced, and measured, at 21:25 UTC: it held 68.67,
     ///                 7.46 thresholds of the 9.20 before it, at 16:41)
@@ -545,10 +547,14 @@ contract DeployCurb is Script {
         // pool (USDC/0.3%) holds 799,715, about fifty thresholds; its WETH/0.05%
         // pool holds 542,987 besides, so the ETH route is one hop.
         list[5] = Asset(0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b, "VIRTUAL", 5940e18, 16100e18, true, 18);
-        // AERO at $0.88598: 4,510 / 12,200, $3,996 to $54,853. Its deepest
-        // pool (WETH/0.3%) holds 552,191, about forty-five thresholds, and the
-        // ETH route is that one hop.
-        list[6] = Asset(0x940181a94A35A4569E4529A3CDfB74e38FD98631, "AERO", 4510e18, 12200e18, true, 18);
+        // AERO at $0.9320: 4,290 / 11,600, $3,998 to $54,854. RE-PRICED
+        // ALONE on 16 October 2026 at 00:07 UTC, during the deploy's final
+        // suites: at the 15 October terms (4,510 / 12,200, sized at $0.88598)
+        // AERO had risen to $0.9378 and its start stood 5.7% high, past the
+        // preflight's 5% band. Its pool price that hour read $0.94, 0.9% off
+        // the feed. Its deepest pool (WETH/0.3%) holds 487,224, about
+        // forty-two thresholds, and the ETH route is that one hop.
+        list[6] = Asset(0x940181a94A35A4569E4529A3CDfB74e38FD98631, "AERO", 4290e18, 11600e18, true, 18);
         // ---- STOCKS. Fillable today: the deepest pool covers a threshold.
         // GOOGLc at $348.67: 11.5 / 31.1, $4,010 to $55,022, against 73.51
         // held (USDC/1%), 2.4 thresholds.

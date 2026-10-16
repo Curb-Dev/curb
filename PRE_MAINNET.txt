@@ -2120,8 +2120,10 @@ F1  THE ASSET LIST AND THE THRESHOLDS - DECIDED 2026-09-20
                threshold [DeployCurb.quoteAssets]: WETH 1.65 / 4.47, USDC
                4,000 / 10,800, cbBTC 0.0487 / 0.132, cbXRP 3,010 / 8,150,
                cbZEC 3.23 / 8.74 (re-priced alone that evening, from 3.40
-               / 9.20), VIRTUAL 5,940 / 16,100, AERO 4,510 /
-               12,200, GOOGLc 11.5 / 31.1 (fillable), and NVDAc 18.5 / 50.0,
+               / 9.20), VIRTUAL 5,940 / 16,100, AERO 4,290 / 11,600
+               (re-priced alone at 00:07 UTC on 16 October, from 4,510 /
+               12,200, when it stood 5.7% high during the deploy's final
+               suites), GOOGLc 11.5 / 31.1 (fillable), and NVDAc 18.5 / 50.0,
                SPCXc 27.5 / 74.5, AMZNc 15.8 / 42.9, MSFTc 7.42 / 20.1,
                AAPLc 11.6 / 31.5, METAc 5.44 / 14.7 (listed, and marked
                fillable=false - short of liquidity; the page says so when a

@@ -326,7 +326,7 @@ contract B20MultiAssetTest is B20ForkTest {
             0x582717501Dec047513EC258458da7834011076DE, 18);
     }
     function _aero() internal pure returns (Asset memory) {
-        return Asset(0x940181a94A35A4569E4529A3CDfB74e38FD98631, "AERO", 4510e18, 12200e18,
+        return Asset(0x940181a94A35A4569E4529A3CDfB74e38FD98631, "AERO", 4290e18, 11600e18,
             0xBaeD383EDE0e5d9d72430661f3285DAa77E9439F, 18);
     }
 
