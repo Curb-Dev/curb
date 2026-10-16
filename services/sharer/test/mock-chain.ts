@@ -57,7 +57,7 @@ const hex = (n: bigint): string => '0x' + n.toString(16);
 
 export interface Faults {
   /** eth_getLogs refuses a window wider than this, with this error. */
-  rangeLimit?: { max: bigint; message: string; code?: number };
+  rangeLimit?: { max: bigint; message: string; code?: number; data?: unknown };
   /** eth_getLogs refuses an answer longer than this, with this error. */
   sizeLimit?: { max: number; message: string; code?: number };
   /** eth_getLogs calls allowed before the chain refuses every one (a test budget: a reader that loops forever fails its test instead of hanging it). */
@@ -222,7 +222,7 @@ export class MockChain {
         const from = BigInt(f.fromBlock);
         const to = BigInt(f.toBlock);
         const rl = this.faults.rangeLimit;
-        if (rl && to - from + 1n > rl.max) throw new RpcError(rl.message, { code: rl.code ?? -32600 });
+        if (rl && to - from + 1n > rl.max) throw new RpcError(rl.message, { code: rl.code ?? -32600, data: rl.data });
         const addrs = new Set((Array.isArray(f.address) ? f.address : [f.address]).map((a: string) => a.toLowerCase()));
         const topics: (string | string[] | null)[] = f.topics ?? [];
         const out = this.logs

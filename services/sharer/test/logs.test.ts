@@ -31,6 +31,10 @@ const windows = (c: MockChain) => c.calls.filter((x) => x.method === 'eth_getLog
 const INFURA = 'query returned more than 10000 results. Try with this block range [0x1, 0x2a].';
 const ALCHEMY =
   'Log response size exceeded. You can make eth_getLogs requests with up to a 2K block range and no limit on the response size, or you can request any block range with a cap of 10K logs in the response.';
+// Tenderly's public gateway (base.gateway.tenderly.co, 16 October 2026): the
+// message says nothing, the error's data says why.
+const TENDERLY_DATA =
+  'Block range too large for public access: maximum 1000 blocks. Try with this block range [0x3240d6a, 0x3241152], or use an access key for larger ranges.';
 
 test('classifyLogError: result-size refusals, including the ones that name a block range', () => {
   assert.equal(classifyLogError(new RpcError(INFURA, { code: -32005 })), 'size');
@@ -45,6 +49,11 @@ test('classifyLogError: block-range refusals', () => {
   assert.equal(classifyLogError(new RpcError('block range is too wide', { code: -32000 })), 'range');
   assert.equal(classifyLogError(new RpcError('exceed maximum block range: 50000', { code: -32000 })), 'range');
   assert.equal(classifyLogError(new RpcError('too many blocks requested', { code: -32000 })), 'range');
+  // the reason only in the error's data (Tenderly), and a bare "invalid
+  // params" with no reason at all stays busy: nothing said it was the range
+  assert.equal(classifyLogError(new RpcError('invalid params', { code: -32602, data: TENDERLY_DATA })), 'range');
+  assert.equal(classifyLogError(new RpcError('invalid params', { code: -32602 })), 'busy');
+  assert.equal(classifyLogError(new RpcError('invalid params', { code: -32602, data: { reason: 'block range' } })), 'busy');
 });
 
 test('classifyLogError: busy - rate limits, timeouts, non-JSON pages, unknown errors', () => {
@@ -70,6 +79,7 @@ test('classifyLogError reads through viem-wrapped errors', async () => {
   assert.equal(classifyLogError(await caught({ code: -32602, message: ALCHEMY })), 'size');
   assert.equal(classifyLogError(await caught({ code: -32600, message: 'eth_getLogs is limited to a 2,000 range' })), 'range');
   assert.equal(classifyLogError(await caught({ code: -32005, message: 'limit exceeded' })), 'size');
+  assert.equal(classifyLogError(await caught({ code: -32602, message: 'invalid params', data: TENDERLY_DATA })), 'range');
 });
 
 // ------------------------------------------------------------- the window
@@ -86,6 +96,19 @@ test('a range ceiling holds: the window halves under it and never asks above it 
   assert.equal(w[0], 2000); // refused
   assert.ok(w.slice(1).every((x) => x <= 1000), 'never above the range ceiling after it was found');
   assert.equal(w.filter((x) => x > 1000).length, 1);
+});
+
+test("Tenderly's refusal - the reason in the error's data - is a range ceiling of 1,000 blocks", async () => {
+  const c = chainWithLogs(20000, 7);
+  c.faults.rangeLimit = { max: 1000n, message: 'invalid params', code: -32602, data: TENDERLY_DATA };
+  const win = new LogWindow({ initial: 2000, ...noSleep });
+  const logs = await getLogsAdaptive(c.rpc(), { address: TOKEN, topics: [TOPIC] }, 1n, 20000n, win);
+  assert.equal(logs.length, Math.ceil(20000 / 7));
+  assert.equal(win.cap, 1000);
+  assert.equal(win.capIsSize, false);
+  const w = windows(c);
+  assert.equal(w[0], 2000); // refused once
+  assert.deepEqual(w.slice(1), Array(20).fill(1000), 'every later window is the ceiling itself');
 });
 
 test('a result-size ceiling grows back after enough windows under it (Alchemy wording)', async () => {

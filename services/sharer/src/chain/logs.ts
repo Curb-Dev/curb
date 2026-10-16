@@ -21,7 +21,12 @@ import type { Rpc } from './rpc.ts';
 export type LogRefusal = 'busy' | 'size' | 'range';
 
 /** Everything an error (and the errors it wraps, as viem does) says about
- *  itself: HTTP statuses, JSON-RPC codes and message text. */
+ *  itself: HTTP statuses, JSON-RPC codes and message text. The text includes
+ *  the JSON-RPC error's `data` when it is a string: Tenderly's public gateway
+ *  answers a range above 1,000 blocks with the bare message "invalid params"
+ *  and says why only there ("Block range too large for public access:
+ *  maximum 1000 blocks ..."), so read without it the refusal was "busy" and
+ *  the same window was asked again until the scan gave up. */
 function describe(e: unknown): { statuses: number[]; codes: number[]; text: string } {
   const statuses: number[] = [];
   const codes: number[] = [];
@@ -30,7 +35,7 @@ function describe(e: unknown): { statuses: number[]; codes: number[]; text: stri
   for (let depth = 0; cur && depth < 8; depth++) {
     if (typeof cur.status === 'number') statuses.push(cur.status);
     if (typeof cur.code === 'number') codes.push(cur.code);
-    for (const k of ['message', 'shortMessage', 'details']) if (typeof cur[k] === 'string') texts.push(cur[k]);
+    for (const k of ['message', 'shortMessage', 'details', 'data']) if (typeof cur[k] === 'string') texts.push(cur[k]);
     cur = cur.cause;
   }
   return { statuses, codes, text: texts.join(' | ') };
