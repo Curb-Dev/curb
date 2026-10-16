@@ -127,7 +127,17 @@ async function rpcAt(url, method, params) {
   }
   return body.result;
 }
-const callAt = (url, to, data, block) => rpcAt(url, "eth_call", [{ to, data }, block || "latest"]);
+/// A read at "latest" on the site's own endpoint goes out with the reads made
+/// at the same moment (multicall.js); a revert among them is thrown as rpcAt
+/// throws one.
+const callAt = (url, to, data, block) => {
+  const M = window.CurbMulti;
+  if (block || !M || !M.on(url)) return rpcAt(url, "eth_call", [{ to, data }, block || "latest"]);
+  return M.call(url, to, data, () => rpcAt(url, "eth_call", [{ to, data }, "latest"])).then((r) => {
+    if (r.ok) return r.data;
+    throw Object.assign(new Error("execution reverted"), { code: 3, data: r.data });
+  });
+};
 
 /// SEVERAL READS IN ONE REQUEST where the endpoint takes a batch, one by one
 /// where it does not (token.js rpcBatch). Each answer is its result (null when

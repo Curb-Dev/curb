@@ -201,10 +201,26 @@ async function rpcAt(url, method, params) {
   }
   return body.result;
 }
+/// ONE eth_call; at "latest" on the site's own endpoint it goes out with the
+/// reads made at the same moment (multicall.js), and a revert among them is
+/// thrown as rpcAt throws one the node answered.
+function gathered(url, to, data, block) {
+  const M = window.CurbMulti;
+  if (block || !M || !M.on(url)) return rpcAt(url, "eth_call", [{ to, data }, block || "latest"]);
+  return M.call(url, to, data, () => rpcAt(url, "eth_call", [{ to, data }, "latest"])).then((r) => {
+    if (r.ok) return r.data;
+    throw Object.assign(new Error("execution reverted"), { fromNode: true, code: 3, data: r.data });
+  });
+}
 /// Several eth_calls in one request where the endpoint takes a batch, one at a
 /// time where it does not. Each answer is its result, or null where it failed.
+/// On the site's own endpoint they are gathered by multicall.js instead.
 async function callsAt(url, calls) {
   if (!calls.length) return [];
+  const M = window.CurbMulti;
+  if (M && M.on(url) && calls.every((c) => !c.block)) {
+    return Promise.all(calls.map((c) => gathered(url, c.to, c.data).catch(() => null)));
+  }
   const out = [];
   for (let i = 0; i < calls.length; i += 100) {
     const part = calls.slice(i, i + 100);
@@ -233,7 +249,7 @@ const addr = (raw) => { const w = w0(raw); return w === null ? null : wordToAddr
 
 /// A reader bound to one endpoint.
 function reader(url) {
-  const call = (to, data, block) => rpcAt(url, "eth_call", [{ to, data }, block || "latest"]);
+  const call = (to, data, block) => gathered(url, to, data, block);
   return {
     url,
     call,

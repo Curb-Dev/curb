@@ -136,7 +136,17 @@ async function rpcBatch(calls) {
     return out;
   }
 }
-const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
+/// A read on the site's own endpoint goes out with the reads made at the same
+/// moment (multicall.js); a revert among them is thrown as rpc throws one.
+const call = (to, data) => {
+  const M = window.CurbMulti;
+  const url = endpoint();
+  if (!M || !M.on(url)) return rpc("eth_call", [{ to, data }, "latest"]);
+  return M.call(url, to, data, () => rpc("eth_call", [{ to, data }, "latest"])).then((r) => {
+    if (r.ok) return r.data;
+    throw Object.assign(new Error("execution reverted"), { code: 3, data: r.data });
+  });
+};
 const word0 = (raw) => { const w = words(raw || "0x"); return w.length ? wordToBig(w[0]) : null; };
 
 function decodeString(raw) {

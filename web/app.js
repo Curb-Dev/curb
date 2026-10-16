@@ -869,8 +869,24 @@ function chainIdAt(url) {
 /// `gas`, when given, caps what the node may spend simulating the call (hex).
 /// Only the quoter's calls pass one - see QUOTE_GAS.
 const callBody = (to, data, gas) => (gas ? { to, data, gas } : { to, data });
-const call = (to, data, signal, gas) => rpc("eth_call", [callBody(to, data, gas), "latest"], signal);
-const callAt = (url, to, data, signal, gas) => rpcAt(url, "eth_call", [callBody(to, data, gas), "latest"], signal);
+/// A READ WITHOUT A GAS LIMIT OR AN ABORT, ON THE SITE'S OWN ENDPOINT, GOES
+/// OUT WITH THE READS MADE AT THE SAME MOMENT (multicall.js), and a revert
+/// among them comes back as rpcAt throws a revert the node answered.
+const Multi = window.CurbMulti || null;
+function gatheredRevert(data) {
+  const err = new Error("execution reverted");
+  err.fromNode = true;
+  err.code = 3;
+  err.data = data;
+  return err;
+}
+const callAt = (url, to, data, signal, gas) => (!gas && !signal && Multi && Multi.on(url)
+  ? Multi.call(url, to, data, () => rpcAt(url, "eth_call", [{ to, data }, "latest"])).then((r) => {
+    if (r.ok) return r.data;
+    throw gatheredRevert(r.data);
+  })
+  : rpcAt(url, "eth_call", [callBody(to, data, gas), "latest"], signal));
+const call = (to, data, signal, gas) => callAt(chainCfg.rpc, to, data, signal, gas);
 
 function wallet() {
   if (!window.ethereum) throw new Error("No injected wallet. Reading works without one; sending does not.");
@@ -1132,9 +1148,17 @@ async function chainStatusOf(callFn, graduator, token, curve) {
     if (!w.length) throw new Error(what + " answered nothing, so where this launch is cannot be told.");
     return wordToBig(w[0]) !== 0n;
   };
-  if (await flag(graduator, SEL.hasGraduated + pad32(token), "The graduator's hasGraduated()")) return 3;
-  if (await flag(curve, SEL.curveGraduated, "The curve's graduated()")) return 3;
-  return (await flag(curve, SEL.readyToGraduate, "The curve's readyToGraduate()")) ? 2 : 1;
+  // ASKED TOGETHER, ANSWERED IN THE SAME ORDER: a flag's failure counts only
+  // where the one-by-one reading would have reached it.
+  const got = await Promise.allSettled([
+    flag(graduator, SEL.hasGraduated + pad32(token), "The graduator's hasGraduated()"),
+    flag(curve, SEL.curveGraduated, "The curve's graduated()"),
+    flag(curve, SEL.readyToGraduate, "The curve's readyToGraduate()"),
+  ]);
+  const at = (i) => { if (got[i].status === "rejected") throw got[i].reason; return got[i].value; };
+  if (at(0)) return 3;
+  if (at(1)) return 3;
+  return at(2) ? 2 : 1;
 }
 
 /// Records this page is responsible for. Marked, because launch.html writes
@@ -2043,7 +2067,9 @@ async function quoteChoices(registry, callFn, live, url) {
   const hit = QUOTE_LISTS.get(key);
   let p = hit && Date.now() - hit.at < QUOTE_LIST_MS ? hit.promise : null;
   if (!p) {
-    p = readQuoteChoices(registry, callFn, null, keptQuotes(key)).then((list) => { keepQuotes(key, list); return list; });
+    // ALL AT ONCE WHERE multicall.js GATHERS THEM: one round trip per step for
+    // every factory, rather than a step per six.
+    p = readQuoteChoices(registry, callFn, null, keptQuotes(key), !!window.CurbMulti).then((list) => { keepQuotes(key, list); return list; });
     QUOTE_LISTS.set(key, { at: Date.now(), promise: p });
     p.catch(() => { if (QUOTE_LISTS.get(key) && QUOTE_LISTS.get(key).promise === p) QUOTE_LISTS.delete(key); });
   }
@@ -2053,7 +2079,7 @@ async function quoteChoices(registry, callFn, live, url) {
   out.unread = (list.unread || []).slice();
   return out;
 }
-async function readQuoteChoices(registry, callFn, live, kept) {
+async function readQuoteChoices(registry, callFn, live, kept, wide = false) {
   const w = words(await callFn(registry, SEL.launcherCount));
   const out = [];
   out.unread = [];
@@ -2099,7 +2125,7 @@ async function readQuoteChoices(registry, callFn, live, kept) {
       } catch { got[i] = null; /* keep going */ }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(QUOTE_READS_AT_ONCE, n) }, worker));
+  await Promise.all(Array.from({ length: wide ? n : Math.min(QUOTE_READS_AT_ONCE, n) }, worker));
   for (let i = 0; i < n; i++) {
     if (got[i]) out.push(got[i]);
     else out.unread.push(i);
@@ -2303,22 +2329,18 @@ async function factoryContext() {
   // blocked creating for the session behind advice ("Refresh") that could not
   // clear it.
   if (cache[f]) return withPolicy(cache[f]);
-  const registry = oneAddress(await call(f, SEL.registry), `The factory's registry()`);
-  const quote = oneAddress(await call(f, SEL.quoteToken), `The factory's quoteToken()`);
-
-  const hook = oneAddress(await call(registry, SEL.requiredHook), `The registry's requiredHook()`);
-  const decimalsRaw = words(await call(quote, SEL.decimals));
-  if (!decimalsRaw.length) throw new Error(`The quote asset at ${quote} did not answer decimals().`);
+  // IN THREE ROUNDS, each read waiting only for what it needs: the factory's
+  // own answers together (its registry, asset, Graduator and terms), then what
+  // each of them leads to (the hook, the asset's decimals and symbol, the
+  // catalog), then the hook's WETH. One after another they were nine round
+  // trips before a token's page could draw (17 October 2026). Every read is
+  // checked as it was; any one that throws leaves the context uncached.
   // THE SYMBOL MAY FALL BACK TO THE ADDRESS (symbolOf), and that is shown - but
   // a fallback forced by a reply that never came is not the asset's answer, so
   // it is not cached: the next refresh asks again. It used to be kept for the
   // session as quoteSym after one dropped reply (round 5, S19). A revert IS the
   // asset's answer, and is kept.
   let symbolUnanswered = false;
-  const quoteSym = await symbolOf(quote, (to, data) => call(to, data).catch((e) => {
-    if (!isRevert(e)) symbolUnanswered = true;
-    throw e;
-  }));
   // THE TERMS THIS FACTORY FIXES, read once and cached with the rest of the
   // context. They are per asset - the threshold especially - so a number
   // written into the page would be right for one factory and wrong for six.
@@ -2338,7 +2360,10 @@ async function factoryContext() {
     try { const w = words(await call(f, selector)); return w.length ? wordToBig(w[0]) : 0n; }
     catch (e) { if (lacksFunction(e)) return 0n; throw e; }
   };
-  const [supply, threshold, maxDevBuyBps, phantomQuote] = await Promise.all([
+  const [registry, quote, graduator, supply, threshold, maxDevBuyBps, phantomQuote] = await Promise.all([
+    call(f, SEL.registry).then((r) => oneAddress(r, `The factory's registry()`)),
+    call(f, SEL.quoteToken).then((r) => oneAddress(r, `The factory's quoteToken()`)),
+    call(f, SEL.graduator).then((r) => oneAddress(r, "The factory's graduator()")),
     readOr0(SEL.factorySupply),
     readOr0(SEL.graduationThreshold),
     readOr0(SEL.maxDevBuyBps),
@@ -2346,6 +2371,25 @@ async function factoryContext() {
     // first buy at all rather than guessing at one.
     readOr0(SEL.phantomQuote),
   ]);
+  // THE SHARING CATALOG, through the Graduator this factory hands its launches
+  // to. Both links are immutable, so they are cached with the rest; what the
+  // catalog says is not (withPolicy reads it on every call). A Graduator from
+  // before holder sharing has no sharingCatalog() - a revert that carries
+  // nothing - and offers no sharing: null. Any other failure throws, as the
+  // terms above do, so a dropped reply is not cached as "no sharing here".
+  const [hook, decimalsRaw, quoteSym, catalog] = await Promise.all([
+    call(registry, SEL.requiredHook).then((r) => oneAddress(r, `The registry's requiredHook()`)),
+    call(quote, SEL.decimals).then((r) => words(r)),
+    symbolOf(quote, (to, data) => call(to, data).catch((e) => {
+      if (!isRevert(e)) symbolUnanswered = true;
+      throw e;
+    })),
+    call(graduator, SEL.sharingCatalog).then(
+      (r) => { const w = words(r); return w.length ? wordToAddress(w[0]) : null; },
+      (e) => { if (!lacksFunction(e)) throw e; return null; },
+    ),
+  ]);
+  if (!decimalsRaw.length) throw new Error(`The quote asset at ${quote} did not answer decimals().`);
 
   // DOES THE HOOK ACTUALLY UNWRAP? A hook that has the WETH constant has
   // the code that pays ether; one that predates it answers nothing and the
@@ -2362,21 +2406,6 @@ async function factoryContext() {
   } catch (e) {
     if (!lacksFunction(e)) throw e;
     unwrapsWeth = false;
-  }
-  // THE SHARING CATALOG, through the Graduator this factory hands its launches
-  // to. Both links are immutable, so they are cached with the rest; what the
-  // catalog says is not (withPolicy reads it on every call). A Graduator from
-  // before holder sharing has no sharingCatalog() - a revert that carries
-  // nothing - and offers no sharing: null. Any other failure throws, as the
-  // terms above do, so a dropped reply is not cached as "no sharing here".
-  let catalog = null;
-  const graduator = oneAddress(await call(f, SEL.graduator), "The factory's graduator()");
-  try {
-    const w = words(await call(graduator, SEL.sharingCatalog));
-    catalog = w.length ? wordToAddress(w[0]) : null;
-  } catch (e) {
-    if (!lacksFunction(e)) throw e;
-    catalog = null;
   }
   // THE PLATFORM'S SHARE, FROM THE HOOK THIS FACTORY IS BOUND TO. launch()
   // reads it from there and freezes it into the curve, so this is the number a
@@ -3919,6 +3948,13 @@ async function refresh(quiet) {
     // the token and lens the lens is asked about, the endpoint asked, and the
     // factory whose context is `here`. It becomes `viewFor` once drawn.
     const readFor = { token: chainCfg.token, factory: here.factory, lens: chainCfg.lens, rpc: chainCfg.rpc };
+    // THE REGISTRY IS ASKED WHILE THE LENS IS (see below): both answers are
+    // needed and neither waits on the other. launchOf reverts for a token the
+    // registry does not know, and is then simply not used.
+    const regReads = Promise.allSettled([
+      call(here.registry, SEL.isRegistered + pad32(chainCfg.token)),
+      call(here.registry, SEL.launchOf + pad32(chainCfg.token)),
+    ]);
     const readView = await readLaunch(chainCfg.token);
     if (stale()) return;
 
@@ -3946,10 +3982,13 @@ async function refresh(quiet) {
     let known = false;
     let readFailed = false;
     try {
-      const k = words(await call(here.registry, SEL.isRegistered + pad32(chainCfg.token)));
+      const [kGot, recGot] = await regReads;
+      if (kGot.status === "rejected") throw kGot.reason;
+      const k = words(kGot.value);
       known = k.length > 0 && wordToBig(k[0]) !== 0n;
       if (known) {
-        rec = words(await call(here.registry, SEL.launchOf + pad32(chainCfg.token)));
+        if (recGot.status === "rejected") throw recGot.reason;
+        rec = words(recGot.value);
         if (rec.length < 8) { rec = null; readFailed = true; }
       }
     } catch { readFailed = true; }
@@ -4057,7 +4096,9 @@ async function refresh(quiet) {
       // works it out, from the factory's graduator (not the lens's) and the
       // curve; a lens that disagrees is refused, not corrected, as it is at a
       // send. The numbers are simply read where the lens reads them.
-      const graduator = oneAddress(await call(here.factory, SEL.graduator), "The factory's graduator()");
+      // THE GRADUATOR factoryContext READ FOR THIS FACTORY (immutable), or asked.
+      const graduator = isAddr(here.graduator) ? here.graduator
+        : oneAddress(await call(here.factory, SEL.graduator), "The factory's graduator()");
       // AND WHETHER IT SHARES ITS FEES WITH ITS HOLDERS, from the same
       // Graduator - never the lens's word 15: what a quote and a report call
       // the tax, and what the token view draws, follow it. A Graduator from
@@ -4580,15 +4621,19 @@ async function computeCurveQuote(where, form) {
   const wantsEth = f.via === "eth" && !!w.quote;
   let viaEth = false;
   let route = null;
-  const feeWord = await w.call(w.view.curve, SEL.feeBps);
-  const taxWord = await w.call(w.view.curve, SEL.creatorTaxBps);
+  // THE CURVE'S FOUR ANSWERS TOGETHER: none of them needs another, and one
+  // after the other they were four round trips before every quote.
+  const [feeWord, taxWord, sellableWord, resvWord] = await Promise.all([
+    w.call(w.view.curve, SEL.feeBps), w.call(w.view.curve, SEL.creatorTaxBps),
+    w.call(w.view.curve, SEL.sellableTokens), w.call(w.view.curve, SEL.getReserves),
+  ]);
   const fees = { fee: wordToBig(words(feeWord)[0]), tax: wordToBig(words(taxWord)[0]) };
-  const sellable = wordToBig(words(await w.call(w.view.curve, SEL.sellableTokens))[0]);
+  const sellable = wordToBig(words(sellableWord)[0]);
   // THE RESERVES FROM THE CURVE ITSELF, like the fee and the sellable above.
   // They came from the lens's view, which is a link parameter: a lens naming
   // the right curve but under-reporting a reserve lowered the minimum a trader
   // signed, with the approval and the trade going to the real curve.
-  const resv = words(await w.call(w.view.curve, SEL.getReserves));
+  const resv = words(resvWord);
   if (resv.length < 2) return { error: "The curve would not report its reserves." };
   const r = { quote: wordToBig(resv[0]), token: wordToBig(resv[1]) };
 
