@@ -48,7 +48,7 @@
 // launch must be able to leave it.
 window.CURB_SITE = {
   chainId: 8453,
-  rpc: "",
+  rpc: "https://base-mainnet.g.alchemy.com/v2/alch_pHLEFLyKJGS9aGggDpuTQ",
   lens: "0xE6F85A3e97dD2F1a58acBA7A68a663E1f66C52c8",
   registry: "0x86e9a01F3959A96469051AE1a73D5C09b0BaC110",
   factories: [
