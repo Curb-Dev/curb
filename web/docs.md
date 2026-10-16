@@ -513,14 +513,12 @@ the same way: each chunk is a StandardMerkleTree, and the root is the SimpleMerk
 claim proof is the chunk's proof followed by the chunk root's (one chunk: the plain StandardMerkleTree, as before).
 The page reads the index and the one chunk that holds the connected account; a verifier reads every chunk.
 
-<!-- PLACEHOLDER (owner): the code repository at the deployed commit, the same address as CODE_AT in web/sharing.js (DEPLOY.txt STEP 5). -->
-
 **The split** (CURB-SHARE v1, exact integer arithmetic): an account's weight is its balance times the seconds it
 was held, block by block, from the epoch's first block to its harvest block; excluded accounts weigh nothing. The
 epoch's new income, less the keeper's fee - the gas of its transactions, priced by Chainlink, at most 2% - is split
 in proportion to weight, rounding down; dust joins the next epoch. The full rules and golden test vectors are in
 `services/sharer/spec` in the repository. To recompute a payout from the chain and compare it byte for byte, run
-this in `services/sharer` of the repository at `https://github.com/<org>/<repo>/tree/<commit>/services/sharer`,
+this in `services/sharer` of the repository at `https://github.com/Curb-Dev/curb/tree/c26d22acd2fa7faca115d43a3eeb656cc4e7f84e/services/sharer`,
 with Node 22.18 or later, after `npm ci --omit=dev`:
 
 ```
@@ -601,20 +599,18 @@ What the platform does with the fees it receives is a treasury decision, not con
 
 ### CURB contracts
 
-CURB is not deployed on Base mainnet yet. Its addresses will be listed here after the deployment. Until then, no
-contract anywhere is CURB's, whatever it claims.
-
-<!-- PLACEHOLDER (owner): after the mainnet deployment, replace each "Not deployed yet" with the address from ADDRESSES.txt. -->
+CURB is deployed on Base mainnet (chain id 8453), since 16 October 2026. These are its contracts; no other
+contract is CURB's, whatever it claims.
 
 | Contract | Address on Base |
 |---|---|
-| LaunchRegistry | Not deployed yet |
-| Graduator | Not deployed yet |
-| FeeHook | Not deployed yet |
-| LaunchLens | Not deployed yet |
-| SharingCatalog | Not deployed yet |
-| HolderDistributorFactory | Not deployed yet |
-| CurbRouter | Not deployed yet; it will be at `0xEa20C3266229a01cd0f45D9c7921a45d5b359561` (see [CURB router](#curb-router)) |
+| LaunchRegistry | `0x86e9a01F3959A96469051AE1a73D5C09b0BaC110` |
+| Graduator | `0xA9865e07Ce4EC0cCf7A521B98640031285C92712` |
+| FeeHook | `0xF85Ce05c2Ba8533d79f009fd3A3c8517aaBda0cC` |
+| LaunchLens | `0xE6F85A3e97dD2F1a58acBA7A68a663E1f66C52c8` |
+| SharingCatalog | `0xD337d59a1e300bf88F5566395C71Df7d5651c5eF` |
+| HolderDistributorFactory | `0x3EBCCB246BA77D21a8a1f084CAF590c74FbC63b8` |
+| CurbRouter | `0xEa20C3266229a01cd0f45D9c7921a45d5b359561` (see [CURB router](#curb-router)) |
 
 Each paired asset's factory is listed by the registry (`launcherCount()`, `launcherAt(i)`). Each factory names
 its own `quoteToken()`, `feeEscrow()`, `feePolicy()` and `buybackVault()`.
@@ -642,8 +638,8 @@ These tokens are issued by others, not by CURB.
 
 ### Audits and security contact
 
-The contracts have been reviewed in house, and they get a final internal audit before the mainnet deployment.
-Its report will be linked here. Like any contracts, they can still have bugs.
+The contracts were reviewed in house, with a final internal audit before the mainnet deployment. Its report
+will be linked here. Like any contracts, they can still have bugs.
 
 <!-- PLACEHOLDER (owner): the security contact below, and the link to the final internal audit's report. -->
 

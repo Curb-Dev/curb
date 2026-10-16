@@ -62,14 +62,18 @@ const HISTORY_MAX = 12;
 /// and serve code under. It also left out --config, without which the CLI
 /// refuses to run. The config and the files are this site's own.
 ///
-/// WHERE THAT REPOSITORY IS: OWNER PLACEHOLDER, filled on deploy day
-/// (DEPLOY.txt STEP 5) once the code repository is public
+/// WHERE THAT REPOSITORY IS: filled on deploy day (DEPLOY.txt STEP 5, 16
+/// October 2026) with the public code repository
 /// (services/sharer/RUNBOOK.md part 4.1), pinned to the commit the keeper
 /// runs - a branch moves on, and a reader must run the code that made the
 /// files - as
 ///   https://github.com/<org>/<repo>/tree/<the deployed commit, 40 hex>/services/sharer
+/// The deployed commit is c26d22ac; STEP 5's commit adds only
+/// deploy/sharer.json and leaves the code under services/sharer as it is. A
+/// keeper rebuilt from a commit that changes that code moves this to that
+/// commit in the same change.
 /// Left "", the page names the repository without an address.
-const CODE_AT = "";
+const CODE_AT = "https://github.com/Curb-Dev/curb/tree/c26d22acd2fa7faca115d43a3eeb656cc4e7f84e/services/sharer";
 const VERIFY_WHERE = "In services/sharer of the CURB repository" + (CODE_AT ? " (" + CODE_AT + ")" : "") +
   ", with Node 22.18 or later, after npm ci --omit=dev:";
 function verifyCommand({ d, epoch, chainId, origin }) {

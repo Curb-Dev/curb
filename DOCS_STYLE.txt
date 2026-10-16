@@ -175,13 +175,14 @@ FACTS docs.md AND terms.html MUST AGREE ON
 
 PLACEHOLDERS THE OWNER MUST FILL
   Each is marked in docs.md with a "PLACEHOLDER (owner)" comment.
-  - CURB's contract addresses, under "CURB contracts": now "Not deployed yet".
-    Fill them from ADDRESSES.txt after the mainnet deployment.
+  - CURB's contract addresses, under "CURB contracts": FILLED from
+    ADDRESSES.txt at DEPLOY.txt STEP 5, 16 October 2026.
   - The security contact, under "Audits and security contact": now "to be
     published before the mainnet launch".
   - The code repository at the deployed commit, under "Holder sharing
-    contracts": now https://github.com/<org>/<repo>/tree/<commit>/services/sharer.
-    Fill it with the address web/sharing.js CODE_AT names (DEPLOY.txt STEP 5).
+    contracts": FILLED at STEP 5 with the address web/sharing.js CODE_AT
+    names; it moves with CODE_AT if the keeper is rebuilt from a commit that
+    changes services/sharer.
   - Audit reports: links once there are any. Until then the unaudited wording
     stays.
 
