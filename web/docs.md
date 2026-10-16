@@ -171,8 +171,8 @@ anyone's. Pools, the curve, the lock and CURB's contracts are left out, so token
 claims inside Uniswap v4, earn nothing. At most 2% of each payout covers the keeper's gas; the cap is in the
 contract.
 
-**The safety hour.** Every payout waits one hour before it pays, and the CURB multisig or an independent vetoer can
-stop it in that hour. A distributor never pays out more than it received.
+**The safety hour.** Every payout waits one hour before it pays, and the CURB multisig or CURB's guardian - a separate
+service that recomputes every payout - can stop it in that hour. A distributor never pays out more than it received.
 
 **Getting paid.** Shares are sent automatically once they are worth the gas (about $0.05 or more); a smaller share
 builds up until it is. You can claim yours on [Holder fees](sharing.html) at any time, and it never expires. If a

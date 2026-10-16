@@ -165,8 +165,11 @@ FACTS docs.md AND terms.html MUST AGREE ON
   Added 8 October 2026. Change both pages together, or neither.
 
   - THE SAFETY HOUR. A payout root waits one hour (VETO_WINDOW), and the CURB
-    multisig or an independent vetoer can stop it in that hour. terms.html
-    named the multisig alone, which left out the vetoer docs.md names.
+    multisig or CURB's guardian - a separate service that recomputes every
+    payout - can stop it in that hour. terms.html named the multisig alone,
+    which left out the vetoer docs.md names. Never "independent": every
+    vetoer is CURB's own (the guardian, Safe B and the policy Safe,
+    ADDRESSES.txt), 16 October 2026.
   - TRADE COSTS are not quoted as figures. terms.html quoted measured costs
     for a pool shape that no longer exists (NVDAc at a 60 threshold, where
     DeployCurb now sets 49.1 and a thinner graduated pool); both pages point

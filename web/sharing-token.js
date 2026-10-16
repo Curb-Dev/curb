@@ -732,7 +732,7 @@ async function openEnable(data) {
         : "From now on, the curve's creator tax goes to the holders, and after graduation the pool's creator fees and the locked position's LP fees do too." }),
       el("li", { id: "shEnablePending", text: pendingLine }),
       el("li", { text: "What you can already claim stays yours. The LP principal stays locked forever, as it is now." }),
-      el("li", { text: "Shares are time-weighted and paid about hourly. At most 2% of each payout covers gas. Every payout is public and can be stopped by the CURB multisig or an independent vetoer for 1 hour." }),
+      el("li", { text: "Shares are time-weighted and paid about hourly. At most 2% of each payout covers gas. Every payout is public and can be stopped by the CURB multisig or CURB's guardian for 1 hour." }),
       el("li", { id: "shEnablePublisher", text: "Payouts need CURB's keeper to keep publishing them; unpaid shares wait in the distributor." }),
       el("li", { text: "Unclaimed shares never expire." }),
     ]),
