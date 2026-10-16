@@ -96,10 +96,16 @@ KEEP IT TRUE TO THE CODE
 
 
 FACTS docs.md AND curb.html MUST AGREE ON
-  Checked 29 September 2026. Change both pages together, or neither.
+  Checked 29 September 2026; $CURB's line 16 October 2026. Change both pages
+  together, or neither.
 
-  - $CURB IS NOT LAUNCHED. Supply, distribution, timing and governance are not
-    decided. No contract is $CURB today.
+  - $CURB IS LIVE, since 16 October 2026: registry.launchAt(0) on Base, the
+    WETH factory, 0xf8bdCD06F7a5939c8b2340E27419FaCDF16A407e. Supply
+    1,000,000,000, all of it on its curve at launch (no allocation, presale,
+    airdrop or dev buy). Tax 100 bps, all of it to the treasury Safe - the
+    platform's 50 and the creator's rest, the treasury being its creator
+    wallet; holder sharing off. No vote, no claim on income. Only that
+    address is $CURB.
   - THE TREASURY POLICY, decided 22 September 2026, is a policy and not code:
     80% of the platform's fee income buys $CURB and burns it, 20% runs the
     platform, done by hand when a threshold is reached. Never call it automatic
@@ -177,8 +183,9 @@ PLACEHOLDERS THE OWNER MUST FILL
   Each is marked in docs.md with a "PLACEHOLDER (owner)" comment.
   - CURB's contract addresses, under "CURB contracts": FILLED from
     ADDRESSES.txt at DEPLOY.txt STEP 5, 16 October 2026.
-  - The security contact, under "Audits and security contact": now "to be
-    published before the mainnet launch".
+  - The security contact, under "Audits and security contact": FILLED at
+    DEPLOY.txt STEP 8, 16 October 2026, security@curbfun.xyz - the same
+    address as web/.well-known/security.txt.
   - The code repository at the deployed commit, under "Holder sharing
     contracts": FILLED at STEP 5 with the address web/sharing.js CODE_AT
     names; it moves with CODE_AT if the keeper is rebuilt from a commit that

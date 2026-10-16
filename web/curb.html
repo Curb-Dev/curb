@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>$CURB — not launched yet</title>
-<meta name="description" content="Curb's own token, not launched yet: where the platform's fees go, what the contracts say now, and what is still undecided." />
+<title>$CURB — Curb's own token</title>
+<meta name="description" content="Curb's own token, live on Base: its contract, where the platform's fees go, what the contracts say now, and its burns." />
 <meta property="og:site_name" content="Curb" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="$CURB — Curb's own token" />
@@ -63,8 +63,8 @@
   .mark img { display: block; width: 100%; height: 100%; }
   h1 { font-size: 33px; line-height: 1.1; margin: 0; letter-spacing: -0.035em; }
   .status { flex: none; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
-    padding: 5px 10px; border-radius: 7px; border: 1px solid rgba(245, 165, 36, .5);
-    color: var(--amber); background: rgba(245, 165, 36, .08); }
+    padding: 5px 10px; border-radius: 7px; border: 1px solid rgba(61, 220, 151, .5);
+    color: var(--good); background: rgba(61, 220, 151, .08); }
   .lede { font-size: 15px; line-height: 1.6; color: var(--dim); margin: 0 0 16px; max-width: 62ch; }
   .links { display: flex; gap: 8px; flex-wrap: wrap; }
   .links a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 999px;
@@ -157,23 +157,31 @@
 <main>
   <div class="wrap">
 
-    <!-- 1. WHAT IT IS, IN ONE LINE. The badge is the first thing read, and it
-         stays until there is a contract to point at. -->
+    <!-- 1. WHAT IT IS, IN ONE LINE, AND WHICH CONTRACT IT IS. $CURB is
+         registry.launchAt(0) on Base, launched inside the deployment run of 16
+         October 2026 (ADDRESSES.txt). The address is written out, not read:
+         the one contract to trust is the point of this card. -->
     <section class="card head" aria-labelledby="curbTitle">
       <div class="headTop">
         <div class="mark"><img src="curb-mark.svg" alt="" width="56" height="56" /></div>
         <h1 id="curbTitle">$CURB</h1>
-        <span class="status">Not launched yet</span>
+        <span class="status">Live on Base</span>
       </div>
       <p class="lede">
-        Curb's own token has not been created yet; this page shows what the platform does with its
-        fees, what the contracts say right now, and what is still undecided.
+        Curb's own token, launched on Base on 16 October 2026 as the platform's first launch, paired with
+        ETH. It trades like every launch: on its curve first, then in its Uniswap pool once it graduates.
+        This page shows what the platform does with its fees and what the contracts say right now.
       </p>
+      <p class="kv" style="margin-bottom:16px">Contract:
+        <a href="https://basescan.org/token/0xf8bdCD06F7a5939c8b2340E27419FaCDF16A407e" target="_blank" rel="noreferrer noopener"><code>0xf8bdCD06F7a5939c8b2340E27419FaCDF16A407e</code></a></p>
       <!-- THE FIRST LINK TO THE LAUNCHES CARRIES THE PAIR (data-carry,
            topbar.js carryLinks) - and only a pair this URL brought: the tests
-           read main a[href^="browse.html"] first, so it stays static and first. -->
+           read main a[href^="browse.html"] first, so it stays static and first.
+           The trade link names Base's $CURB and carries nothing: a pair
+           brought for a fork would open some other chain's token at it. -->
       <div class="links">
         <a href="browse.html" data-carry>See the launches</a>
+        <a href="token/0xf8bdCD06F7a5939c8b2340E27419FaCDF16A407e">Trade $CURB</a>
         <a href="docs.html" data-carry>Read the docs</a>
         <a href="terms.html" data-carry>What a launch fixes</a>
       </div>
@@ -257,7 +265,7 @@
     <section class="card" aria-labelledby="burnTitle">
       <h2 id="burnTitle">Burns <span class="count" id="burnCount">0</span></h2>
       <div id="burnList">
-        <div class="emptyBurns"><b>No burns yet</b><span>There is nothing to burn until $CURB exists.</span></div>
+        <div class="emptyBurns"><b>No burns yet</b><span>The first comes once enough fee income has built up.</span></div>
       </div>
       <p>
         Each burn is listed here with its swap and its burn transaction, so it can be checked rather than
@@ -267,20 +275,28 @@
       <p class="kv" id="treasuryLine">Treasury address: not published yet.</p>
     </section>
 
-    <!-- 5. WHAT IS NOT DECIDED. The warning is the point: a token page that
-         buries "no contract is this" is the shape of every launch that goes
-         wrong. -->
+    <!-- 5. WHAT $CURB IS, as its launch fixed it (registry.launchOf($CURB),
+         read back by check-deployment.sh): the WETH factory, a 100 bps tax with
+         the platform's 50 inside it, the treasury Safe as its creator wallet,
+         no dev buy, no holder sharing. The warning is the point: a token page
+         that buries "only this contract is it" is the shape of every launch
+         that goes wrong. -->
     <section class="card open" aria-labelledby="openTitle">
-      <h2 id="openTitle">Not decided</h2>
+      <h2 id="openTitle">What $CURB is</h2>
       <ul>
-        <li><strong>Supply</strong> — no number has been chosen.</li>
-        <li><strong>Distribution</strong> — no allocation, no schedule, no allowlist, no airdrop.</li>
-        <li><strong>Timing</strong> — no date, and no decision on where or how it would launch.</li>
-        <li><strong>Governance</strong> — whether it carries any vote or other right is open. Nothing here
-            promises income.</li>
+        <li><strong>Supply</strong> — 1,000,000,000, fixed. All of it went onto its curve at launch, like
+            every launch's: no team allocation, no presale, no airdrop and no dev buy.</li>
+        <li><strong>Tax</strong> — 1% of every buy and every sell, in ETH. All of it goes to the platform's
+            treasury: the platform's 0.50% share, and the creator's rest, because the treasury is $CURB's
+            creator wallet. Holder sharing is off.</li>
+        <li><strong>Graduation</strong> — the same as every ETH launch: once its curve fills, its liquidity
+            moves to a Uniswap pool and is locked there forever.</li>
+        <li><strong>Rights</strong> — none. Holding $CURB gives no vote and no claim on the platform's
+            income. Nothing here promises income.</li>
       </ul>
       <div class="alert" role="note">
-        <p><strong>No contract is $CURB today — anything claiming to be it is not.</strong></p>
+        <p><strong>Only <code>0xf8bdCD06F7a5939c8b2340E27419FaCDF16A407e</code> on Base is $CURB — any
+            other token using the name is not ours.</strong></p>
       </div>
     </section>
 
@@ -321,8 +337,8 @@
     <section class="fine" aria-labelledby="fineTitle">
       <h2 id="fineTitle">Disclaimer</h2>
       <p>
-        $CURB does not exist, and nothing on this page is an offer or a solicitation to buy or sell any token,
-        or financial advice. The treasury policy above is how the platform intends to use its own fee income.
+        Nothing on this page is an offer or a solicitation to buy or sell $CURB or any other token, or
+        financial advice. The treasury policy above is how the platform intends to use its own fee income.
         It is not an obligation to you or to anyone, it gives no one a right to any fee, buyback, burn, token
         or payment, and it can be changed, paused or stopped at any time. Only the fee rules are in the
         contracts, and a launch's own terms never change once it is created. Figures read from the chain are shown as they

@@ -309,11 +309,14 @@ only its fees can be switched to the holders, once.
 
 ### Is $CURB live?
 
-No. $CURB, the platform's own token, has not launched. Its supply, distribution, timing and governance are not
-decided, and no contract is $CURB today: a token using the name is not ours. The platform's treasury policy,
-decided on 22 September 2026, is to spend 80% of its fee income buying $CURB and burning it, and 20% running the
-platform. That is a policy carried out by hand when enough has built up, not something the contracts do, and no
-burn has happened yet. See the [$CURB page](curb.html).
+Yes. $CURB, the platform's own token, launched on Base on 16 October 2026 as the platform's first launch, paired
+with ETH: `0xf8bdCD06F7a5939c8b2340E27419FaCDF16A407e`. Any other token using the name is not ours. Its supply of
+1,000,000,000 went onto its curve at launch, like every launch's: no team allocation, no presale, no airdrop and
+no dev buy. Its tax is 1%, all of it to the platform's treasury, which is its creator wallet; holder sharing is
+off. Holding it gives no vote and no claim on the platform's income. The platform's treasury policy, decided on
+22 September 2026, is to spend 80% of its fee income buying $CURB and burning it, and 20% running the platform.
+That is a policy carried out by hand when enough has built up, not something the contracts do, and no burn has
+happened yet. See the [$CURB page](curb.html).
 
 ---
 
@@ -641,7 +644,7 @@ These tokens are issued by others, not by CURB.
 The contracts were reviewed in house, with a final internal audit before the mainnet deployment. Its report
 will be linked here. Like any contracts, they can still have bugs.
 
-<!-- PLACEHOLDER (owner): the security contact below, and the link to the final internal audit's report. -->
+<!-- PLACEHOLDER (owner): the link to the final internal audit's report. -->
 
-To report a vulnerability, write to the security contact: **to be published before the mainnet launch**. Please
-do not disclose it publicly until it is fixed.
+To report a vulnerability, write to **security@curbfun.xyz**. Please do not disclose it publicly until it is
+fixed.

@@ -29,9 +29,10 @@
 // ================================================================ OWNER PLACEHOLDERS
 // Both are filled in by hand; nothing on chain says what they are.
 //
-// TREASURY: the address the burns are bought from. OWNER PLACEHOLDER - leave ""
-// until it is published; the page then says "not published yet".
-const TREASURY = "";
+// TREASURY: the address the burns are bought from - the treasury Safe, which is
+// also the platform recipient and $CURB's creator wallet (ADDRESSES.txt),
+// published 16 October 2026. "" makes the page say "not published yet".
+const TREASURY = "0x6724eb5C59D617B1c65d88Cc6734B19b9E0eB7eE";
 //
 // BURNS: one entry per burn, newest first, added after each one:
 //   { date: "2026-10-31", spent: "1.25 ETH", burned: "12,345,678 $CURB",
