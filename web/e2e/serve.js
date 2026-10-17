@@ -64,6 +64,18 @@ function testHeaders(text) {
     ? v.replace(/connect-src ([^;]*)/, "connect-src $1 http://127.0.0.1:*") : v]);
 }
 
+/// WEB/config.js AS THE BROWSER TESTS EXPECT IT: its deployment fields as the
+/// placeholders they were before deploy day ("EMPTY STRINGS ARE PLACEHOLDERS",
+/// config.js), so what the pages read is the local node and lens a link names.
+/// Filled on 16 October 2026, the file as committed refused every send to the
+/// tests' own factories and read Base itself. The rest of it - the incident
+/// switches, the explorer - is as committed. CURB_E2E_SITE=deployed serves the
+/// file as committed instead.
+function testConfig() {
+  return fs.readFileSync(path.join(ROOT, "config.js"), "utf8") +
+    "\nObject.assign(window.CURB_SITE, { rpc: \"\", logsRpc: \"\", logsBlocks: 0, lens: \"\", registry: \"\", factories: [] });\n";
+}
+
 /// The file a path names, as the hosts' rewrites make it.
 function fileFor(pathname) {
   if (pathname === "/" || pathname === "") return "browse.html";
@@ -89,6 +101,10 @@ function start() {
         res.writeHead(status, Object.fromEntries([["content-type", type], ["cache-control", "no-store"], ...extra]));
         res.end(body);
       };
+      if (rel === "config.js" && process.env.CURB_E2E_SITE !== "deployed") {
+        send(200, TYPES[".js"], testConfig());
+        return;
+      }
       fs.readFile(file, (err, body) => {
         if (!err) { send(200, TYPES[path.extname(file)] || "application/octet-stream", body); return; }
         // NOT A FILE: the site's own 404 page, as a host serves it.
@@ -107,4 +123,4 @@ function start() {
 }
 
 if (require.main === module) start();
-module.exports = { siteHeaders, testHeaders, fileFor };
+module.exports = { siteHeaders, testHeaders, fileFor, testConfig };

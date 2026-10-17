@@ -21,11 +21,11 @@ const browseUrl = (lens) =>
   "/browse.html?" + new URLSearchParams({ rpc: STATE.rpc, lens, hero: "0" }).toString();
 const heroUrl = (lens, q = {}) =>
   "/browse.html?" + new URLSearchParams({ rpc: STATE.rpc, lens, ...q }).toString();
-/// web/config.js as committed, with these launches in its featured list: a
-/// ?featured= link is honoured only for one config.js lists (browse.js
-/// featuredAllowed).
+/// web/config.js as the tests are served it (serve.js testConfig), with these
+/// launches in its featured list: a ?featured= link is honoured only for one
+/// config.js lists (browse.js featuredAllowed).
 async function featuring(page, ...tokens) {
-  const body = fs.readFileSync(path.join(__dirname, "..", "config.js"), "utf8") +
+  const body = require("./serve.js").testConfig() +
     "\nwindow.CURB_SITE.featured = " + JSON.stringify(tokens) + ";\n";
   await page.route(/\/config\.js(\?.*)?$/, (route) =>
     route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body }));
