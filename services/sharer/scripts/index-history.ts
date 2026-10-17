@@ -19,6 +19,13 @@
 // when there are new logs, or when its `to` is REWRITE_AFTER blocks behind, so
 // a quiet launch costs a commit about twice a day and not every run.
 //
+// AND HOW FAR EACH FILE IS KNOWN COMPLETE, in one file every run
+// (sharing/<chain>/history/checked.json, CHECKED_SCHEMA): a launch whose
+// run found nothing new is complete up to this run's block though its own
+// file still says the last run that wrote it. Without it a quiet launch's
+// page read up to REWRITE_AFTER blocks of the chain after the file, twenty
+// windows before its chart; with it, what came since this run.
+//
 //   node scripts/index-history.ts            read and write
 //   node scripts/index-history.ts --dry DIR  read, and write the files under DIR
 //                                            instead of the data repo
@@ -37,6 +44,7 @@ import { DataRepo } from '../src/ops/github.ts';
 import { readRpcUrls, readSecret } from '../src/ops/secrets.ts';
 
 export const SCHEMA = 'curb.history/1';
+export const CHECKED_SCHEMA = 'curb.history-checked/1';
 /** A file whose `to` is this far behind is rewritten even with nothing new:
  *  about eleven hours of Base, so a page never reads more than ~20 windows. */
 export const REWRITE_AFTER = 20_000n;
@@ -116,6 +124,34 @@ export function merge(a: IndexLog[], b: IndexLog[]): IndexLog[] {
   });
 }
 
+/** WHAT checked.json SAYS: for each launch, its curve, the version of its
+ *  file the entry speaks for (that file's own `to`), and the block that
+ *  file holds every log up to - its own `to` or later, never earlier. The
+ *  two files are fetched apart and cached apart (raw.githubusercontent, five
+ *  minutes), so a page can hold an older file beside a newer checked.json:
+ *  it takes the entry only for the file it names (web/token.js). */
+export interface CheckedFile {
+  schema: string;
+  chainId: number;
+  launches: Record<string, { curve: string; file: number; to: number }>;
+}
+export const checkedPath = (chainId: number): string => `sharing/${chainId}/history/checked.json`;
+
+/** checked.json read back: the entries that are well formed, or none. */
+export function parseChecked(bytes: Uint8Array | null, chainId: number): CheckedFile['launches'] {
+  const out: CheckedFile['launches'] = {};
+  if (!bytes) return out;
+  try {
+    const j = JSON.parse(Buffer.from(bytes).toString('utf8')) as CheckedFile;
+    if (!j || j.schema !== CHECKED_SCHEMA || j.chainId !== chainId || !j.launches || typeof j.launches !== 'object') return out;
+    for (const [token, e] of Object.entries(j.launches)) {
+      if (/^0x[0-9a-f]{40}$/.test(token) && e && /^0x[0-9a-f]{40}$/.test(e.curve) && Number.isInteger(e.file) && Number.isInteger(e.to) &&
+        e.file >= 0 && e.to >= e.file) out[token] = { curve: e.curve, file: e.file, to: e.to };
+    }
+  } catch { /* none */ }
+  return out;
+}
+
 /** A file read back, or null when it is not one this script wrote for this
  *  launch: then the launch is read again from its start. */
 export function parseFile(bytes: Uint8Array | null, chainId: number, token: string, curve: string): HistoryFile | null {
@@ -158,6 +194,10 @@ export async function indexAll(d: IndexDeps): Promise<{ launches: number; writte
   if (!Number.isInteger(count) || count < 0 || count > 100_000) throw new Error(`the registry reports ${count} launches`);
   const win = new LogWindow();
   let written = 0, failed = 0;
+  // A LAUNCH THIS RUN COULD NOT READ KEEPS WHAT WAS CHECKED BEFORE: that is
+  // still true of its file, which nothing here changed.
+  const before = parseChecked(await d.read(checkedPath(d.chainId)), d.chainId);
+  const checked: CheckedFile['launches'] = { ...before };
   for (let i = 0; i < count; i++) {
     let token = '';
     try {
@@ -173,6 +213,9 @@ export async function indexAll(d: IndexDeps): Promise<{ launches: number; writte
       // older than its creation, so starting early costs nothing but a window.
       const born = to - (toTs > launchedAt ? (toTs - launchedAt) / 2n : 0n) - 2_000n;
       const from = old ? BigInt(old.to) + 1n : born < 0n ? 0n : born;
+      // ONLY ONE THIS LAUNCH'S FILE IS AT: another curve's entry says nothing of it.
+      const was = checked[token.toLowerCase()];
+      if (was && was.curve !== curve.toLowerCase()) delete checked[token.toLowerCase()];
       if (from > to) continue;
       const st = await call(d.rpc, d.lens, SEL.launchState + pad(token));
       const status = Number(numAt(st, 0));
@@ -193,7 +236,11 @@ export async function indexAll(d: IndexDeps): Promise<{ launches: number; writte
         graduated ? get(hook, [TOPIC.feeCharged, poolId]) : Promise.resolve([] as RawLog[]),
       ]);
       const fresh = curveLogs.length + transfers.length + routerSold.length + swaps.length + fees.length;
-      if (old && fresh === 0 && to - BigInt(old.to) < REWRITE_AFTER) continue;
+      // NOTHING NEW SINCE THE FILE: it is complete up to this run's block.
+      if (old && fresh === 0 && to - BigInt(old.to) < REWRITE_AFTER) {
+        checked[token.toLowerCase()] = { curve: curve.toLowerCase(), file: old.to, to: Number(to) };
+        continue;
+      }
       const file: HistoryFile = {
         schema: SCHEMA,
         chainId: d.chainId,
@@ -208,12 +255,18 @@ export async function indexAll(d: IndexDeps): Promise<{ launches: number; writte
         fees: merge(old ? old.fees : [], fees.map(slim)),
       };
       await d.write(path, new Uint8Array(Buffer.from(JSON.stringify(file))), `history ${token} to ${to}`);
+      checked[token.toLowerCase()] = { curve: curve.toLowerCase(), file: Number(to), to: Number(to) };
       written++;
       d.log(`${token}: ${old ? 'from ' + old.to : 'new'} to ${to}, ${fresh} new logs`);
     } catch (e) {
       failed++;
       d.log(`launch ${i} ${token}: ${(e as Error).message}`);
     }
+  }
+  // WRITTEN AFTER THE FILES IT SPEAKS FOR, and only when it says something new.
+  if (JSON.stringify(checked) !== JSON.stringify(before)) {
+    const body: CheckedFile = { schema: CHECKED_SCHEMA, chainId: d.chainId, launches: checked };
+    await d.write(checkedPath(d.chainId), new Uint8Array(Buffer.from(JSON.stringify(body))), `history checked to ${to}`);
   }
   return { launches: count, written, failed };
 }

@@ -5,7 +5,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { indexAll, merge, parseFile, slim, SCHEMA, TOPIC, CURB_ROUTER, REWRITE_AFTER, type HistoryFile, type IndexLog } from '../scripts/index-history.ts';
+import { indexAll, merge, parseFile, parseChecked, slim, SCHEMA, CHECKED_SCHEMA, TOPIC, CURB_ROUTER, REWRITE_AFTER, type HistoryFile, type IndexLog } from '../scripts/index-history.ts';
 import type { Rpc } from '../src/chain/rpc.ts';
 
 const REGISTRY = '0x86e9a01f3959a96469051ae1a73d5c09b0bac110';
@@ -141,4 +141,63 @@ test("a file of another launch at the path is read again from the launch's start
   const f = s.file(PATH);
   assert.equal(f.curve, CURVE);
   assert.equal(f.curveLogs.length, 1, 'the trade at 1001, below the other file\'s to, is there');
+});
+
+const CHECKED = 'sharing/8453/history/checked.json';
+const checkedOf = (s: ReturnType<typeof store>) => JSON.parse(Buffer.from(s.files.get(CHECKED)!).toString('utf8'));
+const run = (s: ReturnType<typeof store>, safe: number, logs: IndexLog[], rpc?: Rpc) =>
+  indexAll({ rpc: rpc ?? chain({ safe, logs }).rpc, chainId: 8453, registry: REGISTRY, lens: LENS, read: s.read, write: s.write, log: () => {} });
+
+test("checked.json says how far each file is complete: a quiet run moves it on though the file is not rewritten", async () => {
+  const s = store();
+  const logs = [log(CURVE, TOPIC.curveBuy, 1001, 0)];
+  await run(s, 2000, logs);
+  assert.deepEqual(checkedOf(s), { schema: CHECKED_SCHEMA, chainId: 8453, launches: { [TOKEN]: { curve: CURVE, file: 2000, to: 2000 } } });
+  // NOTHING NEW: the file stays at 2000, and it is known complete to 2300.
+  const r = await run(s, 2300, logs);
+  assert.equal(r.written, 0);
+  assert.equal(s.file(PATH).to, 2000);
+  assert.deepEqual(checkedOf(s).launches[TOKEN], { curve: CURVE, file: 2000, to: 2300 }, 'for the file at 2000, complete to 2300');
+  // A NEW TRADE: the file is rewritten to the run's block, and so is its entry.
+  logs.push(log(CURVE, TOPIC.curveSell, 2400, 0));
+  await run(s, 2500, logs);
+  assert.equal(s.file(PATH).to, 2500);
+  assert.deepEqual(checkedOf(s).launches[TOKEN], { curve: CURVE, file: 2500, to: 2500 });
+});
+
+test('checked.json is not written again when it would say the same, and parseChecked keeps only well-formed entries', async () => {
+  const s = store();
+  const writes: string[] = [];
+  const counted = { ...s, write: async (p: string, b: Uint8Array) => { writes.push(p); await s.write(p, b); } };
+  const logs = [log(CURVE, TOPIC.curveBuy, 1001, 0)];
+  await indexAll({ rpc: chain({ safe: 2000, logs }).rpc, chainId: 8453, registry: REGISTRY, lens: LENS, read: counted.read, write: counted.write, log: () => {} });
+  writes.length = 0;
+  await indexAll({ rpc: chain({ safe: 2000, logs }).rpc, chainId: 8453, registry: REGISTRY, lens: LENS, read: counted.read, write: counted.write, log: () => {} });
+  assert.deepEqual(writes, [], 'the same block again writes nothing');
+  const bytes = (j: unknown) => new Uint8Array(Buffer.from(JSON.stringify(j)));
+  assert.deepEqual(parseChecked(bytes({ schema: 'other', chainId: 8453, launches: { [TOKEN]: { curve: CURVE, file: 5, to: 5 } } }), 8453), {});
+  assert.deepEqual(parseChecked(bytes({ schema: CHECKED_SCHEMA, chainId: 1, launches: { [TOKEN]: { curve: CURVE, file: 5, to: 5 } } }), 8453), {});
+  assert.deepEqual(parseChecked(bytes({ schema: CHECKED_SCHEMA, chainId: 8453, launches: {
+    [TOKEN]: { curve: CURVE, file: 4, to: 5 }, ['0x' + 'AB'.repeat(20)]: { curve: CURVE, file: 5, to: 5 }, ['0x' + 'cd'.repeat(20)]: { curve: CURVE, file: 5, to: 1.5 },
+    ['0x' + 'ef'.repeat(20)]: { curve: CURVE, to: 5 }, ['0x' + '12'.repeat(20)]: { curve: CURVE, file: 6, to: 5 },
+  } }), 8453), { [TOKEN]: { curve: CURVE, file: 4, to: 5 } }, 'no file, or a file past its to, is not an entry');
+  assert.deepEqual(parseChecked(new Uint8Array(Buffer.from('not json')), 8453), {});
+});
+
+test("a launch the run cannot read keeps the entry it had, and an entry naming another curve is dropped", async () => {
+  const s = store();
+  const logs = [log(CURVE, TOPIC.curveBuy, 1001, 0)];
+  await run(s, 2000, logs);
+  // THE LAUNCH CANNOT BE READ THIS RUN (its lens refuses): it fails, and its entry stands.
+  const broken = chain({ safe: 2600, logs });
+  const failing: Rpc = { label: 'a', request: (a) => (a.method === 'eth_call' && (a.params as any[])[0].to === LENS ? Promise.reject(new Error('down')) : broken.rpc.request(a)) };
+  const r = await run(s, 2600, logs, failing);
+  assert.equal(r.failed, 1);
+  assert.deepEqual(checkedOf(s).launches[TOKEN], { curve: CURVE, file: 2000, to: 2000 });
+  // AN ENTRY FOR ANOTHER CURVE AT THIS TOKEN says nothing of this file: gone, and replaced once read.
+  s.files.set(CHECKED, new Uint8Array(Buffer.from(JSON.stringify({ schema: CHECKED_SCHEMA, chainId: 8453, launches: { [TOKEN]: { curve: '0x' + 'ee'.repeat(20), file: 9999, to: 9999 } } }))));
+  await run(s, 2600, logs, failing);
+  assert.equal(checkedOf(s).launches[TOKEN], undefined);
+  await run(s, 2700, logs);
+  assert.deepEqual(checkedOf(s).launches[TOKEN], { curve: CURVE, file: 2000, to: 2700 }, 'the file at 2000, unchanged, complete to 2700');
 });
