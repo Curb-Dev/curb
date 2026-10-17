@@ -33,6 +33,10 @@ possible without starting over - but not automatic and not free. Phase 2 is
 gated on Phase 1 showing repeat use and net revenue against numbers frozen in
 Phase 0.
 
+[SHELVED 2026-10-18] Phase 2 is shelved by the owner's decision. Section 10,
+under PHASE 2, says why and what replaces it; the thesis above is kept as it
+was written.
+
 
 ================================================================================
 2. MARKET STATE [MEASURED]
@@ -1282,7 +1286,72 @@ PHASE 1C - LIMITED LAUNCH  (limits are numeric and set in Phase 0)
   [ ] Repeat use, launches per day, revenue AFTER the defined cost set
   [ ] Fix what breaks before widening the asset set
 
-PHASE 2 - TRADING DESTINATION  (conditional, not automatic)
+PHASE 2 - TRADING DESTINATION  (conditional, not automatic) - SHELVED
+
+  [SHELVED 2026-10-18 - THE OWNER'S DECISION]
+  No venue of our own for the existing B20 stocks: no stocks as first-class
+  assets in it, no cross pairs, no portfolio view. The gate below asks why
+  NVDAc flow would come to us over Aerodrome, and the answer is that it would
+  not. The depth and the routing for Base's stock tokens are on Aerodrome
+  Slipstream, its concentrated-liquidity pools, where AERO emissions pay the
+  liquidity to stay. A venue of ours would open with neither, and aggregators
+  route to the depth.
+
+  MEASURED 2026-10-18, read-only eth_call on live Base at block 52,745,816,
+  for each stock on CURB's list - GOOGLc, NVDAc, SPCXc, AMZNc, MSFTc, AAPLc,
+  METAc - against WETH and against USDC, and nothing else:
+    - getPool on Uniswap v3's factory
+      0x33128a8fC17869897dcE68Ed026d694621f6FDfD at all seven of its fee
+      tiers, 100, 200, 300, 400, 500, 3000 and 10000. feeAmountTickSpacing
+      was asked for every fee from 1 to 999,999 and answered for these alone;
+    - getPool on each of the three Slipstream factories that Aerodrome's
+      registry 0x5C3F18F06CC09CA1910767A34a20F771039E37C0 lists (taken here
+      in its order), at every tick spacing the factory's own tickSpacings()
+      returns: 1, 10, 50, 100, 200 and 2000 on all three, 500 on the second
+      and third, 80 and 150 on the third;
+    - getPool on Aerodrome v2, stable and volatile;
+    - balanceOf on every pool found: what a pool holds, not its depth near
+      the price.
+  Not measured: pairs against any other asset, Uniswap v2 and v4, and every
+  other venue.
+
+  The pools of the third Slipstream factory,
+  0xf8f2eB4940CFE7d13603DDDD87f123820Fc061Ef, hold between about 24 times
+  (GOOGLc) and about 512 times (METAc) as much of the stock as all its
+  Uniswap v3 pools together: NVDAc about 113, SPCXc 107, AMZNc 127, MSFTc
+  192, AAPLc 115. The other two, 0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A
+  and 0xaDe65c38CD4849aDBA595a4323a8C7DdfE89716a, have no pool for any of
+  the seven; Aerodrome v2's two (NVDAc/USDC and AAPLc/USDC, volatile) hold
+  dust (about 0.000035 NVDAc and 0.000015 AAPLc).
+  All three factories' voter() is Aerodrome's Voter
+  0x16613524e02ad97eDfeF371bC883F2F5d6C480A5. Uniswap v3 pools exist at
+  tiers the site and the survey do not ask (below) - NVDAc/USDC and
+  SPCXc/USDC at 0.02%, METAc/USDC at 0.03% - and hold almost nothing (0.018
+  METAc at most). NVDAc: about 6,252 in Slipstream against about 55 on
+  Uniswap v3; its USDC pool at tick spacing 10 holds about 6,016 NVDAc and
+  714,000 USDC. Each stock's largest pool is its USDC pool at tick spacing 10
+  on the third factory, and all seven have a gauge the Voter calls alive
+  (isAlive), paying AERO at between about 3,250 and 4,890 a day
+  (rewardRate).
+
+  WHAT REPLACES IT NEAR TERM: borrow that depth by routing, not by building a
+  venue. The site buys the paired asset on Aerodrome, then the launch on its
+  curve with it; a sale goes the same way back. What is thin today is CURB's
+  own ETH entry, not the asset's market: CurbRouter converts between ETH and a
+  paired asset only through Uniswap's SwapRouter02 [src/curb/CurbRouter.sol
+  SWAP_ROUTER, a constant], the site finds and prices that conversion only
+  among Uniswap v3 pools, at four of the seven tiers [web/app.js V3_FACTORY,
+  V3_TIERS, bestV3Leg], and the asset survey asks Uniswap v3 at those four,
+  Aerodrome v2, and only the first of the three Slipstream factories, at
+  five of its six tick spacings [script/b20/rwa-survey.js V3_FEES, AERO_V2,
+  AERO_CL, AERO_TICKS]. So the "thin" flags on PRE_MAINNET.txt's asset list
+  measure Uniswap v3, not where the stocks trade.
+  [OPEN] How: Aerodrome's own router called from the page, or a new router
+  that routes through Slipstream. The second is a new contract that carries
+  money, and PRE_MAINNET.txt D5's recalibrated gate rules that out if the
+  gate is not met.
+
+  Everything below, down to PHASE 3, is the record of the plan this shelves.
 
   Why it is not free: MEME/NVDAc liquidity does not solve NVDAc/USDC
   liquidity. Owning a hook on graduated meme pools gives us nothing toward

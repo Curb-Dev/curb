@@ -213,6 +213,12 @@ WHAT IS LEFT
                     deployed and explorer-verified hook, and then measure each
                     venue's real quote endpoint against a live launch.
 
+  SCHEDULED:
+    D5  the 30-day gate, recalibrated 2026-10-18, counted on about 15
+        November 2026; if it is not met, again at day 60, about 15 December.
+        Before the first count: the owner confirms, changes or drops D5's
+        proposed readings, and the team's addresses are written down.
+
   STANDING, not scheduled:
     C3  a decision to record, not work to schedule.
     C9  two findings of 9 October 2026 accepted and documented by the owner:
@@ -1974,7 +1980,10 @@ D4  PHASE 1C - DECIDED 2026-09-20, AND ONE FINDING CHANGES ITS SHAPE
     has to be restated against something observable on chain, or dropped
     deliberately - not left in the document as though it were implementable.
 
-D5  SUCCESS METRICS - DECIDED 2026-09-20
+D5  SUCCESS METRICS - DECIDED 2026-09-20, RECALIBRATED 2026-10-18
+
+    THE 30-DAY GATE BELOW IS REPLACED: see RECALIBRATED 2026-10-18 at the end
+    of this entry. The original is kept as it was recorded.
 
     Numbers chosen so the gate can be failed. They are modest on purpose: this
     is a three-asset launchpad on pools holding tens of thousands of dollars,
@@ -2001,6 +2010,126 @@ D5  SUCCESS METRICS - DECIDED 2026-09-20
     before Phase 1 is in the document's own disclaimer. The decision NOT to
     geofence any jurisdiction is already recorded in ROADMAP section 12 and is
     not an open item.
+
+    RECALIBRATED 2026-10-18 BY THE OWNER, TWO DAYS AFTER A1. This replaces
+    the 30-day gate above. THE OWNER'S DECISION below is what the owner
+    decided and nothing more. PROPOSED READINGS FOR THE OWNER TO CONFIRM are
+    this document's, not the owner's: how it would count that decision. None
+    binds until the owner confirms it; each is confirmed, changed or dropped
+    before the count is taken.
+
+    WHY. The gate above said it was a judgement, to be replaced by the first
+    real numbers. Two days of our own are too few to set a gate from; a
+    public number exists, and it breaks the gate's centre. About 1-2% of
+    launches graduate on pump.fun, so ">= 3 graduations" out of ">= 10
+    launches" asks for a rate near 30%: a working launchpad of this size
+    fails it, and the team could pass it by buying its own curves to the
+    threshold. The gate also counted the team's own launches and trades -
+    $CURB is registry.launchAt(0), its creator the treasury Safe - and let
+    one busy launch carry "50 distinct traders" alone.
+
+      THE OWNER'S DECISION
+        over the first 30 days after A1 (16 October 2026), counted on about
+        15 November 2026
+          launches created                    >= 10
+          distinct EXTERNAL creators          >= 5     the team excluded
+          launches reaching 20 or more        >= 5
+            distinct buyers
+          taxed volume from external          a floor; the owner's example
+            wallets, on the curves and the    is $100,000
+            pools together
+
+        REPORTED, NEVER A TARGET
+          - the graduation rate;
+          - organic graduations: ONE OR MORE IS A GOOD RESULT;
+          - graduations the team filled, and the team's and the treasury's
+            volume, each reported on its own and never counted as success.
+
+        IF IT IS NOT MET
+          - no new money-carrying contracts;
+          - distribution and the trust infrastructure go on;
+          - the gate is measured again at day 60, about 15 December 2026.
+
+      PROPOSED READINGS FOR THE OWNER TO CONFIRM
+        R1  LAUNCHES. The team's own launches are not among the 10: $CURB,
+            any launch whose creator is a team address (R6), and any launch
+            whose launch() a team address called - a launch the team sends
+            with an outside creatorWallet [src/curb/CurbLaunchFactory.sol
+            launch(), creator = cfg.creatorWallet when it is set] is the
+            team's, as R5 makes team money for an outside wallet the team's.
+            A TEAM LAUNCH COUNTS FOR NOTHING IN THE GATE: not toward the 10,
+            not among the 5 launches with 20 buyers, not in the volume floor,
+            and its graduation is never organic. Its buyers, volume and
+            graduation are reported on the team's line, so one busy team
+            launch - $CURB above all - cannot carry the gate alone.
+        R2  BUYERS. A launch's 20 are the distinct holders of its external
+            buys (R5); no team address is among them.
+        R3  ORGANIC. A graduation is organic when no team address bought on
+            its curve before it graduated; any other is team-filled.
+        R4  THE FLOOR. $100,000, the owner's example, stands unless it is
+            changed before the count is taken; changing it after is the
+            rationalising this entry was written to prevent. The other
+            numbers are a judgement too, fixed for this count, and the count
+            is what the next calibration starts from.
+            IN DOLLARS: each trade is priced at its own block, by the site's
+            own method [web/prices.js usdPerQuote] - the paired asset's
+            Chainlink feed, used only when its description() names it, else
+            its Uniswap v3 market in WETH [web/app.js quoteAssetInEth] and
+            ETH / USD. What is priced is the paired asset the trade moved,
+            before fee and tax: a curve buy's quoteIn, a curve sale's
+            quoteOut plus fee plus tax, a pool swap's paired side. Priced
+            trade by trade and summed across all fourteen assets, so no
+            asset's price on the day of the count decides it. Whatever
+            computes the count, a stats or metrics script, prices this way;
+            a trade it cannot price is listed and not counted.
+        R5  WHOSE TRADE IT IS. Read from the trade's logs, and from its call
+            trace where ether paid - never from who signed or sent the
+            transaction. Its HOLDER is the address whose launch tokens it
+            raised (a buy) or lowered (a sale); its PAYER is the address the
+            paired asset or the ether came from. A contract that only passes
+            value through - the CURB router, a launch factory, the pool
+            manager, any other router - is neither: where an event names
+            one, the address on its other side is the one counted.
+            ON A CURVE. A buy's holder is CurveBuy's recipient and its payer
+              CurveBuy's buyer - for the CURB router, BoughtWithEth's buyer
+              in the same transaction. A FACTORY IS NEVER A BUYER: the dev
+              buy is the factory's own curve.buy(arrived, 0, to), `to` the
+              launch's creator [src/curb/CurbLaunchFactory.sol _devBuy], so
+              its holder is LaunchCreated's creator and its payer launch()'s
+              caller, whom the factory took the asset from. A sale's holder
+              is CurveSell's seller - for the CURB router, SoldForEth's
+              seller.
+            IN A GRADUATED POOL. The swap names only the router that called
+              the pool manager, so the holder and the payer are read from
+              the launch token's and the paired asset's transfers in that
+              transaction, net of what only passed through.
+            CONTRACT WALLETS. A Safe or an ERC-4337 account is itself the
+              holder and the payer: the trade is the Safe's or the
+              account's, whichever owner signed it and whoever sent it. A
+              relayer, a bundler or a paymaster is never a trader (WHAT IS
+              LEFT 1c rehearsed a Safe A transaction sent by a non-owner).
+            EXTERNAL means that no address of the trade - holder, payer, or a
+            sale's proceeds recipient - is a team address. A trade with a
+            team address on any side is the team's, on the team's line, so
+            team money buying for an outside wallet is not outside volume. A
+            trade whose addresses cannot be named this way is not external;
+            it is reported on a line of its own.
+        R6  WHO IS THE TEAM. Every address ADDRESSES.txt records as CURB's -
+            the deployer, the Safes, the sharing roles - the Safes' signers,
+            and any wallet the team launches or trades from. The list is
+            written down before the count, not after it.
+        R7  NO NEW MONEY-CARRYING CONTRACTS: nothing new written or deployed
+            that holds or moves users' funds. Whether a new paired asset's
+            stack (script/DeployAssetStack.s.sol: the deployed code again,
+            for one more asset) counts is the owner's to say. The trust
+            infrastructure that goes on is the guardian, and the keeper on a
+            rented server.
+        R8  THE TWO THAT FAIL THE GATE ABOVE WHATEVER ELSE HAPPENS - a launch
+            stuck after its sale, and the platform's fees unclaimable - fail
+            this one too.
+
+      LEFT TO THE OWNER, AND NOT READ HERE: which window the day-60 count
+      covers - all 60 days, or days 31 to 60 - set before it is taken.
 
 
 D6  NO REFERENCE PRICE, AND NO MARKET-HOURS MODE - ACCEPTED 2026-09-24
