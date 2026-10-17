@@ -193,6 +193,7 @@ function chainId(url, ask) {
 // once an action begins (forget). A read that finds nothing, or a warm read
 // that failed, is made as before.
 const WARM_MS = 6000;
+const WARM_CALLS = 15;           // per warming aggregate3 (see warmUp)
 const NOTE_MS = 15000;           // how long after it opens a page's reads are noted
 const NOTES_KEY = "curb.warm.v1";
 const NOTES_PAGES = 20, NOTES_CALLS = 240, NOTES_DAYS = 7;
@@ -217,8 +218,13 @@ function warmUp(url, list) {
     seen.add(k);
     fresh.push({ to: c.to, data: c.data });
   }
-  for (let i = 0; i < fresh.length; i += MAX_CALLS) {
-    const part = fresh.slice(i, i + MAX_CALLS);
+  // IN ROUNDS OF WARM_CALLS, NOT MAX_CALLS: these go out before the page has a
+  // connection to the endpoint, and one aggregate of 53 calls (24 KB) as the
+  // first thing on a new connection to Alchemy was cut off - the connection
+  // reset after about 1.5 s, four first visits in five, and every read waited
+  // for it (curbfun.xyz, 18 October 2026). Rounds of 15 went through every time.
+  for (let i = 0; i < fresh.length; i += WARM_CALLS) {
+    const part = fresh.slice(i, i + WARM_CALLS);
     const got = aggregate(url, part);
     got.catch(() => {});
     part.forEach((c, j) => {
