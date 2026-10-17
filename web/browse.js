@@ -723,13 +723,21 @@ function ageText(t) {
   return Math.floor(s / 86400) + "d ago";
 }
 
+/// WHETHER AN ENDPOINT MAY BE A LOCAL FORK, worth asking where it forked: one
+/// on this machine, or over plain http (token.js mayBeFork).
+function mayBeFork(url) {
+  let u;
+  try { u = new URL(String(url || "")); } catch { return true; }
+  return u.protocol !== "https:" || /^(localhost|127(\.\d{1,3}){3}|\[::1\])$|\.localhost$/i.test(u.hostname);
+}
+
 let forkFloorRead = null;
 /// THE LOWEST BLOCK WORTH ASKING ABOUT on a local fork: anvil says where it
 /// forked, and nothing of this deployment exists below that (token.js
 /// forkFloor). On a real network the method does not exist and this is 0.
 function forkFloor(rpc) {
   if (forkFloorRead === null) {
-    forkFloorRead = rpcAt(rpc, "anvil_metadata", [])
+    forkFloorRead = !mayBeFork(rpc) ? Promise.resolve(0) : rpcAt(rpc, "anvil_metadata", [])
       .then((m) => (m && m.forkedNetwork && Number(m.forkedNetwork.forkBlockNumber) >= 0
         ? Number(m.forkedNetwork.forkBlockNumber) + 1 : 0))
       .catch(() => 0);

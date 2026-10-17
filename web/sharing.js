@@ -415,9 +415,16 @@ async function getLogs(r, filter, from, to, budget = 400) {
 /// made on it exists below the block it forked at (token.js forkFloor). On a
 /// real network the method does not exist and this is 0.
 const forkFloors = new Map();
+/// WHETHER AN ENDPOINT MAY BE A LOCAL FORK, worth asking where it forked: one
+/// on this machine, or over plain http (token.js mayBeFork).
+function mayBeFork(url) {
+  let u;
+  try { u = new URL(String(url || "")); } catch { return true; }
+  return u.protocol !== "https:" || /^(localhost|127(\.\d{1,3}){3}|\[::1\])$|\.localhost$/i.test(u.hostname);
+}
 function forkFloor(r) {
   if (!forkFloors.has(r.url)) {
-    forkFloors.set(r.url, r.rpc("anvil_metadata", [])
+    forkFloors.set(r.url, !mayBeFork(r.url) ? Promise.resolve(0) : r.rpc("anvil_metadata", [])
       .then((m) => (m && m.forkedNetwork && Number(m.forkedNetwork.forkBlockNumber) >= 0 ? Number(m.forkedNetwork.forkBlockNumber) + 1 : 0))
       .catch(() => 0));
   }

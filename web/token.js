@@ -1065,6 +1065,18 @@ async function getLogs(filter, from, to) {
   return out;
 }
 
+/// WHETHER AN ENDPOINT MAY BE A LOCAL FORK, and so worth asking where it
+/// forked: one on this machine, or over plain http. A network's own endpoint -
+/// https, elsewhere, the site's among them - does not know the method, and
+/// asking cost each page a round trip before its history and a refusal in the
+/// console (Alchemy answers it HTTP 400). browse.js and sharing.js mayBeFork
+/// say the same.
+function mayBeFork(url) {
+  let u;
+  try { u = new URL(String(url || "")); } catch { return true; }
+  return u.protocol !== "https:" || /^(localhost|127(\.\d{1,3}){3}|\[::1\])$|\.localhost$/i.test(u.hostname);
+}
+
 /// THE LOWEST BLOCK WORTH ASKING ABOUT. On a local fork (anvil says so, and
 /// where it forked) nothing of this deployment exists before the fork block,
 /// and every log below it is fetched from the fork's own upstream - a public
@@ -1073,7 +1085,7 @@ async function getLogs(filter, from, to) {
 let forkFloorRead = null;
 async function forkFloor() {
   if (forkFloorRead === null) {
-    forkFloorRead = rpc("anvil_metadata", [])
+    forkFloorRead = !mayBeFork(endpoint()) ? Promise.resolve(0) : rpc("anvil_metadata", [])
       .then((m) => (m && m.forkedNetwork && Number(m.forkedNetwork.forkBlockNumber) >= 0 ? Number(m.forkedNetwork.forkBlockNumber) + 1 : 0))
       .catch(() => 0);
   }
