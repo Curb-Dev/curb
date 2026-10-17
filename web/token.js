@@ -420,6 +420,12 @@ async function spotPrice(v) {
 /// minutes. When nothing answers, the view shows the asset's own units rather
 /// than a guess.
 const USD_TTL_MS = 5 * 60 * 1000;
+/// HOW LONG THE PRICE, THE MARKET CAP AND THE CHART WAIT FOR THE FIRST DOLLAR
+/// RATE of the launch's asset before they are drawn in its own units: shown as
+/// "0.0014 ETH" and a moment later as "$4.4K", the market cap read as two
+/// different numbers (the owner's report, 18 October 2026). Past this, a rate
+/// that has not come is not waited for (browse.js USD_WAIT_MS says the same).
+const USD_WAIT_MS = 4000;
 let usdLoading = null;
 /// Resolves true when a new rate was read (the caller redraws), false when the
 /// kept one still stands. One read at a time.
@@ -428,8 +434,23 @@ function readUsd() {
   if (!ctx) return Promise.resolve(false);
   const key = ctx.quote.toLowerCase();
   if (T.usd.key === key && Date.now() - T.usd.at < USD_TTL_MS) return Promise.resolve(false);
-  if (!usdLoading) usdLoading = readUsdNow(ctx, key).finally(() => { usdLoading = null; });
+  if (!usdLoading) {
+    // THE FIRST READ FOR THIS ASSET: the figures wait for it (usdWaiting), and
+    // are drawn once the wait is over whether or not it has answered.
+    if (!T.usdAsked || T.usdAsked.key !== key) {
+      T.usdAsked = { key, at: Date.now() };
+      setTimeout(() => { redraw(); if (T.hist) drawChart(); }, USD_WAIT_MS + 50);
+    }
+    usdLoading = readUsdNow(ctx, key).finally(() => { usdLoading = null; });
+  }
   return usdLoading;
+}
+/// Whether the figures are still waiting for this asset's first dollar rate.
+function usdWaiting() {
+  const ctx = S().ctx;
+  if (!ctx) return false;
+  const key = ctx.quote.toLowerCase();
+  return T.usd.key !== key && !!T.usdAsked && T.usdAsked.key === key && Date.now() - T.usdAsked.at < USD_WAIT_MS;
 }
 /// THE READING ITSELF IS prices.js usdPerQuote: the asset's own feed, checked by
 /// its description(), else WETH through App.quoteAssetInEth and ETH / USD - the
@@ -471,14 +492,23 @@ async function drawStats(v) {
   T.spot = price;
   const f = priceFigures(price, v);
   const sym = quoteSym();
-  $("tvPrice").textContent = f.withUsd ? usd(f.priceUsd) : human(f.price) + " " + sym;
-  $("tvPrice").title = human(f.price, 6) + " " + sym;
-  $("tvMcap").textContent = f.withUsd ? usd(f.mcapUsd) : human(f.mcap) + " " + sym;
-  $("tvBigMcap").textContent = f.withUsd ? usd(f.mcapUsd) : human(f.mcap) + " " + sym;
-  // IN DOLLARS, AND ONLY DOLLARS ON SCREEN (the owner's call); the figure in the
-  // pair's own asset and where the dollars come from are on the tooltip.
-  const inPair = human(f.mcap) + " " + sym;
-  $("tvMcap").title = $("tvBigMcap").title = f.withUsd ? inPair + " - " + usdSource() : "";
+  if (!f.withUsd && usdWaiting()) {
+    // THE DOLLAR RATE IS STILL BEING READ (usdWaiting): the figures wait for it
+    // rather than show the pair's own units for a moment.
+    for (const id of ["tvPrice", "tvMcap", "tvBigMcap"]) {
+      $(id).textContent = "…";
+      $(id).title = "Its dollar price is being read.";
+    }
+  } else {
+    $("tvPrice").textContent = f.withUsd ? usd(f.priceUsd) : human(f.price) + " " + sym;
+    $("tvPrice").title = human(f.price, 6) + " " + sym;
+    $("tvMcap").textContent = f.withUsd ? usd(f.mcapUsd) : human(f.mcap) + " " + sym;
+    $("tvBigMcap").textContent = f.withUsd ? usd(f.mcapUsd) : human(f.mcap) + " " + sym;
+    // IN DOLLARS, AND ONLY DOLLARS ON SCREEN (the owner's call); the figure in the
+    // pair's own asset and where the dollars come from are on the tooltip.
+    const inPair = human(f.mcap) + " " + sym;
+    $("tvMcap").title = $("tvBigMcap").title = f.withUsd ? inPair + " - " + usdSource() : "";
+  }
   $("tvBigNote").textContent = "market cap";
 
   const wrap = $("tvProgressWrap");
@@ -1609,6 +1639,9 @@ function drawChart() {
   const supplyNow = toFloat(v.totalSupply, 18);
   const burned = h.burned ? toFloat(h.burned, 18) : 0;
   const per = usdPer();
+  // NOT IN THE PAIR'S UNITS WHILE ITS DOLLAR RATE IS BEING READ (usdWaiting):
+  // the rate's arrival, or the end of the wait, draws it.
+  if (!per && usdWaiting()) return;
   const val = (price, supply) => price * supply * (per || 1);
   const pts = h.trades.filter((t) => h.times.has(t.block) && isFinite(t.price) && t.price > 0)
     .map((t) => ({ t: h.times.get(t.block), y: val(t.price, t.pool ? supplyNow : supplyNow + burned) }));
@@ -1833,7 +1866,7 @@ async function drawAll() {
   // THE DOLLAR RATE WITHOUT HOLDING UP THE PAGE: its v3 quote takes seconds,
   // so the figures are drawn in the asset's units first and redrawn in
   // dollars when it lands.
-  readUsd().then((fresh) => { if (fresh) redraw(); }).catch(() => {});
+  readUsd().then((fresh) => { if (fresh) { redraw(); if (T.hist) drawChart(); } }).catch(() => {});
   drawHead(v);
   drawHidden(v);
   if (!v) { drawAction(null); return; }

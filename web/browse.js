@@ -385,8 +385,14 @@ const USD_TTL_MS = 5 * 60 * 1000;
 /// rate-limited feed call in the first page's burst left every card on that
 /// asset in its own units, and out of the Market cap order.
 const USD_RETRY_MS = 15 * 1000;
+/// HOW LONG A MARKET CAP WAITS FOR ITS ASSET'S FIRST DOLLAR RATE before it is
+/// shown in the asset's own units: "0.0014 ETH" and a moment later "$4.4K"
+/// read as two different numbers (the owner's report, 18 October 2026). Past
+/// this, a rate that has not come is not waited for (token.js USD_WAIT_MS).
+const USD_WAIT_MS = 4000;
 const usdRates = new Map();          // asset -> { per, src, updatedAt, failed, at }
 const usdInFlight = new Map();
+const usdAsked = new Map();          // asset -> when its first rate read began
 /// Whether this asset's rate should be (re)read now: never read, kept past its
 /// time, or failed and due again.
 function usdDue(key) {
@@ -398,6 +404,12 @@ function usdRateFor(asset) {
   const key = asset.toLowerCase();
   if (!usdDue(key)) return Promise.resolve(usdRates.get(key));
   if (usdInFlight.has(key)) return usdInFlight.get(key);
+  // THE FIRST READ OF THIS ASSET: its cards wait for it (marketCap), and are
+  // drawn again once the wait is over whether or not it has answered.
+  if (!usdAsked.has(key)) {
+    usdAsked.set(key, Date.now());
+    setTimeout(() => refreshCards(), USD_WAIT_MS + 50);
+  }
   const Prices = window.CurbPrices;
   const rpc = state.rpc;
   const p = (Prices
@@ -568,7 +580,13 @@ function marketCap(v) {
   }
   // WHY THERE ARE NO DOLLARS, said as it is: not read yet, refused just now
   // (asked again shortly - usdRateFor), or no feed that names itself.
-  const kept = usdRates.get((v.quoteToken || "").toLowerCase());
+  const key = (v.quoteToken || "").toLowerCase();
+  const kept = usdRates.get(key);
+  // NOT READ YET, AND STILL WITHIN USD_WAIT_MS of the first ask (or not asked
+  // yet - ensureRates asks as soon as the cards are drawn): the figure waits.
+  if (!kept && Date.now() - (usdAsked.has(key) ? usdAsked.get(key) : Date.now()) < USD_WAIT_MS) {
+    return { text: "…", title: `${inPair} ${where}. Its dollar price is being read.`, usd: NaN };
+  }
   const why = !kept ? "Its dollar price is being read."
     : kept.failed ? `The dollar price of ${sym || "this asset"} could not be read just now - it is asked again shortly.`
     : `No dollar price is known for ${sym || "this asset"} (no Chainlink feed that names itself), so this is in its own units.`;

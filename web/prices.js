@@ -100,11 +100,16 @@ function decodeString(raw) {
 
 /// One Chainlink feed's answer in dollars, with when it was given - or null
 /// when the feed does not call itself `expect`, or answers nothing positive.
+/// ITS THREE READS ASKED TOGETHER, and the answer used only once the feed has
+/// named itself: one after another they were three round trips before any
+/// dollar figure, and the page showed the pair's own units meanwhile.
 async function feedUsd(call, feed, expect) {
-  const d = decodeString(await call(feed, SEL.description));
+  const [descRaw, decRaw, roundRaw] = await Promise.all([
+    call(feed, SEL.description), call(feed, SEL.decimals), call(feed, SEL.latestRoundData)]);
+  const d = decodeString(descRaw);
   if (d.trim() !== expect) return null;
-  const dec = Number(word0(await call(feed, SEL.decimals)));
-  const w = words(await call(feed, SEL.latestRoundData));
+  const dec = Number(word0(decRaw));
+  const w = words(roundRaw);
   const answer = w.length >= 4 ? wordToBig(w[1]) : 0n;
   const value = answer > 0n && Number.isInteger(dec) ? toFloat(answer, dec) : NaN;
   return isFinite(value) && value > 0 ? { value, updatedAt: Number(wordToBig(w[3])) } : null;
