@@ -197,9 +197,14 @@ async function rpcAt(url, method, params) {
   if (method === "eth_chainId" && M && M.chainId) return M.chainId(url, () => rpcSend(url, method, params));
   return rpcSend(url, method, params);
 }
+/// The headers of a JSON-RPC POST to `url` (multicall.js headers): text/plain to
+/// the site's own endpoints, so no CORS preflight is made first.
+const rpcHeaders = (url) => (window.CurbMulti && window.CurbMulti.headers ? window.CurbMulti.headers(url)
+  : { "content-type": "application/json" });
 async function rpcSend(url, method, params) {
-  const res = await fetch(method === "eth_getLogs" ? logsUrl(url) : url, {
-    method: "POST", headers: { "content-type": "application/json" },
+  const to = method === "eth_getLogs" ? logsUrl(url) : url;
+  const res = await fetch(to, {
+    method: "POST", headers: rpcHeaders(to),
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
   });
   if (!res.ok) throw new Error("The endpoint answered HTTP " + res.status + " rather than a result.");
@@ -239,7 +244,7 @@ async function callsAt(url, calls) {
     let got = null;
     try {
       const res = await fetch(url, {
-        method: "POST", headers: { "content-type": "application/json" },
+        method: "POST", headers: rpcHeaders(url),
         body: JSON.stringify(part.map((c, j) => ({ jsonrpc: "2.0", id: j + 1, method: "eth_call",
           params: [{ to: c.to, data: c.data }, c.block || "latest"] }))),
       });

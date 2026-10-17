@@ -772,3 +772,112 @@ test("with no lens in config.js (a fork, the other suites) the settings panel an
   // OWED NOTHING, AND THE WHOLE PANEL STILL THERE, open for the link.
   for (const id of [...SETUP, "owedBox"]) await expect(page.locator("#" + id), "#" + id + " is hidden on a fork").toBeVisible();
 });
+
+// ================================================================== warming
+/// A TOKEN'S PAGE SHOWS THE SAME WITH ITS READS WARMED AS WITHOUT (multicall.js):
+/// on a first visit, where planToken asks what config.js and the path say
+/// before the page's scripts run, and on the next, where the reads the first
+/// visit noted are asked again - against the same page with multicall.js
+/// served empty, which warms nothing and gathers nothing. The other suites
+/// never see a warm answer: a link names their endpoint, and their config.js
+/// names none (serve.js testConfig).
+test("a token's page shows the same with its reads warmed as without, on a first visit and on the next", async ({ browser }) => {
+  test.setTimeout(240_000);
+  const config = await standIn();
+  const wallet = [STUB, ";(function () {",
+    "  window.ethereum = window.makeWallet(" + JSON.stringify(STATE.rpc) + ", " +
+      JSON.stringify({ forward: true, chainId: "0x2105", account: TRADER, connected: true }) + ");",
+    "})();"].join("\n");
+  const context = async (warm) => {
+    const ctx = await browser.newContext();
+    await ctx.route(/\/config\.js(\?.*)?$/, (route) =>
+      route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body: config }));
+    if (!warm) await ctx.route(/\/multicall\.js(\?.*)?$/, (route) =>
+      route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body: "/* nothing warmed or gathered */" }));
+    await ctx.addInitScript({ content: wallet });
+    return ctx;
+  };
+  // WHAT THE PAGE SHOWS once its history is in, the clock's words taken out.
+  const visit = async (ctx, after = 0) => {
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const asked = [];
+    page.on("request", (r) => { if (r.method() === "POST" && r.url().startsWith(STATE.rpc)) asked.push(r.postData() || ""); });
+    await page.goto("/token/" + TOKEN);
+    await expect(page.locator("#tvStatus")).not.toHaveText("—", { timeout: 30_000 });
+    await expect(page.locator("#tvTradeCount")).toHaveText(/^\d+$/, { timeout: 60_000 });
+    await page.waitForTimeout(4000);
+    const text = (css) => page.locator(css).first().innerText().then((t) => t.replace(/\s+/g, " ").trim()).catch(() => null);
+    const shown = {};
+    for (const css of ["#tvStatus", "#tvPrice", "#tvMcap", "#tvTradeCount", "#tvEarned", "#tvHistNote", ".tvSwap", "#tvFees", ".tvAbout", "#tvList"]) {
+      shown[css] = await text(css);
+    }
+    await page.click("#tvTabHolders");
+    await page.waitForTimeout(800);
+    shown.holders = await text("#tvList");
+    await page.waitForTimeout(after);
+    const notes = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem("curb.warm.v1") || "{}"); } catch { return {}; } });
+    // HOW MANY WARM ANSWERS THE PAGE TOOK (multicall.js taken; none without it).
+    const served = await page.evaluate(() => (window.CurbMulti && window.CurbMulti.taken ? window.CurbMulti.taken() : 0));
+    await page.close();
+    const clean = JSON.parse(JSON.stringify(shown).replace(/\b\d+(\.\d+)?[smhd]\b|\bnow\b/g, ""));
+    return { shown: clean, errors, asked, notes, served };
+  };
+  // THE CALLS INSIDE THE FIRST aggregate3 A VISIT SENT, as "to|data": multicall.js
+  // sends its warming round before the page's scripts can gather anything.
+  const MULTICALL3 = "0xca11bde05977b3631167028862be2a173976ca11";
+  const firstRound = (asked) => {
+    for (const raw of asked) {
+      let body;
+      try { body = JSON.parse(raw); } catch { continue; }
+      for (const m of [].concat(body)) {
+        const p = m && m.method === "eth_call" && m.params && m.params[0];
+        if (!p || String(p.to).toLowerCase() !== MULTICALL3) continue;
+        const h = String(p.data).slice(10);
+        const at = (b) => parseInt(h.slice(b * 2, b * 2 + 64), 16);
+        const arr = at(0), n = at(arr), base = arr + 32, out = [];
+        for (let i = 0; i < n; i++) {
+          const t = base + at(base + 32 * i);
+          const to = "0x" + h.slice(t * 2 + 24, t * 2 + 64);
+          const b = t + at(t + 64);
+          out.push((to + "|0x" + h.slice((b + 32) * 2, (b + 32 + at(b)) * 2)).toLowerCase());
+        }
+        return out;
+      }
+    }
+    return [];
+  };
+
+  const off = await context(false);
+  const cold = await visit(off);
+  await off.close();
+  expect(cold.errors, "the page threw without multicall.js").toEqual([]);
+  expect(cold.served, "a page without multicall.js took a warm answer").toBe(0);
+
+  const on = await context(true);
+  // PAST NOTE_MS (15 s), so the first visit's reads are kept for the next.
+  const first = await visit(on, 16_000);
+  expect(first.errors, "the page threw with its reads warmed").toEqual([]);
+  // THE WARMING WAS ASKED: the first round named the registry's record of this
+  // launch (planToken) - and the page TOOK warm answers, so what it showed was
+  // drawn from them.
+  const launchOf = (sel("launchOf(address)") + word(BigInt(TOKEN))).toLowerCase();
+  const planned = firstRound(first.asked);
+  expect(planned.some((c) => c.endsWith("|" + launchOf)), "the first round did not name the launch's record").toBe(true);
+  expect(first.served, "the first visit took no warm answer, so this proves nothing").toBeGreaterThan(0);
+  expect(first.shown, "a first visit, warmed, shows something else").toEqual(cold.shown);
+  const noted = first.notes["/token/" + TOKEN];
+  expect(noted && Array.isArray(noted.calls) && noted.calls.length > 0, "the first visit's reads were not kept for the next").toBe(true);
+
+  const second = await visit(on);
+  expect(second.errors, "the next visit threw").toEqual([]);
+  // THE NOTED READS WERE ASKED AGAIN, FIRST: the next visit's first round holds
+  // a read the first visit noted that the plan alone does not ask.
+  const replayed = firstRound(second.asked);
+  expect(replayed.some((c) => !planned.includes(c) && noted.calls.includes(c)),
+    "the next visit's first round asked none of the reads the first visit noted beyond the plan").toBe(true);
+  expect(second.served, "the next visit took no warm answer").toBeGreaterThan(0);
+  expect(second.shown, "the next visit, its noted reads warmed, shows something else").toEqual(cold.shown);
+  await on.close();
+});

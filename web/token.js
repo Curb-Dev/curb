@@ -120,9 +120,14 @@ async function rpc(method, params) {
   if (method === "eth_chainId" && M && M.chainId) return M.chainId(endpoint(), () => rpcSend(method, params));
   return rpcSend(method, params);
 }
+/// The headers of a JSON-RPC POST to `url` (multicall.js headers): text/plain to
+/// the site's own endpoints, so no CORS preflight is made first.
+const rpcHeaders = (url) => (window.CurbMulti && window.CurbMulti.headers ? window.CurbMulti.headers(url)
+  : { "content-type": "application/json" });
 async function rpcSend(method, params) {
-  const res = await fetch(method === "eth_getLogs" ? logsUrl(endpoint()) : endpoint(), {
-    method: "POST", headers: { "content-type": "application/json" },
+  const url = method === "eth_getLogs" ? logsUrl(endpoint()) : endpoint();
+  const res = await fetch(url, {
+    method: "POST", headers: rpcHeaders(url),
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
   });
   if (!res.ok) throw Object.assign(new Error("the endpoint answered HTTP " + res.status), { status: res.status });
@@ -136,7 +141,7 @@ async function rpcBatch(calls) {
   if (!calls.length) return [];
   try {
     const res = await fetch(endpoint(), {
-      method: "POST", headers: { "content-type": "application/json" },
+      method: "POST", headers: rpcHeaders(endpoint()),
       body: JSON.stringify(calls.map((c, i) => ({ jsonrpc: "2.0", id: i + 1, method: c.method, params: c.params }))),
     });
     const arr = await res.json();
@@ -150,12 +155,15 @@ async function rpcBatch(calls) {
   }
 }
 /// A read on the site's own endpoint goes out with the reads made at the same
-/// moment (multicall.js); a revert among them is thrown as rpc throws one.
+/// moment (multicall.js), or takes the answer multicall.js asked for it a
+/// moment ago (warmed); a revert among them is thrown as rpc throws one.
 const call = (to, data) => {
   const M = window.CurbMulti;
   const url = endpoint();
   if (!M || !M.on(url)) return rpc("eth_call", [{ to, data }, "latest"]);
-  return M.call(url, to, data, () => rpc("eth_call", [{ to, data }, "latest"])).then((r) => {
+  const asked = () => M.call(url, to, data, () => rpc("eth_call", [{ to, data }, "latest"]));
+  const w = M.warmed ? M.warmed(url, to, data) : null;
+  return (w ? w.catch(asked) : asked()).then((r) => {
     if (r.ok) return r.data;
     throw Object.assign(new Error("execution reverted"), { code: 3, data: r.data });
   });
@@ -1155,6 +1163,7 @@ async function creationBlock(latest, v, headRead) {
 /// The time is the one app.js read from the same record (its view's
 /// launchedAt) where it has it, and the head the one scanHistory asked for.
 async function creationNear(latest, floor, factory, v, headRead) {
+  let busyOut = null;
   try {
     let at = v && Number.isInteger(v.launchedAt) ? v.launchedAt : 0;
     if (!at) {
@@ -1167,10 +1176,23 @@ async function creationNear(latest, floor, factory, v, headRead) {
     const now = head ? parseInt(head.timestamp, 16) : NaN;
     if (!(now >= at)) return null;
     const guess = latest - Math.floor((now - at) / 2);
+    // A READ REFUSED NOW (a 429, a timeout) IS ASKED AGAIN WITH THE SAME
+    // WINDOW after a pause, LOG_TRIES times, as getLogs asks one - and then
+    // the error is the pass's (busyOut, below), not a reason to search
+    // somewhere else: the narrow window refused once used to send the page
+    // off to the backwards search, which asked for other blocks.
     const created = async (start, end) => {
-      const logs = await rpc("eth_getLogs", [{ address: factory, topics: [TOPIC.launchCreated, "0x" + pad(T.token)],
-        fromBlock: hex(start), toBlock: hex(end) }]);
-      return Array.isArray(logs) && logs.length ? parseInt(logs[0].blockNumber, 16) : null;
+      for (let busy = 0; ;) {
+        try {
+          const logs = await rpc("eth_getLogs", [{ address: factory, topics: [TOPIC.launchCreated, "0x" + pad(T.token)],
+            fromBlock: hex(start), toBlock: hex(end) }]);
+          return Array.isArray(logs) && logs.length ? parseInt(logs[0].blockNumber, 16) : null;
+        } catch (e) {
+          if (logKind(e) !== "busy") throw e;
+          if (++busy > LOG_TRIES) { busyOut = e; throw e; }
+          await sleep(LOG_BACKOFF_MS * 2 ** (busy - 1));
+        }
+      }
     };
     // THE GUESS AND TWO BLOCKS EITHER SIDE, FIRST: on Base the guess is the
     // block - launchedAt is the creation block's own timestamp, and a block
@@ -1188,7 +1210,8 @@ async function creationNear(latest, floor, factory, v, headRead) {
     const end = Math.min(latest, start + span - 1);
     if (start > end) return null;
     return await created(start, end);
-  } catch {
+  } catch (e) {
+    if (busyOut) throw busyOut;
     return null;
   }
 }
@@ -1251,8 +1274,22 @@ function indexFile() {
   }
   return T.indexFile.read;
 }
+/// HOW FAR EACH LAUNCH'S FILE IS KNOWN COMPLETE (checked.json, which every
+/// run of the same script writes: a launch with nothing new since its file
+/// was last written is complete to the run's block). Once a visit, beside
+/// the file; null where there is none.
+const CHECKED_SCHEMA = "curb.history-checked/1";
+function checkedFile() {
+  const site = window.CURB_SITE || {};
+  if (!site.rpc || endpoint() !== String(site.rpc).trim() || T.chainId !== site.chainId) return Promise.resolve(null);
+  if (!T.checkedFile || T.checkedFile.chainId !== T.chainId) {
+    T.checkedFile = { chainId: T.chainId, read: fetch("/sharing/" + T.chainId + "/history/checked.json",
+      { signal: AbortSignal.timeout(10000) }).then((res) => (res.ok ? res.json() : null)).catch(() => null) };
+  }
+  return T.checkedFile.read;
+}
 async function historyIndex(v, from, latest, routerAddr) {
-  const j = await indexFile();
+  const [j, c] = await Promise.all([indexFile(), checkedFile()]);
   const isHex = (s, n) => typeof s === "string" && (n ? new RegExp("^0x[0-9a-fA-F]{" + n + "}$") : /^0x[0-9a-fA-F]*$/).test(s);
   if (!j || j.schema !== INDEX_SCHEMA || j.chainId !== T.chainId || !same(j.token, T.token) || !same(j.curve, v.curve)) return null;
   if (!Number.isInteger(j.from) || !Number.isInteger(j.to) || j.from > from || j.to < j.from || j.to > latest) return null;
@@ -1265,7 +1302,20 @@ async function historyIndex(v, from, latest, routerAddr) {
     ["swaps", POOL_MANAGER, [TOPIC.swap], (l) => inPool && l.topics.length > 1 && l.topics[1].toLowerCase() === poolId],
     ["fees", inPool ? v.poolKey.hooks : "", [TOPIC.feeCharged], (l) => inPool && l.topics.length > 1 && l.topics[1].toLowerCase() === poolId],
   ];
-  const out = { to: j.to };
+  // READ FROM WHERE IT IS KNOWN COMPLETE (checkedFile): later than the file's
+  // own `to` once runs since found nothing new - otherwise a quiet launch's
+  // page read up to 20,000 blocks of the chain after it. Only an entry for
+  // this curve, past the file, and not past the head this pass reads to; and
+  // what it says is held to the chain like the rest (indexAgrees).
+  // AND ONLY FOR THE VERSION OF THE FILE THIS PAGE HOLDS (the entry's `file`):
+  // the two are fetched and cached apart, and a newer checked.json beside an
+  // older file would otherwise stretch the older one over logs only the newer
+  // holds.
+  const e = c && c.schema === CHECKED_SCHEMA && c.chainId === T.chainId && c.launches && typeof c.launches === "object"
+    ? c.launches[String(T.token).toLowerCase()] : null;
+  const done = e && isAddr(e.curve) && same(e.curve, v.curve) && Number.isInteger(e.file) && e.file === j.to &&
+    Number.isInteger(e.to) && e.to > j.to && e.to <= latest ? e.to : j.to;
+  const out = { to: done, from: j.from };
   let total = 0;
   const lower = (t) => typeof t === "string" && t === t.toLowerCase();
   for (const [key, address, topics, extra] of lists) {
@@ -1294,6 +1344,19 @@ async function historyIndex(v, from, latest, routerAddr) {
 
 const sgn128 = (w) => { const x = BigInt("0x" + w); return x >= (1n << 127n) ? x - (1n << 128n) : x; };
 
+/// THE LOGS A PASS COUNTS OVER [from, to], read together: the curve's, the
+/// pool's and the hook's once it is in its pool, and the token's transfers.
+function readLogs(v, from, to) {
+  const inPool = v.status === 3 && !!v.poolKey;
+  const poolId = inPool ? App.poolId(v.poolKey) : "";
+  return Promise.all([
+    getLogs({ address: v.curve, topics: [[TOPIC.curveBuy, TOPIC.curveSell, TOPIC.feesSwept, TOPIC.feesRescued]] }, from, to),
+    inPool ? getLogs({ address: POOL_MANAGER, topics: [TOPIC.swap, poolId] }, from, to) : [],
+    inPool ? getLogs({ address: v.poolKey.hooks, topics: [TOPIC.feeCharged, poolId] }, from, to) : [],
+    getLogs({ address: T.token, topics: [TOPIC.transfer] }, from, to),
+  ]);
+}
+
 /// Reads what happened to this launch since it was created (or since the last
 /// read): its trades on the curve and in the pool, the creator's earnings, and
 /// every transfer of the token for the holder list.
@@ -1308,11 +1371,35 @@ async function scanHistory(figures) {
   try {
     // THE INDEX FILE, ASKED NOW (indexFile): it is wanted below, after the
     // chain's first reads, and fetched beside them instead of after them.
-    if (!T.hist || T.index === undefined) indexFile();
-    const latest = parseInt(await rpc("eth_blockNumber", []), 16);
-    // THE CHAIN'S CLOCK, read every scan (see chainNow) - asked at once: the
-    // search for the launch's first block needs it as well.
-    const headRead = rpc("eth_getBlockByNumber", [hex(latest), false]).catch(() => null);
+    if (!T.hist || T.index === undefined) { indexFile(); checkedFile(); }
+    // THE BLOCK THIS PASS READS TO, AND THAT BLOCK - the chain's clock (see
+    // chainNow) and the creation search's - asked together: the newest block
+    // is that block whenever the two answers agree, as they nearly always do,
+    // and only when they do not is it asked for by number, as it always was.
+    // A "latest" a block past the number (another node answered it) is as
+    // good a head.
+    const [num, top] = await Promise.all([rpc("eth_blockNumber", []),
+      rpc("eth_getBlockByNumber", ["latest", false]).catch(() => null)]);
+    const n = parseInt(num, 16), t = top ? parseInt(top.number, 16) : NaN;
+    const latest = t > n ? t : n;
+    const headRead = t === latest ? Promise.resolve(top)
+      : rpc("eth_getBlockByNumber", [hex(latest), false]).catch(() => null);
+    const routerAddr = App.CURB_ROUTER ? App.CURB_ROUTER.address : "";
+    // ON A FIRST PASS, THE INDEX AND THE LOGS AFTER IT ARE READ BESIDE THE
+    // SEARCH FOR THE CREATION BLOCK: neither needs that block. Only whether
+    // the file may be counted does - it must start no later than the launch -
+    // and that is decided once the block is known, below. One after the
+    // other they were a round trip more before the chart.
+    let early = null;
+    if (!T.hist && !T.indexRefused) {
+      const file = historyIndex(v, Infinity, latest, routerAddr).catch(() => null);
+      early = { file, tail: file.then((pre) => {
+        if (!pre || pre.to >= latest) return null;
+        const logs = readLogs(v, pre.to + 1, latest);
+        logs.catch(() => {});
+        return { from: pre.to + 1, logs };
+      }) };
+    }
     if (!T.hist) {
       const born = await creationBlock(latest, v, headRead);
       const from = born !== null ? born : Math.max(0, latest - MAX_LOOKBACK, await forkFloor());
@@ -1321,9 +1408,17 @@ async function scanHistory(figures) {
       T.scannedTo = from - 1;
       T.index = undefined;
       T.indexUsed = false;
+      if (early) {
+        const got = born === null ? null : await early.file;
+        T.index = got && got.from <= from ? got : null;
+      }
     }
     const h = T.hist;
-    // THE CLOCK, AND THE LAUNCH'S BIRTH ONCE, together.
+    // THE CLOCK, AND THE LAUNCH'S BIRTH ONCE, together. The birth's time is
+    // the record's launchedAt where the view has it: the factory registers a
+    // launch in the transaction that emits its LaunchCreated, so that is the
+    // creation block's own timestamp, and one read fewer.
+    if (!h.bornTs && !h.partial && Number.isInteger(v.launchedAt) && v.launchedAt > 0) h.bornTs = v.launchedAt;
     const [head, b] = await Promise.all([headRead,
       !h.bornTs && !h.partial ? rpc("eth_getBlockByNumber", [hex(h.from), false]).catch(() => null) : null]);
     if (head) T.head = { ts: parseInt(head.timestamp, 16), at: Date.now() };
@@ -1334,7 +1429,6 @@ async function scanHistory(figures) {
     // NOT ON A PARTIAL HISTORY: the file starts at the launch, and the page
     // then says it counts from a later block. NOT WHILE THE NODE IS BEHIND IT:
     // a pass counted to a block below the file's would read part of it again.
-    const routerAddr = App.CURB_ROUTER ? App.CURB_ROUTER.address : "";
     if (T.index === undefined) T.index = h.partial || T.indexRefused ? null : await historyIndex(v, h.from, latest, routerAddr).catch(() => null);
     const pre = T.index && !T.indexUsed ? T.index : null;
     if (pre && pre.to > latest) return;
@@ -1352,12 +1446,11 @@ async function scanHistory(figures) {
     const inPool = v.status === 3 && !!v.poolKey;
     if (inPool) h.poolId = h.poolId || App.poolId(v.poolKey);
     const live = from <= latest;
-    let [curveLogs, swaps, fees, transfers] = live ? await Promise.all([
-      getLogs({ address: v.curve, topics: [[TOPIC.curveBuy, TOPIC.curveSell, TOPIC.feesSwept, TOPIC.feesRescued]] }, from, latest),
-      inPool ? getLogs({ address: POOL_MANAGER, topics: [TOPIC.swap, h.poolId] }, from, latest) : [],
-      inPool ? getLogs({ address: v.poolKey.hooks, topics: [TOPIC.feeCharged, h.poolId] }, from, latest) : [],
-      getLogs({ address: T.token, topics: [TOPIC.transfer] }, from, latest),
-    ]) : [[], [], [], []];
+    // THE LOGS AFTER THE INDEX, where they were read beside the creation search
+    // for this very range.
+    const tail = early ? await early.tail : null;
+    let [curveLogs, swaps, fees, transfers] = !live ? [[], [], [], []]
+      : tail && pre && tail.from === from ? await tail.logs : await readLogs(v, from, latest);
     if (pre) {
       curveLogs = pre.curveLogs.concat(curveLogs);
       swaps = pre.swaps.concat(swaps);

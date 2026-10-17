@@ -164,5 +164,39 @@ else
 fi
 
 echo
+echo "web/multicall.js's warmed selectors vs cast sig:"
+# THE READS multicall.js ASKS BEFORE THE PAGE DOES (planToken) are named by
+# hand-written selectors: one that is wrong is never the read the page makes,
+# and the page quietly waits for its own again. Each must be the selector of
+# the signature app.js or token.js builds for that function.
+MULTI_DIR="$WEB"
+case "$NODE" in
+  *.exe) command -v wslpath >/dev/null 2>&1 && MULTI_DIR=$(wslpath -m "$WEB") ;;
+esac
+pairs=$("$NODE" -e "
+  const fs = require('fs');
+  const dir = '$MULTI_DIR';
+  const sigs = new Map();
+  for (const f of ['app.js', 'token.js']) {
+    for (const m of fs.readFileSync(dir + '/' + f, 'utf8').matchAll(/sig\(\"([^\"]+)\"\)/g)) sigs.set(m[1].split('(')[0], m[1]);
+  }
+  const table = /const SEL = \{([\s\S]*?)\};/.exec(fs.readFileSync(dir + '/multicall.js', 'utf8'));
+  if (!table) { console.log('NO-TABLE x x'); process.exit(0); }
+  for (const m of table[1].matchAll(/(\w+): \"(0x[0-9a-f]{8})\"/g)) console.log(m[1], m[2], sigs.get(m[1]) || 'NONE');
+") || die "node could not read multicall.js"
+[ -n "$pairs" ] || die "multicall.js names no selectors"
+while read -r name sel sig; do
+  if [ "$sig" = "NONE" ] || [ "$name" = "NO-TABLE" ]; then
+    printf "  FAIL %s\n    no sig() in app.js or token.js names it\n" "$name"; fail=1; continue
+  fi
+  want=$($CAST sig "$sig")
+  if [ "$want" = "$sel" ]; then
+    printf "  ok   %s\n" "$sig"
+  else
+    printf "  FAIL %s\n    cast %s\n    js   %s\n" "$sig" "$want" "$sel"; fail=1
+  fi
+done <<< "$pairs"
+
+echo
 [ "$fail" -eq 0 ] || die "the page's coders do not agree with cast"
 echo "abi.js and keccak.js agree with cast on every shape this app uses"

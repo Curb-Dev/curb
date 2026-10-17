@@ -794,10 +794,14 @@ async function rpcAt(url, method, params, signal) {
   if (method === "eth_chainId" && !signal && M && M.chainId) return M.chainId(url, () => rpcSend(url, method, params));
   return rpcSend(url, method, params, signal);
 }
+/// The headers of a JSON-RPC POST to `url` (multicall.js headers): text/plain to
+/// the site's own endpoints, so no CORS preflight is made first.
+const rpcHeaders = (url) => (window.CurbMulti && window.CurbMulti.headers ? window.CurbMulti.headers(url)
+  : { "content-type": "application/json" });
 async function rpcSend(url, method, params, signal) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: rpcHeaders(url),
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
     signal,
   });
@@ -892,7 +896,19 @@ const callAt = (url, to, data, signal, gas) => (!gas && !signal && Multi && Mult
     throw gatheredRevert(r.data);
   })
   : rpcAt(url, "eth_call", [callBody(to, data, gas), "latest"], signal));
-const call = (to, data, signal, gas) => callAt(chainCfg.rpc, to, data, signal, gas);
+/// A DISPLAY READ AT `url`, which takes the answer multicall.js asked for it
+/// a moment ago where there is one (warmed); an action's pinned reads go
+/// through callAt itself and never do.
+const displayAt = (url, to, data) => {
+  const w = Multi && Multi.warmed ? Multi.warmed(url, to, data) : null;
+  if (!w) return callAt(url, to, data);
+  return w.then((r) => {
+    if (r.ok) return r.data;
+    throw gatheredRevert(r.data);
+  }, () => callAt(url, to, data));
+};
+const call = (to, data, signal, gas) => (!gas && !signal ? displayAt(chainCfg.rpc, to, data)
+  : callAt(chainCfg.rpc, to, data, signal, gas));
 
 function wallet() {
   if (!window.ethereum) throw new Error("No injected wallet. Reading works without one; sending does not.");
@@ -910,6 +926,9 @@ function wallet() {
 /// send re-reads chain and account immediately before dispatch, because
 /// everything in between takes round trips a user can switch networks during.
 async function beginAction(scope) {
+  // NOTHING WARM STANDS IN FOR A READ FROM HERE ON (multicall.js forget): what
+  // is drawn after an action is read after it.
+  if (Multi && Multi.forget) Multi.forget();
   // THE SNAPSHOT IS TAKEN BEFORE THE FIRST await, AND NOTHING AFTER IT READS
   // THE FORM.
   //
@@ -1536,23 +1555,37 @@ async function resumePendingInner(opts) {
     if (outcome.done) settled.push(...lines);
     else still.push({ tx, why: outcome.still });
   }
-  if (quiet) return;
+  // WHAT A SETTLED RECORD CHANGED IS READ AGAIN where anything on screen may
+  // have come from an answer multicall.js asked before it was mined (forget
+  // says how many this page took): the whole refresh, which owns the launch,
+  // the balances and the owed panel, and sends the token view curb:drawn. The
+  // refresh, not one panel: a newer refresh running meanwhile is then
+  // superseded rather than left to drop its own drawing. AFTER THE REPORT
+  // (finally, below), which does not depend on it: awaited first, it held the
+  // report back for a whole refresh, and an action pressed meanwhile had its
+  // own line written over.
+  const reread = settled.length > 0 && !!(Multi && Multi.forget) && Multi.forget() > 0;
+  try {
+    if (quiet) return;
 
-  const parts = settled.map((l) => l.html);
-  let made = false;
-  for (const s of still) {
-    if (s.why.state === "made") {
-      const key = TX.keyOf(s.tx);
-      if (saidMade.has(key)) continue;
-      saidMade.add(key);
-      made = true;
+    const parts = settled.map((l) => l.html);
+    let made = false;
+    for (const s of still) {
+      if (s.why.state === "made") {
+        const key = TX.keyOf(s.tx);
+        if (saidMade.has(key)) continue;
+        saidMade.add(key);
+        made = true;
+      }
+      parts.push(stillLine(s.tx, s.why));
     }
-    parts.push(stillLine(s.tx, s.why));
+    if (!parts.length) return;
+    const kind = settled.some((l) => l.kind === "err") ? "err"
+      : (settled.some((l) => l.kind === "ok") || made) ? "ok" : "wait";
+    show(kind, parts.join("<br>"));
+  } finally {
+    if (reread) await refresh(true).catch(() => {});
   }
-  if (!parts.length) return;
-  const kind = settled.some((l) => l.kind === "err") ? "err"
-    : (settled.some((l) => l.kind === "ok") || made) ? "ok" : "wait";
-  show(kind, parts.join("<br>"));
 }
 
 /// An endpoint the person chose: anything but the one only a link named.
@@ -3254,7 +3287,7 @@ async function fillQuotePicker() {
     const registry = oneAddress(await callAt(url, source, SEL.registry),
       fromFactory ? "The factory's registry()" : "The lens's registry()");
     if (!live()) return;
-    const atUrl = (to, data) => callAt(url, to, data);
+    const atUrl = (to, data) => displayAt(url, to, data);
     const listed = await quoteChoices(registry, atUrl, live, url);
     // A FACTORY THE SITE NO LONGER OFFERS (config.js hiddenFactories - the
     // halt PRE_MAINNET D4 names for an asset) is not a choice: the registry
@@ -3869,6 +3902,9 @@ async function refresh(quiet) {
     if (early) early.view.catch(() => {});
     const graduatorRead = readGraduator();
     graduatorRead.catch(() => {});
+    // AND WHETHER THE CURB ROUTER IS HERE (routerReady, below): one read of
+    // its code, once per endpoint and chain, which waited for all of this.
+    const routerRead = routerReady({ rpc: chainCfg.rpc, read: rpc }).catch(() => {});
     // AND WHETHER THAT THRESHOLD CAN BE REACHED AT ALL. Read every refresh so
     // it tracks the market rather than the day this was written.
     try {
@@ -4138,6 +4174,27 @@ async function refresh(quiet) {
         call(graduator, SEL.holderDistributorOf + pad32(chainCfg.token)).catch((e) => (lacksFunction(e) ? "0x" : Promise.reject(e))),
       ]);
       if (stale()) return;
+      // A DISAGREEMENT IS ASKED AGAIN, BOTH SIDES IN ONE TICK AND NEITHER WARM
+      // (callAt, gathered into one aggregate, so of one block), before the lens
+      // is refused: the lens was read seconds before the chain's flags, and a
+      // launch that filled or graduated in between disagreed for no fault of
+      // the lens. Agreeing now, the refresh starts over and draws what both
+      // say; disagreeing still, the lens is refused as before.
+      if (status !== readView.status) {
+        const cold = (to, d) => callAt(chainCfg.rpc, to, d);
+        const [lensNow, chainNow] = await Promise.all([
+          readLaunchWith({ call: cold, lens: chainCfg.lens }, chainCfg.token).then((r) => r.status, () => null),
+          chainStatusOf(cold, graduator, chainCfg.token, recCurve).catch(() => null),
+        ]);
+        if (stale()) return;
+        if (lensNow !== null && lensNow === chainNow && !refresh.recheckedStatus) {
+          // NOTHING WARM INTO THAT REFRESH: those answers are from before the change.
+          if (Multi && Multi.forget) Multi.forget();
+          refresh.recheckedStatus = true;
+          try { await refresh(quiet); } finally { refresh.recheckedStatus = false; }
+          return;
+        }
+      }
       if (status !== readView.status) {
         noLaunch();
         showRead(escapeHtml(
@@ -4205,7 +4262,10 @@ async function refresh(quiet) {
     // WHETHER THE CURB ROUTER IS HERE, asked once per endpoint and chain before
     // the token view draws: it offers ETH for a curve sale only where the router
     // can pay it (routerUsable).
-    if (view.status === 1) await routerReady({ rpc: chainCfg.rpc, read: rpc }).catch(() => {});
+    if (view.status === 1) {
+      await routerRead;
+      await routerReady({ rpc: chainCfg.rpc, read: rpc }).catch(() => {});
+    }
     if (stale()) return;
     // AND THE FACTORY THE AUTOMATIC SWITCH MAY HAVE MOVED TO, held to config.js.
     recheckWhere();
@@ -5581,7 +5641,7 @@ async function readGraduator() {
   const moved = () => !same(askedLens, chainCfg.lens) || askedRpc !== chainCfg.rpc;
   let answer;
   try {
-    answer = oneAddress(await callAt(askedRpc, askedLens, SEL.graduator), "The lens's graduator()");
+    answer = oneAddress(await displayAt(askedRpc, askedLens, SEL.graduator), "The lens's graduator()");
   } catch (e) {
     // NO ANSWER IS NOT THE LAST LENS'S ANSWER: what was held is dropped, so
     // nothing is kept about a lens that did not reply. A lens with no code here

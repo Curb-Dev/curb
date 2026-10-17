@@ -118,10 +118,15 @@ async function rpcAt(url, method, params) {
   if (method === "eth_chainId" && M && M.chainId) return M.chainId(url, () => rpcSend(url, method, params));
   return rpcSend(url, method, params);
 }
+/// The headers of a JSON-RPC POST to `url` (multicall.js headers): text/plain to
+/// the site's own endpoints, so no CORS preflight is made first.
+const rpcHeaders = (url) => (window.CurbMulti && window.CurbMulti.headers ? window.CurbMulti.headers(url)
+  : { "content-type": "application/json" });
 async function rpcSend(url, method, params) {
-  const res = await fetch(method === "eth_getLogs" ? logsUrl(url) : url, {
+  const to = method === "eth_getLogs" ? logsUrl(url) : url;
+  const res = await fetch(to, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: rpcHeaders(to),
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
   });
   let body;
@@ -141,11 +146,14 @@ async function rpcSend(url, method, params) {
 }
 /// A read at "latest" on the site's own endpoint goes out with the reads made
 /// at the same moment (multicall.js); a revert among them is thrown as rpcAt
-/// throws one.
-const callAt = (url, to, data, block) => {
+/// throws one. `cold`: never the warm answer (see loadPage's readAt).
+const callAt = (url, to, data, block, cold) => {
   const M = window.CurbMulti;
   if (block || !M || !M.on(url)) return rpcAt(url, "eth_call", [{ to, data }, block || "latest"]);
-  return M.call(url, to, data, () => rpcAt(url, "eth_call", [{ to, data }, "latest"])).then((r) => {
+  // OR THE ANSWER multicall.js ASKED FOR IT A MOMENT AGO (warmed).
+  const asked = () => M.call(url, to, data, () => rpcAt(url, "eth_call", [{ to, data }, "latest"]));
+  const w = !cold && M.warmed ? M.warmed(url, to, data) : null;
+  return (w ? w.catch(asked) : asked()).then((r) => {
     if (r.ok) return r.data;
     throw Object.assign(new Error("execution reverted"), { code: 3, data: r.data });
   });
@@ -161,7 +169,7 @@ async function rpcBatchAt(url, calls) {
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: rpcHeaders(url),
       body: JSON.stringify(calls.map((c, i) => ({ jsonrpc: "2.0", id: i + 1, method: c.method, params: c.params }))),
     });
     const arr = await res.json();
@@ -1108,7 +1116,8 @@ async function timeBuys(rpc) {
 async function rereadRows(rpc, rows, head) {
   await Promise.all(rows.map(async (v) => {
     try {
-      const [fresh] = decodeLaunchPage(await callAt(rpc, state.lens, SIGS.launchPage + pad(v.index) + pad(1)));
+      // COLD: stamped with the head below, so never an answer asked before it.
+      const [fresh] = decodeLaunchPage(await callAt(rpc, state.lens, SIGS.launchPage + pad(v.index) + pad(1), undefined, true));
       if (!fresh || fresh.token.toLowerCase() !== v.token.toLowerCase() || state.rpc !== rpc) return;
       for (const k of ["status", "quoteReserve", "tokenReserve", "realQuoteReserve", "graduationThreshold", "totalSupply",
         "holderDistributor"]) v[k] = fresh[k];
@@ -1734,7 +1743,9 @@ async function loadPage(gen) {
   // THE BLOCK THE RECORDS ARE AT LEAST AS NEW AS, read first: a buy from this
   // block on may not be in them, and "Just bought" reads such a launch again.
   const readAt = parseInt(await rpcAt(state.rpc, "eth_blockNumber", []).catch(() => "0x0"), 16) || 0;
-  const raw = await callAt(state.rpc, state.lens, SIGS.launchPage + pad(start) + pad(count));
+  // COLD: every row is stamped with readAt, which must be no newer than the
+  // block the rows were read at - a warm answer was asked before readAt was.
+  const raw = await callAt(state.rpc, state.lens, SIGS.launchPage + pad(start) + pad(count), undefined, true);
   if (gen !== state.gen) return;
   let page = decodeLaunchPage(raw);
   // A SHORT PAGE IS A GAP, NOT A TAIL. The window is [start, start + count); a
@@ -2234,7 +2245,8 @@ async function scanHero(reg) {
     const now = parseInt(head.timestamp, 16);
     const from = Math.max(0, latest - Math.ceil(DAY_S / BASE_BLOCK_S), await forkFloor(rpc));
     // ITS RECORD NOW, so the price and the market cap keep up with the trades.
-    const rec = (await callAt(rpc, state.lens, SIGS.launchState + pad(v.token)).catch(() => "0x") || "0x").replace(/^0x/, "");
+    // COLD: paired with the head read above, so never an answer asked before it.
+    const rec = (await callAt(rpc, state.lens, SIGS.launchState + pad(v.token), undefined, true).catch(() => "0x") || "0x").replace(/^0x/, "");
     const words = rec.length / WORD;
     if (words >= MIN_VIEW_WORDS && Number.isInteger(words)) {
       const r = recordAt(rec, 0, words, v.token);

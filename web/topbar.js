@@ -717,10 +717,14 @@ const hiddenLaunches = new Set(SITE.hiddenLaunches);
 let callSeq = 0;
 /// One eth_call. A NODE'S ERROR (a revert, no such function) is an answer and
 /// comes back as "0x"; an endpoint that did not answer throws.
+/// The headers of a JSON-RPC POST to `url` (multicall.js headers): text/plain to
+/// the site's own endpoints, so no CORS preflight is made first.
+const rpcHeaders = (url) => (window.CurbMulti && window.CurbMulti.headers ? window.CurbMulti.headers(url)
+  : { "content-type": "application/json" });
 async function ethCall(rpc, to, data) {
   const res = await fetch(rpc, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: rpcHeaders(rpc),
     body: JSON.stringify({ jsonrpc: "2.0", id: ++callSeq, method: "eth_call", params: [{ to, data }, "latest"] }),
   });
   if (!res.ok) throw new Error("the endpoint answered HTTP " + res.status);
