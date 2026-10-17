@@ -182,10 +182,22 @@ function logsUrl(url) {
   const logs = typeof c.logsRpc === "string" ? c.logsRpc.trim() : "";
   return logs && own && String(url || "").trim() === own ? logs : url;
 }
+/// THE MOST BLOCKS OF LOGS ASKED AT ONCE TO START WITH, where `url`'s logs go
+/// to logsRpc: web/config.js logsBlocks (token.js logsCeiling). 0 elsewhere.
+function logsCeiling(url) {
+  const n = (window.CURB_SITE || {}).logsBlocks;
+  return logsUrl(url) !== url && Number.isInteger(n) && n > 0 ? n : 0;
+}
 /// One JSON-RPC request. A node's error is marked fromNode, with its code and
 /// data, so app.js's isRevert and revertSentence read it the way they read
 /// their own.
 async function rpcAt(url, method, params) {
+  // THE SITE'S OWN ENDPOINT IS ASKED ITS CHAIN ONCE A VISIT (multicall.js chainId).
+  const M = window.CurbMulti;
+  if (method === "eth_chainId" && M && M.chainId) return M.chainId(url, () => rpcSend(url, method, params));
+  return rpcSend(url, method, params);
+}
+async function rpcSend(url, method, params) {
   const res = await fetch(method === "eth_getLogs" ? logsUrl(url) : url, {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
@@ -385,7 +397,10 @@ function logError(e) {
 /// refuses. `budget` caps the requests; past it the scan stops and says so.
 async function getLogs(r, filter, from, to, budget = 400) {
   const out = [];
-  let size = 10000, cap = 100000, busy = 0, asked = 0;
+  // NO WIDER THAN THE CEILING config.js STATES for the log endpoint (logsCeiling):
+  // from 10,000 a 1,000-block ceiling cost four refusals before every read.
+  const said = logsCeiling(r.url);
+  let size = said ? Math.min(10000, said) : 10000, cap = said || 100000, busy = 0, asked = 0;
   let start = from;
   while (start <= to) {
     if (++asked > budget) return { logs: out, complete: false, reached: start - 1 };

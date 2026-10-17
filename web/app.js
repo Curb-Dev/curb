@@ -789,6 +789,12 @@ let rpcId = 0;
 /// behind answers nobody will read - which looks like a frozen page rather
 /// than a slow one, because nothing is in flight to see. See bestV3Leg.
 async function rpcAt(url, method, params, signal) {
+  // THE SITE'S OWN ENDPOINT IS ASKED ITS CHAIN ONCE A VISIT (multicall.js chainId).
+  const M = window.CurbMulti;
+  if (method === "eth_chainId" && !signal && M && M.chainId) return M.chainId(url, () => rpcSend(url, method, params));
+  return rpcSend(url, method, params, signal);
+}
+async function rpcSend(url, method, params, signal) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -3845,6 +3851,24 @@ async function refresh(quiet) {
     // Every place the page names the asset in prose, from one source.
     $("quoteSymA").textContent = here.quoteSym;
     for (const el of document.querySelectorAll(".qs")) el.textContent = here.quoteSym;
+    // THE READS BELOW THAT WAIT FOR NOTHING ON THIS PAGE, STARTED NOW and taken
+    // where they were: the lens's Graduator, and the registry's and the lens's
+    // word on the launch. Behind the factory's half, one after another, they
+    // were two round trips more before a token's status (17 October 2026).
+    // Each is only read here; what is drawn from it, and when, is as before,
+    // and a launch or lens changed in the meantime is asked again below.
+    const early = isAddr(chainCfg.token) && isAddr(chainCfg.lens) ? {
+      token: chainCfg.token,
+      lens: chainCfg.lens,
+      reg: Promise.allSettled([
+        call(here.registry, SEL.isRegistered + pad32(chainCfg.token)),
+        call(here.registry, SEL.launchOf + pad32(chainCfg.token)),
+      ]),
+      view: readLaunch(chainCfg.token),
+    } : null;
+    if (early) early.view.catch(() => {});
+    const graduatorRead = readGraduator();
+    graduatorRead.catch(() => {});
     // AND WHETHER THAT THRESHOLD CAN BE REACHED AT ALL. Read every refresh so
     // it tracks the market rather than the day this was written.
     try {
@@ -3928,7 +3952,7 @@ async function refresh(quiet) {
     // the launch and the lock use the factory's graduator. After the factory's
     // half, and its failure caught, so a lens with no code here costs nothing
     // but this read (N07).
-    try { await readGraduator(); } catch { /* the launch read below reports a bad lens */ }
+    try { await graduatorRead; } catch { /* the launch read below reports a bad lens */ }
     if (stale()) return;
 
     if (!isAddr(chainCfg.token)) {
@@ -3951,11 +3975,13 @@ async function refresh(quiet) {
     // THE REGISTRY IS ASKED WHILE THE LENS IS (see below): both answers are
     // needed and neither waits on the other. launchOf reverts for a token the
     // registry does not know, and is then simply not used.
-    const regReads = Promise.allSettled([
+    // THE ONES STARTED ABOVE, where they were asked about this launch and lens.
+    const asked = early && same(early.token, chainCfg.token) && same(early.lens, chainCfg.lens) ? early : null;
+    const regReads = asked ? asked.reg : Promise.allSettled([
       call(here.registry, SEL.isRegistered + pad32(chainCfg.token)),
       call(here.registry, SEL.launchOf + pad32(chainCfg.token)),
     ]);
-    const readView = await readLaunch(chainCfg.token);
+    const readView = await (asked ? asked.view : readLaunch(chainCfg.token));
     if (stale()) return;
 
     // A LAUNCH IS DRAWN ONLY AS THE REGISTRY AND THE CHAIN RECORD IT.
@@ -4138,6 +4164,10 @@ async function refresh(quiet) {
         totalSupply: word(supW, "The token's totalSupply()"),
         poolKey: readView.poolKey,
         holderDistributor: words(shareW).length ? wordToAddress(words(shareW)[0]) : null,
+        // WHEN THE REGISTRY RECORDED IT (word 11 of its record), for the token
+        // view's search for the creation block (token.js creationNear). 0 when
+        // the record is shorter.
+        launchedAt: rec.length >= 12 ? Number(wordToBig(rec[11])) : 0,
       };
     }
 

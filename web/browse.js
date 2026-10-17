@@ -102,11 +102,23 @@ function logsUrl(url) {
   const logs = typeof c.logsRpc === "string" ? c.logsRpc.trim() : "";
   return logs && own && String(url || "").trim() === own ? logs : url;
 }
+/// THE MOST BLOCKS OF LOGS ASKED AT ONCE TO START WITH, where `url`'s logs go
+/// to logsRpc: web/config.js logsBlocks (token.js logsCeiling). 0 elsewhere.
+function logsCeiling(url) {
+  const n = (window.CURB_SITE || {}).logsBlocks;
+  return logsUrl(url) !== url && Number.isInteger(n) && n > 0 ? n : 0;
+}
 /// One JSON-RPC request. A failure carries what kind it was - the HTTP status
 /// and the endpoint's error code - because the launch-time scan treats a range
 /// it was refused differently from a request that was merely refused NOW (a
 /// 429, a timeout, a page that is not JSON). See logError.
 async function rpcAt(url, method, params) {
+  // THE SITE'S OWN ENDPOINT IS ASKED ITS CHAIN ONCE A VISIT (multicall.js chainId).
+  const M = window.CurbMulti;
+  if (method === "eth_chainId" && M && M.chainId) return M.chainId(url, () => rpcSend(url, method, params));
+  return rpcSend(url, method, params);
+}
+async function rpcSend(url, method, params) {
   const res = await fetch(method === "eth_getLogs" ? logsUrl(url) : url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -852,9 +864,12 @@ async function scanTimes() {
   const registry = state.registry;
   if (!rpc || !registry) return;
   if (times.registry !== registry || times.rpc !== rpc) {
+    // THE CEILING config.js STATES FOR THE LOG ENDPOINT, where it states one: a
+    // first window above it is refused before anything is read (logsCeiling).
+    const said = logsCeiling(rpc);
     Object.assign(times, { registry, rpc, head: null, floor: null, floorIsLookback: false, olderBelow: 0,
-      bottom: null, kept: null, window: LOG_WINDOW, cap: LOG_WINDOW_MAX, capIsSize: false, served: 0,
-      failed: "", retryMs: 0 });
+      bottom: null, kept: null, window: said ? Math.min(LOG_WINDOW, said) : LOG_WINDOW,
+      cap: said || LOG_WINDOW_MAX, capIsSize: false, served: 0, failed: "", retryMs: 0 });
     times.blockOf.clear();
     times.tsOf.clear();
     times.tsTried.clear();
@@ -998,7 +1013,7 @@ function readBuys() {
 async function scanBuys() {
   const rpc = state.rpc;
   if (!rpc || !state.rows.length) return;
-  if (buys.rpc !== rpc) { buys.rpc = rpc; buys.at.clear(); buys.window = Math.min(LOG_WINDOW, times.cap); }
+  if (buys.rpc !== rpc) { buys.rpc = rpc; buys.at.clear(); buys.window = Math.min(LOG_WINDOW, times.cap, logsCeiling(rpc) || LOG_WINDOW); }
   const head = parseInt(await rpcAt(rpc, "eth_blockNumber", []), 16);
   if (!Number.isFinite(head)) throw new Error("the endpoint did not say which block it is at");
   const floor = await forkFloor(rpc);
@@ -2161,7 +2176,7 @@ const heroWin = { rpc: "", size: LOG_WINDOW };
 /// Every error used to halve the window, so four 429s in a row left the card
 /// with no line until the next rescan.
 async function heroLogs(rpc, filter, from, to) {
-  if (heroWin.rpc !== rpc) { heroWin.rpc = rpc; heroWin.size = Math.min(LOG_WINDOW, times.cap); }
+  if (heroWin.rpc !== rpc) { heroWin.rpc = rpc; heroWin.size = Math.min(LOG_WINDOW, times.cap, logsCeiling(rpc) || LOG_WINDOW); }
   const out = [];
   let busy = 0;
   let start = from;

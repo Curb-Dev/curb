@@ -19,6 +19,8 @@
 //
 // Display reads only: what a page sends is simulated by the wallet, and calls
 // that name a sender (from) or a gas limit are never gathered.
+//
+// AND eth_chainId of the same endpoint is asked once a visit (chainId below).
 (function () {
 "use strict";
 
@@ -122,5 +124,20 @@ function call(url, to, data, direct) {
   });
 }
 
-window.CurbMulti = { on, call, encode, decode, MULTICALL3 };
+/// THE CHAIN THE SITE'S OWN ENDPOINT SERVES, asked once a visit: a page asked
+/// it five times, two of them in the way of the launch's status, and the
+/// answer of an endpoint config.js names for one network does not change while
+/// a page is open. `ask` makes the request; a failed ask is not kept, and any
+/// other endpoint is asked every time, as before.
+const chainIds = new Map();
+function chainId(url, ask) {
+  if (!on(url)) return ask();
+  const key = String(url).trim();
+  if (!chainIds.has(key)) {
+    chainIds.set(key, Promise.resolve().then(ask).catch((e) => { chainIds.delete(key); throw e; }));
+  }
+  return chainIds.get(key);
+}
+
+window.CurbMulti = { on, call, chainId, encode, decode, MULTICALL3 };
 })();

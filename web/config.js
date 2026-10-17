@@ -24,6 +24,11 @@
 //                    (browse.js, token.js, sharing.js logsUrl). Keyless and
 //                    public, read-only. A link or saved setting naming another
 //                    endpoint sends its logs there as well.
+//   logsBlocks       the most blocks logsRpc answers in one eth_getLogs (Tenderly's
+//                    public gateway: 1000), so a page's first window is no wider
+//                    and is not refused before the first answer (browse.js,
+//                    token.js, sharing.js logsCeiling). 0 learns it from the
+//                    refusals, as for any other endpoint.
 //   lens             the LaunchLens address
 //   registry         the LaunchRegistry address, as ADDRESSES.txt lists it
 //   factories        every factory the registry admits, as ADDRESSES.txt lists them
@@ -57,6 +62,7 @@ window.CURB_SITE = {
   chainId: 8453,
   rpc: "https://base-mainnet.g.alchemy.com/v2/alch_pHLEFLyKJGS9aGggDpuTQ",
   logsRpc: "https://base.gateway.tenderly.co",
+  logsBlocks: 1000,
   lens: "0xE6F85A3e97dD2F1a58acBA7A68a663E1f66C52c8",
   registry: "0x86e9a01F3959A96469051AE1a73D5C09b0BaC110",
   factories: [

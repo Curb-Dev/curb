@@ -107,7 +107,20 @@ function logsUrl(url) {
   const logs = typeof c.logsRpc === "string" ? c.logsRpc.trim() : "";
   return logs && own && String(url || "").trim() === own ? logs : url;
 }
+/// THE MOST BLOCKS OF LOGS ASKED AT ONCE TO START WITH, where `url`'s logs go
+/// to logsRpc: web/config.js logsBlocks, the ceiling that endpoint states. 0
+/// elsewhere, or where it says none: the ceiling is then learnt from refusals.
+function logsCeiling(url) {
+  const n = (window.CURB_SITE || {}).logsBlocks;
+  return logsUrl(url) !== url && Number.isInteger(n) && n > 0 ? n : 0;
+}
 async function rpc(method, params) {
+  // THE SITE'S OWN ENDPOINT IS ASKED ITS CHAIN ONCE A VISIT (multicall.js chainId).
+  const M = window.CurbMulti;
+  if (method === "eth_chainId" && M && M.chainId) return M.chainId(endpoint(), () => rpcSend(method, params));
+  return rpcSend(method, params);
+}
+async function rpcSend(method, params) {
   const res = await fetch(method === "eth_getLogs" ? logsUrl(endpoint()) : endpoint(), {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
@@ -984,14 +997,15 @@ function logKind(e) {
 }
 
 /// THE LOG RANGE THIS ENDPOINT IS KNOWN TO TAKE, learnt from its refusals and
-/// kept for the visit, for every read here: blocks is 0 while none was
-/// refused. A block-range ceiling holds; a result-size one depends on how busy
-/// the blocks were, so it is tried above again once SIZE_REGROW windows went
-/// through under it (web/browse.js times.cap does the same).
+/// kept for the visit, for every read here: blocks starts at logsCeiling, 0
+/// while none was refused and none is stated. A block-range ceiling holds; a
+/// result-size one depends on how busy the blocks were, so it is tried above
+/// again once SIZE_REGROW windows went through under it (web/browse.js
+/// times.cap does the same).
 const logCap = { rpc: "", blocks: 0, isSize: false, served: 0 };
 function capNow() {
   const url = endpoint();
-  if (logCap.rpc !== url) Object.assign(logCap, { rpc: url, blocks: 0, isSize: false, served: 0 });
+  if (logCap.rpc !== url) Object.assign(logCap, { rpc: url, blocks: logsCeiling(url), isSize: false, served: 0 });
   return logCap;
 }
 /// The window to ask for: `most`, or the ceiling learnt where it is lower.
@@ -1096,11 +1110,11 @@ async function forkFloor() {
 /// windows that grow - a launch of today is found in the first - and null when
 /// it is older than MAX_LOOKBACK. The windows grow no wider than the endpoint
 /// was seen to take, and its refusals are sorted as getLogs sorts them.
-async function creationBlock(latest) {
+async function creationBlock(latest, v, headRead) {
   const factory = S().chainCfg.factory;
   if (!isAddr(factory)) return null;
   const floor = Math.max(0, latest - MAX_LOOKBACK, await forkFloor());
-  const near = await creationNear(latest, floor, factory);
+  const near = await creationNear(latest, floor, factory, v, headRead);
   if (near !== null) return near;
   let end = latest;
   let size = withinCap(2000);
@@ -1138,25 +1152,42 @@ async function creationBlock(latest) {
 /// guess is asked; a guess that misses (a fork, whose blocks keep no such
 /// pace) gives null and the backwards search runs as before. $CURB's page,
 /// one day old, spent 39 windows of searching on it (17 October 2026).
-async function creationNear(latest, floor, factory) {
+/// The time is the one app.js read from the same record (its view's
+/// launchedAt) where it has it, and the head the one scanHistory asked for.
+async function creationNear(latest, floor, factory, v, headRead) {
   try {
-    const reg = wordToAddress(words(await call(factory, SEL.registry))[0]);
-    const rec = words(await call(reg, SEL.launchOf + pad(T.token)));
-    const at = rec.length >= 12 ? Number(wordToBig(rec[11])) : 0;
+    let at = v && Number.isInteger(v.launchedAt) ? v.launchedAt : 0;
+    if (!at) {
+      const reg = wordToAddress(words(await call(factory, SEL.registry))[0]);
+      const rec = words(await call(reg, SEL.launchOf + pad(T.token)));
+      at = rec.length >= 12 ? Number(wordToBig(rec[11])) : 0;
+    }
     if (!at) return null;
-    const head = await rpc("eth_getBlockByNumber", [hex(latest), false]);
+    const head = await (headRead || rpc("eth_getBlockByNumber", [hex(latest), false]));
     const now = head ? parseInt(head.timestamp, 16) : NaN;
     if (!(now >= at)) return null;
     const guess = latest - Math.floor((now - at) / 2);
+    const created = async (start, end) => {
+      const logs = await rpc("eth_getLogs", [{ address: factory, topics: [TOPIC.launchCreated, "0x" + pad(T.token)],
+        fromBlock: hex(start), toBlock: hex(end) }]);
+      return Array.isArray(logs) && logs.length ? parseInt(logs[0].blockNumber, 16) : null;
+    };
+    // THE GUESS AND TWO BLOCKS EITHER SIDE, FIRST: on Base the guess is the
+    // block - launchedAt is the creation block's own timestamp, and a block
+    // comes every 2 seconds exactly - and five blocks are a small read where
+    // the window below took Tenderly 0.4 s. A miss asks the window.
+    const s0 = Math.max(floor, guess - 2), e0 = Math.min(latest, guess + 2);
+    if (s0 <= e0) {
+      const b = await created(s0, e0);
+      if (b !== null) return b;
+    }
     // A WINDOW OF EXACTLY THE SPAN, the guess in its middle: guess +/- span/2
     // is one block more, and a 1,000-block ceiling refused it.
     const span = withinCap(1000);
     const start = Math.max(floor, guess - Math.floor((span - 1) / 2));
     const end = Math.min(latest, start + span - 1);
     if (start > end) return null;
-    const logs = await rpc("eth_getLogs", [{ address: factory, topics: [TOPIC.launchCreated, "0x" + pad(T.token)],
-      fromBlock: hex(start), toBlock: hex(end) }]);
-    return Array.isArray(logs) && logs.length ? parseInt(logs[0].blockNumber, 16) : null;
+    return await created(start, end);
   } catch {
     return null;
   }
@@ -1207,16 +1238,21 @@ async function indexAgrees(v, latest) {
   }
   return true;
 }
-async function historyIndex(v, from, latest, routerAddr) {
+/// THE FILE ITSELF, fetched once a visit for each launch - asked when the
+/// history pass starts, so it is in by the time the pass wants it - and only
+/// on the site's own chain and endpoint. Null where there is none.
+function indexFile() {
   const site = window.CURB_SITE || {};
-  if (!site.rpc || endpoint() !== String(site.rpc).trim() || T.chainId !== site.chainId) return null;
-  let j;
-  try {
-    const res = await fetch("/sharing/" + T.chainId + "/history/" + String(T.token).toLowerCase() + ".json",
-      { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return null;
-    j = await res.json();
-  } catch { return null; }
+  if (!site.rpc || endpoint() !== String(site.rpc).trim() || T.chainId !== site.chainId) return Promise.resolve(null);
+  const key = T.chainId + ":" + String(T.token).toLowerCase();
+  if (!T.indexFile || T.indexFile.key !== key) {
+    T.indexFile = { key, read: fetch("/sharing/" + T.chainId + "/history/" + String(T.token).toLowerCase() + ".json",
+      { signal: AbortSignal.timeout(10000) }).then((res) => (res.ok ? res.json() : null)).catch(() => null) };
+  }
+  return T.indexFile.read;
+}
+async function historyIndex(v, from, latest, routerAddr) {
+  const j = await indexFile();
   const isHex = (s, n) => typeof s === "string" && (n ? new RegExp("^0x[0-9a-fA-F]{" + n + "}$") : /^0x[0-9a-fA-F]*$/).test(s);
   if (!j || j.schema !== INDEX_SCHEMA || j.chainId !== T.chainId || !same(j.token, T.token) || !same(j.curve, v.curve)) return null;
   if (!Number.isInteger(j.from) || !Number.isInteger(j.to) || j.from > from || j.to < j.from || j.to > latest) return null;
@@ -1261,7 +1297,7 @@ const sgn128 = (w) => { const x = BigInt("0x" + w); return x >= (1n << 127n) ? x
 /// Reads what happened to this launch since it was created (or since the last
 /// read): its trades on the curve and in the pool, the creator's earnings, and
 /// every transfer of the token for the holder list.
-async function scanHistory() {
+async function scanHistory(figures) {
   const v = view();
   if (!v || T.scanning) return;
   T.scanning = true;
@@ -1270,9 +1306,15 @@ async function scanHistory() {
   // history behind (see the catch).
   let counting = false, retry = false;
   try {
+    // THE INDEX FILE, ASKED NOW (indexFile): it is wanted below, after the
+    // chain's first reads, and fetched beside them instead of after them.
+    if (!T.hist || T.index === undefined) indexFile();
     const latest = parseInt(await rpc("eth_blockNumber", []), 16);
+    // THE CHAIN'S CLOCK, read every scan (see chainNow) - asked at once: the
+    // search for the launch's first block needs it as well.
+    const headRead = rpc("eth_getBlockByNumber", [hex(latest), false]).catch(() => null);
     if (!T.hist) {
-      const born = await creationBlock(latest);
+      const born = await creationBlock(latest, v, headRead);
       const from = born !== null ? born : Math.max(0, latest - MAX_LOOKBACK, await forkFloor());
       T.hist = { from, partial: born === null, fromDate: "", trades: [], transfers: [], creatorEarned: 0n,
         sweeps: 0, poolFees: 0, times: new Map(), poolId: "" };
@@ -1281,13 +1323,11 @@ async function scanHistory() {
       T.indexUsed = false;
     }
     const h = T.hist;
-    // THE CHAIN'S CLOCK, read every scan (see chainNow), and the launch's birth once.
-    const head = await rpc("eth_getBlockByNumber", [hex(latest), false]).catch(() => null);
+    // THE CLOCK, AND THE LAUNCH'S BIRTH ONCE, together.
+    const [head, b] = await Promise.all([headRead,
+      !h.bornTs && !h.partial ? rpc("eth_getBlockByNumber", [hex(h.from), false]).catch(() => null) : null]);
     if (head) T.head = { ts: parseInt(head.timestamp, 16), at: Date.now() };
-    if (!h.bornTs && !h.partial) {
-      const b = await rpc("eth_getBlockByNumber", [hex(h.from), false]).catch(() => null);
-      if (b) h.bornTs = parseInt(b.timestamp, 16);
-    }
+    if (b) h.bornTs = parseInt(b.timestamp, 16);
     // THE INDEX (historyIndex), read once a visit and counted by the first
     // pass that succeeds - and only by it: a pass that fails leaves it to the
     // next, which reads the chain after it again.
@@ -1386,12 +1426,18 @@ async function scanHistory() {
 
     h.trades.sort((a, b) => a.block - b.block || a.index - b.index);
     T.scannedTo = latest;
+    // THE TRADES' TIMES ARE ASKED WHILE THE CHAIN IS ASKED ABOUT THE INDEX:
+    // neither needs the other, and an index refused throws this history away,
+    // its times with it. A failure to time them is still said after the
+    // count, as before.
+    const timed = timeTrades();
+    timed.catch(() => {});
     if (pre) {
       T.indexUsed = true;
       if (!(await indexAgrees(v, latest))) throw new Error(INDEX_MISMATCH);
     }
     counting = false;
-    await timeTrades();
+    await timed;
     if (h.partial && !h.fromDate) {
       const b = await rpc("eth_getBlockByNumber", [hex(h.from), false]).catch(() => null);
       if (b) h.fromDate = new Date(parseInt(b.timestamp, 16) * 1000).toLocaleDateString();
@@ -1416,7 +1462,8 @@ async function scanHistory() {
   } finally {
     T.scanning = false;
   }
-  if (retry) return scanHistory();
+  if (retry) return scanHistory(figures);
+  await figures;
   drawHistory();
 }
 
@@ -1700,11 +1747,21 @@ async function drawAll() {
   // THE CHAIN'S CLOCK BEFORE ANYTHING IS DATED WITH IT, and where the
   // creator's earnings end if the launch shares its fees.
   await Promise.all([readHead(), readShareCut()]);
-  await readBalances(v);
-  drawSwapLabels(v);
-  await Promise.all([drawStats(v), drawFees(v)]);
+  // THE HISTORY'S READS FROM HERE, beside the balances and the figures: they
+  // need the launch and the fee cut, nothing below. They waited for all of it
+  // and the chart came that much later. Its drawing still waits for the
+  // figures - the chart ends at the spot price drawStats reads.
+  let figured;
+  const figures = new Promise((r) => { figured = r; });
+  scanHistory(figures);
+  try {
+    await readBalances(v);
+    drawSwapLabels(v);
+    await Promise.all([drawStats(v), drawFees(v)]);
+  } finally {
+    figured();
+  }
   requote();
-  scanHistory();
 }
 function redraw() {
   if (drawing) { redraw.again = true; return; }
