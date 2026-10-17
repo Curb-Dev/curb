@@ -8,6 +8,9 @@
 # in it, and reads the chain itself only after its last block (web/token.js
 # historyIndex); without the file it reads the chain from the launch's start,
 # as it always did. Display only: nothing is sent on what the file says.
+# And sharing/<chain>/stats.json, when its numbers change: each launch's
+# trades, traders, volumes and holders, counted from those files alone, for
+# screeners and the owner's weekly figures (the site does not read it).
 #
 # The sharing-mainnet environment's RPC URLs and data repo token, as the
 # keeper uses them; no key is read. Never on a pull request; every action

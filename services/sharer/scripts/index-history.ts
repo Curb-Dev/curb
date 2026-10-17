@@ -26,6 +26,14 @@
 // page read up to REWRITE_AFTER blocks of the chain after the file, twenty
 // windows before its chart; with it, what came since this run.
 //
+// AND WHAT THE FILES ADD UP TO, in one more file (sharing/<chain>/stats.json,
+// STATS_SCHEMA), for screeners and indexers and for the owner's own weekly
+// figures: each launch's trades, traders, volumes and holders, and the totals
+// per quote asset. Counted from the history files this run holds - the old
+// logs and the new - and from nothing off chain; amounts in the quote asset's
+// own units, never in dollars. Written after the files it counts, and only
+// when its numbers change.
+//
 //   node scripts/index-history.ts            read and write
 //   node scripts/index-history.ts --dry DIR  read, and write the files under DIR
 //                                            instead of the data repo
@@ -69,6 +77,7 @@ const SEL = {
   launchAt: toFunctionSelector('launchAt(uint256)'),
   launchOf: toFunctionSelector('launchOf(address)'),
   launchState: toFunctionSelector('launchState(address)'),
+  decimals: toFunctionSelector('decimals()'),
 };
 
 /** One log as the site reads it: the fields web/token.js uses, nothing else. */
@@ -168,6 +177,187 @@ export function parseFile(bytes: Uint8Array | null, chainId: number, token: stri
   }
 }
 
+export const STATS_SCHEMA = 'curb.stats/1';
+export const statsPath = (chainId: number): string => `sharing/${chainId}/stats.json`;
+/** The lens's LaunchStatus (src/curb/LaunchLens.sol), by name. */
+export const STATUS = ['notFound', 'selling', 'waiting', 'graduated'] as const;
+const ZERO = '0x0000000000000000000000000000000000000000';
+const DEAD = '0x000000000000000000000000000000000000dead';
+
+/** WHAT stats.json SAYS OF ONE LAUNCH, counted from its history file as
+ *  web/token.js scanHistory decodes the same logs. Amounts are decimal
+ *  strings of the quote asset's raw units; `quoteDecimals` places the point. */
+export interface LaunchStats {
+  curve: string;
+  /** The quote asset, and its decimals() as the run that counted this read it. */
+  quote: string;
+  quoteDecimals: number;
+  /** The lens's status at that run, by name (STATUS). */
+  status: string;
+  /** The first and the last block with a trade, on the curve or in the pool;
+   *  null before the first. */
+  firstTradeBlock: number | null;
+  lastTradeBlock: number | null;
+  curveBuys: number;
+  curveSells: number;
+  /** Distinct addresses. Buyers: the recipients of the curve's buys, as the
+   *  site names a buyer. Traders: those and the curve's sellers as the site
+   *  names them - a sale the curve paid to the CURB router by the seller the
+   *  router's SoldForEth names in the same transaction, for the same tokens. */
+  buyers: number;
+  traders: number;
+  /** Buys' quoteIn and sells' quoteOut + fee + tax: what crossed the curve
+   *  before its fee and tax were taken. */
+  curveVolume: string;
+  /** Once graduated: the pool's swaps, and the quote side of each, either way. */
+  poolSwaps: number;
+  poolVolume: string;
+  /** Addresses the transfers leave a balance above zero, but the zero address
+   *  and 0x...dEaD: burned is not held (the site's holder list). */
+  holders: number;
+}
+/** The launches of one quote asset, added up. */
+export interface AssetTotals {
+  decimals: number;
+  launches: number;
+  graduated: number;
+  curveBuys: number;
+  curveSells: number;
+  curveVolume: string;
+  poolSwaps: number;
+  poolVolume: string;
+}
+export interface StatsFile {
+  schema: string;
+  chainId: number;
+  /** The run that wrote the file: its safe block and that block's time. A
+   *  later run whose numbers are the same leaves the file as it is. */
+  generatedAt: { block: number; timestamp: number };
+  launches: Record<string, LaunchStats>;
+  totals: Record<string, AssetTotals>;
+}
+
+const words = (hex: string): number => Math.floor(hex.replace(/^0x/, '').length / 64);
+const topicAddr = (t: string): string => ('0x' + t.slice(-40)).toLowerCase();
+const blockOf = (l: IndexLog): number => Number(BigInt(l.blockNumber));
+
+/** One launch's numbers, from the file this run holds for it and what the lens
+ *  said of it this run. */
+export function launchStats(f: HistoryFile, lens: { status: number; quote: string; quoteDecimals: number; currency0: string }): LaunchStats {
+  let first: number | null = null, last: number | null = null;
+  const traded = (b: number) => {
+    if (first === null || b < first) first = b;
+    if (last === null || b > last) last = b;
+  };
+  let curveBuys = 0, curveSells = 0, curveVolume = 0n;
+  const buyers = new Set<string>(), traders = new Set<string>();
+  for (const l of f.curveLogs) {
+    const t0 = l.topics[0];
+    if ((t0 !== TOPIC.curveBuy && t0 !== TOPIC.curveSell) || l.topics.length < 3 || words(l.data) < 4) continue;
+    traded(blockOf(l));
+    let who = topicAddr(l.topics[2]);
+    if (t0 === TOPIC.curveBuy) {
+      curveBuys++;
+      curveVolume += numAt(l.data, 0);
+      buyers.add(who);
+    } else {
+      curveSells++;
+      const tokensIn = numAt(l.data, 0);
+      curveVolume += numAt(l.data, 1) + numAt(l.data, 2) + numAt(l.data, 3);
+      // A SALE THROUGH THE CURB ROUTER is paid to the router: its seller is the
+      // one the router's SoldForEth names, as web/token.js namedByRouter finds it.
+      if (who === CURB_ROUTER) {
+        const ev = f.routerSold.find((r) => r.transactionHash === l.transactionHash && r.topics.length > 2 && words(r.data) >= 2 && numAt(r.data, 1) === tokensIn);
+        if (ev) who = topicAddr(ev.topics[1]);
+      }
+    }
+    traders.add(who);
+  }
+  // IN THE POOL, once graduated: the quote side of each swap is amount1 when
+  // the token is currency0, else amount0 (int128, signed by direction).
+  let poolSwaps = 0, poolVolume = 0n;
+  if (lens.status === 3) {
+    const tokenIsC0 = lens.currency0.toLowerCase() === f.token;
+    for (const l of f.swaps) {
+      if (words(l.data) < 2) continue;
+      const q = BigInt.asIntN(128, numAt(l.data, tokenIsC0 ? 1 : 0));
+      poolSwaps++;
+      poolVolume += q < 0n ? -q : q;
+      traded(blockOf(l));
+    }
+  }
+  // HOLDERS, summed from every transfer as the site's holder list sums them.
+  const bal = new Map<string, bigint>();
+  for (const t of f.transfers) {
+    if (t.topics.length < 3 || words(t.data) < 1) continue;
+    const from = topicAddr(t.topics[1]), to = topicAddr(t.topics[2]), amount = numAt(t.data, 0);
+    if (from !== ZERO) bal.set(from, (bal.get(from) ?? 0n) - amount);
+    bal.set(to, (bal.get(to) ?? 0n) + amount);
+  }
+  bal.delete(ZERO);
+  bal.delete(DEAD);
+  let holders = 0;
+  for (const b of bal.values()) if (b > 0n) holders++;
+  return {
+    curve: f.curve,
+    quote: lens.quote.toLowerCase(),
+    quoteDecimals: lens.quoteDecimals,
+    status: STATUS[lens.status] ?? 'unknown',
+    firstTradeBlock: first,
+    lastTradeBlock: last,
+    curveBuys,
+    curveSells,
+    buyers: buyers.size,
+    traders: traders.size,
+    curveVolume: curveVolume.toString(),
+    poolSwaps,
+    poolVolume: poolVolume.toString(),
+    holders,
+  };
+}
+
+/** The launches added up per quote asset, in the order their launches come. */
+export function totalsOf(launches: Record<string, LaunchStats>): Record<string, AssetTotals> {
+  const out: Record<string, AssetTotals> = {};
+  for (const e of Object.values(launches)) {
+    const t = out[e.quote] ?? (out[e.quote] = { decimals: e.quoteDecimals, launches: 0, graduated: 0, curveBuys: 0, curveSells: 0, curveVolume: '0', poolSwaps: 0, poolVolume: '0' });
+    t.launches++;
+    if (e.status === 'graduated') t.graduated++;
+    t.curveBuys += e.curveBuys;
+    t.curveSells += e.curveSells;
+    t.curveVolume = (BigInt(t.curveVolume) + BigInt(e.curveVolume)).toString();
+    t.poolSwaps += e.poolSwaps;
+    t.poolVolume = (BigInt(t.poolVolume) + BigInt(e.poolVolume)).toString();
+  }
+  return out;
+}
+
+/** stats.json's launches read back: the entries that are well formed, each in
+ *  the shape launchStats makes, or none. */
+export function parseStats(bytes: Uint8Array | null, chainId: number): StatsFile['launches'] {
+  const out: StatsFile['launches'] = {};
+  if (!bytes) return out;
+  const addr = (s: unknown): s is string => typeof s === 'string' && /^0x[0-9a-f]{40}$/.test(s);
+  const count = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0;
+  const amount = (s: unknown): s is string => typeof s === 'string' && /^(0|[1-9][0-9]*)$/.test(s);
+  const block = (n: unknown): n is number | null => n === null || count(n);
+  try {
+    const j = JSON.parse(Buffer.from(bytes).toString('utf8')) as StatsFile;
+    if (!j || j.schema !== STATS_SCHEMA || j.chainId !== chainId || !j.launches || typeof j.launches !== 'object') return out;
+    for (const [token, e] of Object.entries(j.launches)) {
+      if (!addr(token) || !e || !addr(e.curve) || !addr(e.quote) || !count(e.quoteDecimals) || e.quoteDecimals > 255 || typeof e.status !== 'string' ||
+        !block(e.firstTradeBlock) || !block(e.lastTradeBlock) || !count(e.curveBuys) || !count(e.curveSells) || !count(e.buyers) || !count(e.traders) ||
+        !amount(e.curveVolume) || !count(e.poolSwaps) || !amount(e.poolVolume) || !count(e.holders)) continue;
+      out[token] = {
+        curve: e.curve, quote: e.quote, quoteDecimals: e.quoteDecimals, status: e.status, firstTradeBlock: e.firstTradeBlock, lastTradeBlock: e.lastTradeBlock,
+        curveBuys: e.curveBuys, curveSells: e.curveSells, buyers: e.buyers, traders: e.traders, curveVolume: e.curveVolume,
+        poolSwaps: e.poolSwaps, poolVolume: e.poolVolume, holders: e.holders,
+      };
+    }
+  } catch { /* none */ }
+  return out;
+}
+
 async function call(rpc: Rpc, to: string, data: string): Promise<string> {
   return String(await rpc.request({ method: 'eth_call', params: [{ to, data }, 'latest'] }));
 }
@@ -198,6 +388,20 @@ export async function indexAll(d: IndexDeps): Promise<{ launches: number; writte
   // still true of its file, which nothing here changed.
   const before = parseChecked(await d.read(checkedPath(d.chainId)), d.chainId);
   const checked: CheckedFile['launches'] = { ...before };
+  // AND ITS NUMBERS IN stats.json, which nothing this run counted changes.
+  const statsBefore = parseStats(await d.read(statsPath(d.chainId)), d.chainId);
+  const stats: StatsFile['launches'] = { ...statsBefore };
+  // EACH QUOTE ASSET'S decimals(), read once a run, by the first launch that wants it.
+  const decimals = new Map<string, number>();
+  const decimalsOf = async (asset: string): Promise<number> => {
+    const known = decimals.get(asset);
+    if (known !== undefined) return known;
+    const r = await call(d.rpc, asset, SEL.decimals);
+    const n = /^0x[0-9a-fA-F]{64,}$/.test(r) ? numAt(r, 0) : -1n;
+    if (n < 0n || n > 255n) throw new Error(`the quote asset ${asset} answers no decimals()`);
+    decimals.set(asset, Number(n));
+    return Number(n);
+  };
   for (let i = 0; i < count; i++) {
     let token = '';
     try {
@@ -216,6 +420,8 @@ export async function indexAll(d: IndexDeps): Promise<{ launches: number; writte
       // ONLY ONE THIS LAUNCH'S FILE IS AT: another curve's entry says nothing of it.
       const was = checked[token.toLowerCase()];
       if (was && was.curve !== curve.toLowerCase()) delete checked[token.toLowerCase()];
+      const counted = stats[token.toLowerCase()];
+      if (counted && counted.curve !== curve.toLowerCase()) delete stats[token.toLowerCase()];
       if (from > to) continue;
       const st = await call(d.rpc, d.lens, SEL.launchState + pad(token));
       const status = Number(numAt(st, 0));
@@ -236,28 +442,36 @@ export async function indexAll(d: IndexDeps): Promise<{ launches: number; writte
         graduated ? get(hook, [TOPIC.feeCharged, poolId]) : Promise.resolve([] as RawLog[]),
       ]);
       const fresh = curveLogs.length + transfers.length + routerSold.length + swaps.length + fees.length;
+      // THE FILE THIS RUN HOLDS FOR THE LAUNCH: the old one where nothing is new.
+      let held: HistoryFile;
       // NOTHING NEW SINCE THE FILE: it is complete up to this run's block.
       if (old && fresh === 0 && to - BigInt(old.to) < REWRITE_AFTER) {
         checked[token.toLowerCase()] = { curve: curve.toLowerCase(), file: old.to, to: Number(to) };
-        continue;
+        held = old;
+      } else {
+        const file: HistoryFile = {
+          schema: SCHEMA,
+          chainId: d.chainId,
+          token: token.toLowerCase(),
+          curve: curve.toLowerCase(),
+          from: old ? old.from : Number(from),
+          to: Number(to),
+          curveLogs: merge(old ? old.curveLogs : [], curveLogs.map(slim)),
+          transfers: merge(old ? old.transfers : [], transfers.map(slim)),
+          routerSold: merge(old ? old.routerSold : [], routerSold.map(slim)),
+          swaps: merge(old ? old.swaps : [], swaps.map(slim)),
+          fees: merge(old ? old.fees : [], fees.map(slim)),
+        };
+        await d.write(path, new Uint8Array(Buffer.from(JSON.stringify(file))), `history ${token} to ${to}`);
+        checked[token.toLowerCase()] = { curve: curve.toLowerCase(), file: Number(to), to: Number(to) };
+        written++;
+        d.log(`${token}: ${old ? 'from ' + old.to : 'new'} to ${to}, ${fresh} new logs`);
+        held = file;
       }
-      const file: HistoryFile = {
-        schema: SCHEMA,
-        chainId: d.chainId,
-        token: token.toLowerCase(),
-        curve: curve.toLowerCase(),
-        from: old ? old.from : Number(from),
-        to: Number(to),
-        curveLogs: merge(old ? old.curveLogs : [], curveLogs.map(slim)),
-        transfers: merge(old ? old.transfers : [], transfers.map(slim)),
-        routerSold: merge(old ? old.routerSold : [], routerSold.map(slim)),
-        swaps: merge(old ? old.swaps : [], swaps.map(slim)),
-        fees: merge(old ? old.fees : [], fees.map(slim)),
-      };
-      await d.write(path, new Uint8Array(Buffer.from(JSON.stringify(file))), `history ${token} to ${to}`);
-      checked[token.toLowerCase()] = { curve: curve.toLowerCase(), file: Number(to), to: Number(to) };
-      written++;
-      d.log(`${token}: ${old ? 'from ' + old.to : 'new'} to ${to}, ${fresh} new logs`);
+      // ITS NUMBERS, LAST: a quote asset that answers no decimals() fails the
+      // launch's numbers - its entry stays as it was - and not its file.
+      const quote = addrAt(st, 2);
+      stats[token.toLowerCase()] = launchStats(held, { status, quote, quoteDecimals: await decimalsOf(quote), currency0: addrAt(st, 9) });
     } catch (e) {
       failed++;
       d.log(`launch ${i} ${token}: ${(e as Error).message}`);
@@ -267,6 +481,18 @@ export async function indexAll(d: IndexDeps): Promise<{ launches: number; writte
   if (JSON.stringify(checked) !== JSON.stringify(before)) {
     const body: CheckedFile = { schema: CHECKED_SCHEMA, chainId: d.chainId, launches: checked };
     await d.write(checkedPath(d.chainId), new Uint8Array(Buffer.from(JSON.stringify(body))), `history checked to ${to}`);
+  }
+  // AND THE NUMBERS, LAST, and only when they changed: the run's block alone
+  // is no change, or every run would be a commit.
+  if (JSON.stringify(stats) !== JSON.stringify(statsBefore)) {
+    const body: StatsFile = {
+      schema: STATS_SCHEMA,
+      chainId: d.chainId,
+      generatedAt: { block: Number(to), timestamp: Number(toTs) },
+      launches: stats,
+      totals: totalsOf(stats),
+    };
+    await d.write(statsPath(d.chainId), new Uint8Array(Buffer.from(JSON.stringify(body))), `stats to ${to}`);
   }
   return { launches: count, written, failed };
 }
