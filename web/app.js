@@ -3421,21 +3421,28 @@ async function describeTwins(choices, callFn) {
   }));
 }
 
-/// CAN THIS ASSET ACTUALLY FILL A LAUNCH TODAY?
+/// CAN THIS SITE'S ETH ROUTE FILL A LAUNCH ON THIS ASSET TODAY?
 ///
 /// The curve has to TAKE IN one graduation threshold of the quote asset before
-/// it can graduate, so the asset has to be obtainable in that size. Four of
-/// the seven equities listed cannot supply one from their deepest pool
-/// [MULTI_RWA.txt 2.2], and that is a fact about the market rather than about
-/// this code - which is exactly why it is asked of the chain here instead of
-/// being written into a list that would go stale silently.
+/// it can graduate. A buyer paying ETH gets the asset through Uniswap v3 and
+/// nowhere else (the CURB router's SwapRouter02 path), so that is the route
+/// asked here: whether it can buy one threshold. It is asked of the chain
+/// rather than written into a list, because it moves.
 ///
-/// THE DEEPEST POOL AGAINST WETH OR USDC is the best answer available without
-/// an indexer, and it is the same figure the survey measured by hand. It is a
-/// floor, not a ceiling: liquidity elsewhere would only make the picture
-/// better than what is shown.
+/// IT IS NOT A VERDICT ON THE ASSET'S MARKET, and the wording must not say it
+/// is. At Base block 52756903 (18 October 2026) the seven tokenized stocks'
+/// largest Uniswap v3 USDC pools held $1.3K to $32K of USDC each, and their
+/// Aerodrome Slipstream pools (the Gauges V3 factory) $422K to $1.07M -
+/// custody, not depth, read by script/b20/rwa-survey.js --site. An asset
+/// warned about here can be deep elsewhere, and a buyer paying in the asset
+/// itself is not limited by this. So the note says "ETH route", never "thin
+/// market".
 ///
-/// NOTHING IS BLOCKED. Launching against a thin asset is a legitimate choice -
+/// THE DEEPEST UNISWAP v3 POOL AGAINST WETH OR USDC is the fallback when the
+/// quoter cannot be asked: what that route's pools hold, a bound on what it
+/// can deliver and not a depth.
+///
+/// NOTHING IS BLOCKED. Launching against a thin route is a legitimate choice -
 /// holders can sell back to the curve right up until graduation, so a launch
 /// that waits traps nobody. What is not legitimate is letting somebody choose
 /// it without knowing.
@@ -3448,8 +3455,8 @@ async function quoteLiquidityNote(pin, threshold) {
   if (same(pin.quote, WETH)) return { nativePair: true };
 
   // ---- THE QUESTION, ASKED OF THE QUOTER. What would it cost to buy one
-  // threshold of this asset? An answer is proof the market can deliver that
-  // size; silence from every route is the thin case.
+  // threshold of this asset with WETH at Uniswap v3? An answer is proof the
+  // route can deliver that size; a refusal from every path is the thin case.
   if (!same(pin.quote, WETH)) {
     try {
       const paths = await v3Candidates(how);
@@ -3461,8 +3468,8 @@ async function quoteLiquidityNote(pin, threshold) {
         if (!r.unavailable) anyAnswered = true;
       }
       if (cheapest !== null) return { costWeth: cheapest, enough: true, asked: true };
-      // EVERY ROUTE REFUSED is the thin case. EVERY ROUTE SILENT is not: the
-      // quoter refusing is the market speaking, a timeout is nobody speaking,
+      // EVERY PATH REFUSED is the thin case. EVERY PATH SILENT is not: the
+      // quoter refusing is the pools speaking, a timeout is nobody speaking,
       // and only the first is worth a warning about liquidity.
       if (anyAnswered) return { costWeth: null, enough: false, asked: true };
       return { unreadable: true, enough: false, asked: true };
@@ -3472,7 +3479,7 @@ async function quoteLiquidityNote(pin, threshold) {
   }
 
   // NOT USDC AGAINST ITSELF (routesThroughUsdc): on the USDC pair the WETH
-  // pools are its whole market.
+  // pools are the whole route.
   const [vsWeth, vsUsdc] = await Promise.all([
     v3PoolsBetween(how, WETH, pin.quote, pin.quote),
     routesThroughUsdc(pin.quote) ? v3PoolsBetween(how, USDC, pin.quote, pin.quote) : [],
@@ -3534,11 +3541,6 @@ function showQuoteLiquidity(el, ctx, threshold, res) {
   el.hidden = false;
   el.classList.remove("warn", "unbounded");
   const sym = ctx.quoteSym;
-  if (res === null) {
-    el.textContent = "The depth of " + sym + "'s own market could not be read, so this cannot say whether a launch can be filled.";
-    return;
-  }
-  const need = fmt(threshold, ctx.quoteDecimals, 2);
 
   // WHAT MOVES, SAID AS WHAT MOVES. It used to say a launch here "is filled
   // by people sending ETH" - while the curve pulls WETH with an approval and
@@ -3546,7 +3548,11 @@ function showQuoteLiquidity(el, ctx, threshold, res) {
   // wraps it and buys in the same transaction (curveTradeViaRouter); only where
   // the router cannot be used does this page wrap the shortfall first, as a
   // transaction of its own (ensureQuoteHeld). The note says that, and not more.
-  if (res.nativePair) {
+  //
+  // ASKED OF THE PAIR, NOT ONLY OF THE ANSWER. A failed threshold read reaches
+  // here as null, and on the WETH pair that read "the ETH route could not be
+  // read" about a route that does not exist.
+  if ((res && res.nativePair) || same(ctx.quote, WETH)) {
     el.textContent =
       "A launch paired with ETH is priced in WETH, wrapped ETH: its curve takes WETH. A buyer pays ETH, and " +
       "the CURB router wraps it and buys in the same transaction; only where the router is not available " +
@@ -3554,6 +3560,21 @@ function showQuoteLiquidity(el, ctx, threshold, res) {
       "so there is no market depth to measure here.";
     return;
   }
+  if (res === null) {
+    el.textContent = "The depth of this site's ETH route to " + sym +
+      " could not be read, so this cannot say whether a launch can be filled with ETH.";
+    return;
+  }
+  const need = fmt(threshold, ctx.quoteDecimals, 2);
+
+  // THE WARNING NAMES THE ROUTE, NOT THE MARKET. What failed is buying one
+  // threshold with ETH at Uniswap v3, the one way ETH reaches the asset here;
+  // it said "THIN MARKET ... until more NVDAc exists" while NVDAc's main
+  // market held many thresholds at Aerodrome. "Bought with ETH alone" is the
+  // whole consequence: a buyer paying in the asset is not held up by it.
+  const thinHead = "<strong>THIN ETH ROUTE.</strong> ";
+  const thinTail = ", so one bought with ETH alone may sit unfilled. You can still launch, and holders " +
+    "can sell back to the curve the whole time: nothing is locked while it waits.";
 
   // WHAT THE QUOTER SAID, WHERE IT SAID ANYTHING. The figure is a price, not a
   // balance: what one threshold of the asset would cost to buy today.
@@ -3561,22 +3582,19 @@ function showQuoteLiquidity(el, ctx, threshold, res) {
     // NOBODY ANSWERED, WHICH IS NOT AN ANSWER.
     if (res.unreadable) {
       el.textContent =
-        "Whether the " + sym + " market can supply the " + need + " a launch needs could not be read: " +
+        "Whether this site's ETH route can buy the " + need + " " + sym + " a launch needs could not be read: " +
         "no route answered in time. That is this endpoint or the quoter, not the market \u2014 try again.";
       return;
     }
     if (res.enough) {
       el.textContent =
-        "A launch needs " + need + " " + sym + " to graduate, and buying that much today would cost about " +
-        fmt(res.costWeth, 18, 4) + " WETH \u2014 so the market can supply it.";
+        "A launch needs " + need + " " + sym + " to graduate, and buying that much with ETH here today " +
+        "would cost about " + fmt(res.costWeth, 18, 4) + " WETH \u2014 so the market can supply it.";
       return;
     }
     el.classList.add("warn", "unbounded");
-    el.innerHTML =
-      "<strong>THIN MARKET.</strong> No route could price buying " + escapeHtml(need) + " " + escapeHtml(sym) +
-      ", which is what a launch has to take in before it can graduate \u2014 so one may sit unfilled until more " +
-      escapeHtml(sym) + " exists. You can still launch, and holders can sell back to the curve the whole time: " +
-      "nothing is locked while it waits.";
+    el.innerHTML = thinHead + "Uniswap v3 could not price buying " + escapeHtml(need) + " " + escapeHtml(sym) +
+      ", what a launch has to take in before it can graduate" + thinTail;
     return;
   }
 
@@ -3584,16 +3602,13 @@ function showQuoteLiquidity(el, ctx, threshold, res) {
   // where liquidity sits, not what is reachable at the price a trade crosses.
   const held = fmt(res.deepest, ctx.quoteDecimals, 2);
   if (res.enough) {
-    el.textContent = "Deepest " + sym + " market holds " + held + ", and a launch needs " + need +
+    el.textContent = "The deepest Uniswap v3 " + sym + " pool holds " + held + ", and a launch needs " + need +
       " to graduate. (Read from what the pools hold; the quoter could not be asked.)";
   } else {
     el.classList.add("warn", "unbounded");
-    el.innerHTML =
-      "<strong>THIN MARKET.</strong> The deepest " + sym + " pool holds " + escapeHtml(held) +
-      " and a launch has to take in " + escapeHtml(need) +
-      " before it can graduate, so one may sit unfilled until more " + escapeHtml(sym) +
-      " exists. You can still launch, and holders can sell back to the curve the whole time \u2014 " +
-      "nothing is locked while it waits. (Read from what the pools hold; the quoter could not be asked.)";
+    el.innerHTML = thinHead + "The deepest Uniswap v3 " + escapeHtml(sym) + " pool holds " + escapeHtml(held) +
+      ", and a launch has to take in " + escapeHtml(need) + " before it can graduate" + thinTail +
+      " (Read from what the pools hold; the quoter could not be asked.)";
   }
 }
 

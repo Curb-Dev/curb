@@ -108,7 +108,9 @@ about $55,000, whatever it is paired with. Each is fixed in its own units, so in
 move.
 
 A launch is only as easy to trade as its paired asset: if the asset is hard to buy or sell, so is the launch, and
-a launch on a thin asset may never reach its threshold. The launch form checks this when you pick an asset.
+a launch on a thin asset may never reach its threshold. Paying ETH on a pair that is not ETH buys the asset
+through Uniswap v3, where it can be much thinner than in its main market: when you pick an asset, the launch form
+checks whether that route can buy one threshold. Paying in the asset itself does not go through it.
 
 Every tokenized stock here sits under the same issuer policy and the same admin: picking a different stock
 changes your price exposure, not who can restrict trading in it.

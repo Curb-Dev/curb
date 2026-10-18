@@ -239,6 +239,17 @@ PROVENANCE
     liquidity around it. D3 is what measures depth and it has only ever been
     run for NVDAc.
 
+    CORRECTION, 18 October 2026: "Aerodrome CL" here was the first of
+    Aerodrome's three Slipstream factories; the "Gauge Caps" and "Gauges V3"
+    ones were not asked. rwa-survey.js now asks all three (and checks
+    Aerodrome's FactoryRegistry lists no other). Re-run with every call read
+    at block 52756903 (18 October 2026, 05:59 UTC), for the seven stocks the
+    site lists, each one's largest pool is a Gauges V3 USDC pool holding $422K
+    to $1.07M of USDC, against $1.3K to $32K of USDC in its largest Uniswap v3
+    USDC pool. Whether they existed at this table's block was not checked.
+    What is thin is the site's ETH route, which is Uniswap v3 only, not these
+    assets.
+
     sym     largest pool           holds
     ------  ---------------------  --------------------------------------------
     NVDAc   uni-v3 USDC 0.3%       144.99 NVDAc / 22,181.86 USDC

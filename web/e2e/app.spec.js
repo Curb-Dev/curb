@@ -922,7 +922,7 @@ test("a trade is refused when only the model could price it", async () => {
   expect(said.refused).toContain("will not send a trade whose minimum comes from a model");
 });
 
-/// AND A QUOTER THAT WILL NOT ANSWER IS NOT A THIN MARKET.
+/// AND A QUOTER THAT WILL NOT ANSWER IS NOT A THIN ROUTE.
 ///
 /// The depth question collapsed a timeout, a transport failure and a genuine
 /// refusal into one null, and every null read "no route could price buying N".
@@ -953,7 +953,7 @@ test("a depth question nobody answered says so instead of warning about liquidit
     }
   });
 
-  expect(shown, "silence was reported as a thin market").not.toContain("THIN MARKET");
+  expect(shown, "silence was reported as a thin route").not.toContain("THIN ETH ROUTE");
   expect(shown).toContain("could not be read");
 });
 
@@ -2918,10 +2918,11 @@ test("a symbol that is markup is not shown as a symbol, and does not execute", a
 // would break every test after it and the failure would name the wrong
 // one. At the end it can only break itself.
 test("a quote asset too thin to fill a launch says so, and a deep one does not", async () => {
-  // Four of the seven listed equities cannot supply one graduation threshold
-  // from their deepest pool. That is a fact about the market rather than about
-  // this code, so the page reads it at render time - and this checks both
-  // answers, because a warning that is always on screen is not a warning.
+  // Some listed assets cannot be bought one graduation threshold at a time
+  // through Uniswap v3, the site's only ETH route. That is a fact about the
+  // pools rather than about this code, so the page reads it at render time -
+  // and this checks both answers, because a warning that is always on screen
+  // is not a warning.
   const note = page.locator("#quoteLiquidity");
   const pick = page.locator("#quotePick");
 
@@ -3005,7 +3006,10 @@ test("a quote asset too thin to fill a launch says so, and a deep one does not",
     ". The picker offered: " + JSON.stringify(found.labels || null)).toBe(true);
 
   await expect(page.locator("#quoteLiquidity.unbounded")).toHaveCount(1, { timeout: 20000 });
-  await expect(note).toContainText("THIN MARKET");
+  // THE ROUTE, NOT THE MARKET: the check asks Uniswap v3 alone, and an asset
+  // thin there can be deep at Aerodrome (app.js quoteLiquidityNote).
+  await expect(note).toContainText("THIN ETH ROUTE");
+  await expect(note).toContainText("Uniswap v3");
   await expect(note).toContainText("before it can graduate");
 
   // AND THE NUMBER IS THE CHAIN'S, not the sentence's, or the warning is
@@ -4574,7 +4578,7 @@ test("an older refresh on one factory never writes over the factory the page mov
     // this round parks in front of, so it must be the one this factory takes.
     if (r.field === "quoteLiquidity") {
       expect(onNvdac.quoteLiquidity, "the depth read failed here, so the guard before a real answer is not reached")
-        .not.toContain("own market could not be read");
+        .not.toContain("could not be read, so this cannot say");
     }
 
     // NOTHING OF THAT REFRESH STILL OUT. It fires the owed panel's render
