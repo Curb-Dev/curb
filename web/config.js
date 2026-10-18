@@ -36,6 +36,16 @@
 //   explorer         where an address or a transaction is shown
 //   featured         launch token addresses a ?featured= link may put in the
 //                    front page's featured card; one naming any other is ignored
+//   walletConnectProjectId
+//                    the Reown (WalletConnect) project id, 32 hex characters, that
+//                    lets a wallet on a phone connect: "Phone wallet" in the site
+//                    bar's wallet picker (topbar.js, walletconnect.js). "" keeps
+//                    WalletConnect off - not offered, and nothing of it fetched.
+//                    Offered only once lens and rpc are set too. The id is public
+//                    (it is in every visitor's browser); what holds it to this
+//                    site is the domain allowlist on Reown's dashboard, which must
+//                    be set before the id goes in (an empty list allows every site).
+//                    Read the licence first: web/vendor/walletconnect/LICENSE.md.
 //
 // ONCE lens IS SET, NOTHING IS SENT ON ANY CHAIN BUT chainId, AND THE WALLET IS
 // OFFERED A SWITCH TO chainId ONLY (topbar.js chainRefusal and switchChain,
@@ -92,4 +102,5 @@ window.CURB_SITE = {
   banner: "",
   hiddenFactories: [],
   hiddenLaunches: [],
+  walletConnectProjectId: "",
 };

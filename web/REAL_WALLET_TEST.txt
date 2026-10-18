@@ -363,3 +363,38 @@ WHAT THIS RUN CANNOT TELL YOU
   race. Nothing here makes you wait.
 
   ANY WALLET BUT THE ONE YOU USED. Each of them is its own program.
+
+
+TWO WALLETS, AND A PHONE WALLET (WalletConnect)
+-----------------------------------------------
+
+The browser suite announces stub wallets (web/e2e/wallets.spec.js); these are
+the checks only real wallets can answer. On the deployed site, with real Base
+and tiny amounts - never a send from an agent.
+
+A. TWO EXTENSIONS IN ONE BROWSER (say MetaMask and Rabby, both enabled).
+   1. Connect wallet opens the picker with both, each with its own id under its
+      name (io.metamask, io.rabby). Pick one: only that one asks to connect.
+   2. Reload: the same one is shown, with no prompt. Disconnect, then Connect:
+      the picker opens again. Pick the other: only it asks.
+   3. Send one tiny buy: only the chosen wallet shows the confirmation.
+
+B. WALLETCONNECT - only once config.js names walletConnectProjectId, Reown's
+   dashboard allows only this site's domains, and the licence is accepted
+   (web/vendor/walletconnect/LICENSE.md).
+   1. Desktop Chrome: Connect wallet, Phone wallet. A code appears; scan it with
+      MetaMask on a phone and approve. The bar shows the phone's account.
+      Reload: it comes back with no prompt. Send one tiny Base transaction and
+      confirm it on the phone.
+   2. Decline a send on the phone: the page says nothing was sent (code 5000 is
+      read as a decline - if your wallet says something else, write it here).
+   3. iPhone Safari: Phone wallet shows MetaMask, Trust, Rainbow and Coinbase
+      Wallet. Check EACH link opens that wallet's own app and offers to connect
+      (the link carries the pairing's key: one that opens anything else is a bug
+      to fix in walletconnect.js APPS before going on). Connect with one, come
+      back to Safari, send a tiny transaction; "Confirm in <wallet>" under the
+      button opens the wallet.
+   4. Android Chrome: "Other wallet" offers the wallets installed on the phone.
+   5. Two tabs: the second says WalletConnect is open in another tab, and takes
+      over once the first is closed.
+   6. Disconnect in the bar: the phone's wallet shows the session ended.

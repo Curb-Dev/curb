@@ -1,1 +1,4 @@
 * text=auto eol=lf
+# THIRD-PARTY FILES THE SITE SERVES, byte for byte: their hashes are checked
+# (web/vendor/README.txt), so git never touches their line endings.
+web/vendor/** -text

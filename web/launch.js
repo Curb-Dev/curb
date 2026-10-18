@@ -154,9 +154,12 @@ function clearMsg() { $("msg").hidden = true; }
 // Two of them, kept separate on purpose. A read done through the wallet and a
 // send done through the wallet are the same chain; a read done through the RPC
 // box is not necessarily the chain the wallet is on.
+/// THE WALLET THE PERSON CHOSE in the site bar (topbar.js "the wallets"), or
+/// null: never one they did not pick. window.ethereum only without the bar.
+const injected = () => (window.CurbBar && window.CurbBar.wallet ? window.CurbBar.wallet() : window.ethereum) || null;
 function walletProvider() {
-  if (!window.ethereum) throw new Error("No injected wallet found.");
-  return window.ethereum;
+  if (!injected()) throw new Error("No injected wallet found.");
+  return injected();
 }
 
 let rpcId = 0;
@@ -175,7 +178,7 @@ async function rpcRequest(method, params) {
 }
 
 const readTransport = () =>
-  account && window.ethereum
+  account && injected()
     ? (m, p) => walletProvider().request({ method: m, params: p })
     : rpcRequest;
 
@@ -365,7 +368,7 @@ async function complete() {
   // THE PROVIDER IS PINNED FOR THE WHOLE PREPARATION. Re-reading
   // window.ethereum on every call means a wallet swapped underneath could
   // answer half the checks and receive the send.
-  const eth = window.ethereum;
+  const eth = injected();
   if (!eth) { setBusy(false); return show("err", "No injected wallet found."); }
   const request = (m, p) => eth.request({ method: m, params: p });
 
@@ -610,7 +613,7 @@ async function complete() {
 /// SENT IS NOT DONE, and the result is checked against the transaction's OWN
 /// snapshot rather than whatever the form says by the time it lands.
 async function settle(tx, eth) {
-  eth = eth || window.ethereum;
+  eth = eth || injected();
   settling.add(keyOf(tx));
   try {
     return await settleInner(tx, eth);
@@ -701,9 +704,11 @@ const waitForReceipt = (tx, eth, timeoutMs) =>
 // ---------------------------------------------------------------- wiring
 $("connect").onclick = async () => {
   try {
-    const accounts = await walletProvider().request({ method: "eth_requestAccounts" });
+    const eth = window.CurbBar && window.CurbBar.pick ? await window.CurbBar.pick() : walletProvider();
+    if (!eth) return;
+    const accounts = await eth.request({ method: "eth_requestAccounts" });
     account = accounts[0];
-    const chainId = await walletProvider().request({ method: "eth_chainId", params: [] });
+    const chainId = await eth.request({ method: "eth_chainId", params: [] });
     $("wallet").textContent =
       `Connected: ${account} on chain ${parseInt(chainId, 16)} — this address pays the gas for any transition it completes. ` +
       `Reads switch to the wallet's network while it is connected.`;
@@ -753,7 +758,7 @@ async function resumePending() {
   // record from another chain could hide a newer one on the chain the user is
   // on, permanently: nothing would ever resolve it, so it would stay first.
   let currentChain = null;
-  try { currentChain = window.ethereum ? await window.ethereum.request({ method: "eth_chainId" }) : null; } catch {}
+  try { currentChain = injected() ? await injected().request({ method: "eth_chainId" }) : null; } catch {}
   // IDENTITY IS chainId + lens + token, HERE TOO. Scoring on the token alone
   // let a record belonging to a DIFFERENT LaunchLens deployment outrank the one
   // for the launch actually on screen, because the same token address exists
@@ -776,7 +781,7 @@ async function resumePending() {
   // case on a reload, and it is exactly when an unaccounted transaction most
   // needs to be visible - and the RPC field, when it serves the record's
   // chain, can still check it (recordTransport).
-  await actOnRecord(tx, window.ethereum || null, alsoNote);
+  await actOnRecord(tx, injected(), alsoNote);
 }
 
 /// WHERE A RECORD IS ASKED ABOUT: the wallet while it is on the record's
@@ -939,7 +944,7 @@ async function forgetRecord(key) {
   if (disposed || busy) return;
   const tx = loadPendingAll().find((t) => keyOf(t) === key);
   if (!tx) return;
-  const verdict = await actOnRecord(tx, window.ethereum || null, "");
+  const verdict = await actOnRecord(tx, injected(), "");
   if (verdict !== "forgettable" && verdict.indexOf("dropped:") !== 0) return;
   // WHAT FORGETTING ALLOWS, said before it is done - and for a dropped one,
   // how to make sure it never lands.
@@ -974,19 +979,24 @@ async function init() {
   // AFTER A DISCONNECT IN THE SITE BAR the silent check is not made, and the
   // wallet's own account events are ignored, until the person connects again.
   const barHidden = () => !!(window.CurbBar && window.CurbBar.isHidden());
-  if (window.ethereum) {
+  // THE WALLET THE BAR CHOSE, once it has found the wallets (topbar.js); its
+  // events through the bar's handlers, so a wallet picked later is followed too.
+  if (window.CurbBar && window.CurbBar.ready) await window.CurbBar.ready;
+  const eth = injected();
+  const walletOn = (window.CurbBar && window.CurbBar.walletOn) || ((e, f) => eth.on?.(e, f));
+  if (eth || window.CurbBar) {
     try {
-      const a = barHidden() ? [] : await window.ethereum.request({ method: "eth_accounts" });
+      const a = barHidden() || !eth ? [] : await eth.request({ method: "eth_accounts" });
       if (a && a[0]) {
         account = a[0];
-        const chainId = await window.ethereum.request({ method: "eth_chainId" });
+        const chainId = await eth.request({ method: "eth_chainId" });
         $("wallet").textContent =
           `Connected: ${account} on chain ${parseInt(chainId, 16)} — this address pays the gas for any transition it completes.`;
       }
     } catch {}
     // THE NOTE FOLLOWS THE ACCOUNT. It used to keep naming the account the
     // wallet had just switched away from.
-    window.ethereum.on?.("accountsChanged", async (a) => {
+    walletOn("accountsChanged", async (a) => {
       if (barHidden()) return;
       account = a && a[0];
       $("wallet").textContent = account
@@ -995,7 +1005,7 @@ async function init() {
       await refresh();
       await resumePending();
     });
-    window.ethereum.on?.("chainChanged", async () => { await refresh(); await resumePending(); });
+    walletOn("chainChanged", async () => { await refresh(); await resumePending(); });
   }
 
   if (isAddr($("lens").value) && isAddr($("token").value)) await refresh(true);

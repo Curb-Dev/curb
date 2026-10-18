@@ -13,6 +13,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { siteHeaders, fileFor } = require("./serve.js");
+const { walletsScript, uuid, PROJECT_ID, useFakeWalletConnect } = require("./fake-wallets.js");
 
 const STATE = JSON.parse(fs.readFileSync(path.join(__dirname, ".state.json"), "utf8"));
 const WEB = path.join(__dirname, "..");
@@ -443,7 +444,7 @@ test("the test pages stay out of the publish set: Vercel ignores them and Netlif
   const ignored = fs.readFileSync(path.join(WEB, ".vercelignore"), "utf8").split(/\r?\n/).map((l) => l.trim())
     .filter((l) => l && !l.startsWith("#"));
   const redirects = fs.readFileSync(path.join(WEB, "_redirects"), "utf8");
-  for (const f of ["tests.html", "wallet-setup.html", "wallet-stub.js", "REAL_WALLET_TEST.txt", "e2e", "test-results"]) {
+  for (const f of ["tests.html", "wallet-setup.html", "wallet-stub.js", "REAL_WALLET_TEST.txt", "vendor/README.txt", "e2e", "test-results"]) {
     expect(ignored, f + " is not in .vercelignore").toContain("/" + f);
     const want = /\./.test(f) ? "/" + f : "/" + f + "/*";
     expect(redirects.split(/\r?\n/).some((l) => l.trim().split(/\s+/).join(" ") === want + " /404.html 404!"),
@@ -476,6 +477,30 @@ test("the two hosts send the same headers, and the policy names every inline scr
     }
   }
   expect(inline, "app.html's <base> script was not found").toBeGreaterThan(0);
+});
+
+/// WALLETCONNECT WIDENS THE POLICY BY TWO NAMED HOSTS AND NO MORE: its relay,
+/// a WebSocket that https: does not cover, and the hidden Verify frame its SDK
+/// opens. Both are read from the vendored SDK itself, so a version that moves
+/// either fails here before it fails for a visitor.
+test("the policy names WalletConnect's relay and its Verify frame and nothing more, and covers every one the vendored SDK uses", async () => {
+  const csp = POLICY["content-security-policy"];
+  const dir = (name) => (csp.split(";").map((d) => d.trim()).find((d) => d.startsWith(name + " ")) || "").split(/\s+/).slice(1);
+  expect(dir("connect-src")).toEqual(["'self'", "https:", "wss://relay.walletconnect.org"]);
+  expect(dir("frame-src")).toEqual(["https://verify.walletconnect.org"]);
+  expect(dir("script-src")).toHaveLength(2);
+  expect(dir("script-src")[0]).toBe("'self'");
+  expect(csp).not.toMatch(/unsafe-eval|wasm-unsafe-eval/);
+  const adapter = fs.readFileSync(path.join(WEB, "walletconnect.js"), "utf8");
+  const umd = fs.readFileSync(path.join(WEB, /const UMD = "([^"]+)";/.exec(adapter)[1]), "utf8");
+  const sockets = new Set([...umd.matchAll(/wss?:\/\/[a-z0-9.-]+/gi)].map((m) => m[0]));
+  sockets.add(/const RELAY = "([^"]+)";/.exec(adapter)[1]);
+  for (const s of sockets) expect(dir("connect-src"), s + " is not in connect-src").toContain(s);
+  // THE FRAME'S HOST: the SDK's Verify URL, which its iframe's src is built from.
+  expect(umd.match(/createElement\("iframe"\)/g), "the SDK makes a frame somewhere new").toHaveLength(1);
+  const verify = /\w+="(https:\/\/[^"/]+)",(\w+)=\w+,\w+=`\$\{\2\}\/v3`/.exec(umd);
+  expect(verify, "the Verify frame's host could not be found in the SDK: check it against frame-src by hand").not.toBeNull();
+  expect(dir("frame-src")).toContain(verify[1]);
 });
 
 /// Every violation the page meets, recorded from its first script on.
@@ -564,6 +589,52 @@ test("the policy is live: an inline script nobody hashed is refused", async ({ p
   await page.waitForTimeout(200);
   expect(await page.evaluate(() => window.__inline)).toBeUndefined();
   expect((await violations(page)).some((v) => v.startsWith("script-src"))).toBe(true);
+});
+
+/// THE WALLET PICKER - a wallet's data: icon drawn - AND WALLETCONNECT'S PANEL
+/// - the adapter, its QR library and an SDK stand-in loaded by their hash -
+/// under the site's policy, with no violation.
+test("the wallet picker and WalletConnect's panel work under the site's policy", async ({ page }) => {
+  await useConfig(page, { walletConnectProjectId: PROJECT_ID });
+  await useFakeWalletConnect(page);
+  const icon = "data:image/svg+xml;base64," + Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#0a0"/></svg>').toString("base64");
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc,
+    list: [{ id: "A", uuid: uuid("1"), rdns: "com.alpha.wallet", name: "Alpha Wallet", icon, account: TRADER }] }) });
+  await recordViolations(page);
+  await page.goto(base + "/curb.html");
+  await expect(page.locator("#siteBar .cbInner")).toBeVisible({ timeout: 15_000 });
+  await page.click("#barConnect");
+  await expect(page.locator("#siteBar .cbPick img")).toHaveCount(1);
+  await page.locator("#siteBar .cbPickRow", { hasText: "Phone wallet" }).click();
+  await expect.poll(() => page.locator("#siteBar canvas.cbWcQr").evaluate((c) => c.width).catch(() => 0),
+    { timeout: 15_000 }).toBeGreaterThan(20);
+  expect(await violations(page)).toEqual([]);
+});
+
+/// THE REAL VENDORED SDK loads under the policy by the hash walletconnect.js
+/// names - no eval, nothing the policy refuses - and under any other hash the
+/// browser refuses it.
+test("the vendored WalletConnect SDK runs under the site's policy by its hash, and not under another", async ({ page }) => {
+  const adapter = fs.readFileSync(path.join(WEB, "walletconnect.js"), "utf8");
+  const umd = /const UMD = "([^"]+)";/.exec(adapter)[1];
+  const sri = /const UMD_SRI = "([^"]+)";/.exec(adapter)[1];
+  await recordViolations(page);
+  await page.goto(base + "/terms.html");
+  await expect(page.locator("#siteBar .cbInner")).toBeVisible();
+  const load = (src, integrity) => page.evaluate(({ src: s, integrity: i }) => new Promise((resolve) => {
+    const el = document.createElement("script");
+    el.src = s;
+    el.integrity = i;
+    el.onload = () => resolve("loaded");
+    el.onerror = () => resolve("refused");
+    document.head.append(el);
+  }), { src, integrity });
+  expect(await load("/" + umd, sri.replace(/.$/, sri.endsWith("A") ? "B" : "A"))).toBe("refused");
+  expect(await page.evaluate(() => typeof globalThis["@walletconnect/universal-provider"])).toBe("undefined");
+  expect(await load("/" + umd, sri)).toBe("loaded");
+  expect(await page.evaluate(() => typeof globalThis["@walletconnect/universal-provider"].UniversalProvider)).toBe("function");
+  expect(await violations(page)).toEqual([]);
 });
 });
 

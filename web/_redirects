@@ -20,5 +20,6 @@
 /REAL_WALLET_TEST.txt  /404.html  404!
 /README.txt  /404.html  404!
 /assets/README.txt  /404.html  404!
+/vendor/README.txt  /404.html  404!
 /e2e/*  /404.html  404!
 /test-results/*  /404.html  404!

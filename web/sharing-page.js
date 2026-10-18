@@ -237,7 +237,8 @@ async function claim(l, btn) {
   btn.disabled = true;
   try {
     const who = window.CurbBar.account();
-    const eth = window.ethereum;
+    // THE WALLET THE PERSON CHOSE in the bar (topbar.js "the wallets"), and no other.
+    const eth = window.CurbBar.wallet();
     if (!eth || !who) throw new Error("Connect a wallet first.");
     const r = Sh.reader(window.CurbBar.config().rpc);
     const [walletChain, nodeChain] = await Promise.all([eth.request({ method: "eth_chainId" }), r.rpc("eth_chainId", [])]);

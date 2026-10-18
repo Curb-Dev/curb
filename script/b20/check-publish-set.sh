@@ -111,6 +111,32 @@ check_set() {
     if ! printf '%s\n' "$set" | grep -qxF "$f"; then fail "$f is not in the publish set"; fi
   done
 
+  # ---- web/vendor/: every file the one web/vendor/README.txt records by its
+  # sha256, and none it does not record. A vendored file edited by hand, or a
+  # new one dropped in beside them, is third-party code nobody checked - and
+  # walletconnect.js loads the SDK by its hash, so a changed one would only
+  # fail in a visitor's browser.
+  if [ -d "$web/vendor" ]; then
+    local vbad=0 recorded vf want got
+    if [ ! -f "$web/vendor/README.txt" ]; then
+      fail "vendor/ has no README.txt recording its files' hashes"; vbad=1
+    else
+      recorded="$(tr -d '\r' < "$web/vendor/README.txt" | grep -E '^  [0-9a-f]{64}  [^ ]+$' | awk '{ print $2, $1 }')"
+      while IFS= read -r vf; do
+        [ -z "$vf" ] && continue
+        want="$(printf '%s\n' "$recorded" | awk -v f="$vf" '$1 == f { print $2 }')"
+        if [ -z "$want" ]; then fail "vendor/$vf is not recorded in vendor/README.txt"; vbad=1; continue; fi
+        got="$(sha256sum "$web/vendor/$vf" | cut -d' ' -f1)"
+        if [ "$got" != "$want" ]; then fail "vendor/$vf is not the file vendor/README.txt records (its sha256 is $got)"; vbad=1; fi
+      done <<< "$(cd "$web/vendor" && find . -type f ! -name README.txt | sed 's|^\./||' | sort)"
+      while read -r vf want; do
+        [ -z "$vf" ] && continue
+        if [ ! -f "$web/vendor/$vf" ]; then fail "vendor/README.txt records vendor/$vf, which is not there"; vbad=1; fi
+      done <<< "$recorded"
+    fi
+    [ "$vbad" = 0 ] && ok "every vendored file is the one vendor/README.txt records"
+  fi
+
   # ---- web/_redirects: every ignored path answered with the site's 404,
   # forced, for Netlify; and the root is the launches page.
   local redirects="$web/_redirects" want
@@ -284,6 +310,21 @@ selftest() {
 
   fresh; perl -pi -e 's/=\(\)/=/g if /^\s+Permissions-Policy:/' "$t/w/_headers"
   expect fail "a Permissions-Policy with its () left out is refused (read as text: to a regex they are empty groups)" "_headers does not send Permissions-Policy"
+
+  # A VENDORED FILE: as recorded, edited, unrecorded, and recorded but gone.
+  vendor() {
+    mkdir -p "$t/w/vendor/lib"
+    printf 'export const x = 1;\n' > "$t/w/vendor/lib/x.mjs"
+    printf 'THE FILES\n\n  %s  lib/x.mjs\n' "$(sha256sum "$t/w/vendor/lib/x.mjs" | cut -d' ' -f1)" > "$t/w/vendor/README.txt"
+  }
+  fresh; vendor
+  expect pass "a vendored file README.txt records passes"
+  fresh; vendor; printf 'export const x = 2;\n' > "$t/w/vendor/lib/x.mjs"
+  expect fail "a vendored file edited after it was recorded is refused" "vendor/lib/x.mjs is not the file"
+  fresh; vendor; printf 'x\n' > "$t/w/vendor/lib/y.js"
+  expect fail "a file in vendor/ README.txt does not record is refused" "vendor/lib/y.js is not recorded"
+  fresh; vendor; rm "$t/w/vendor/lib/x.mjs"
+  expect fail "a file README.txt records that is gone is refused" "which is not there"
 
   # ---- deploy day
   local L="0x00000000000000000000000000000000000000aa" F1="0x00000000000000000000000000000000000000bb" F2="0x00000000000000000000000000000000000000Cc"

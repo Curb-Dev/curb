@@ -134,6 +134,64 @@ html { scroll-padding-top: calc(var(--cb-bar-h) + 16px); }
   color: var(--dim, #94a0b0); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
 }
 #siteBar .cbNote[hidden] { display: none; }
+#siteBar .cbNote a { color: var(--ink, var(--text, #eef2f7)); font-weight: 650; }
+
+/* ---- the wallet picker (topbar.js "the picker"): where the menu sits. Each
+   row is a wallet's picture, its name, and under it the id it announced -
+   so a second "MetaMask" shows an id that is not MetaMask's. */
+#siteBar .cbPick {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 42; width: 320px;
+  max-height: calc(100vh - var(--cb-bar-h) - 24px); overflow-y: auto;
+  padding: 8px; border-radius: 12px;
+  background: var(--panel, #0e131b); border: 1px solid var(--line, #1d2633);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+#siteBar .cbPick[hidden] { display: none; }
+#siteBar .cbPickHead { padding: 6px 8px 8px; font-size: 13px; font-weight: 700; color: var(--dim, #94a0b0); }
+#siteBar .cbPickWarn { margin: 0 4px 8px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.45;
+  color: #ffd38a; background: rgba(245, 165, 36, 0.10); border: 1px solid rgba(245, 165, 36, 0.35); }
+#siteBar .cbPickRow {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 9px 10px; border-radius: 9px; border: 1px solid transparent; background: transparent;
+  color: var(--ink, var(--text, #eef2f7)); white-space: normal;
+}
+#siteBar .cbPickRow:hover, #siteBar .cbPickRow:focus-visible { background: var(--panel2, #131a24); border-color: var(--line, #1d2633); }
+#siteBar .cbPickRow img, #siteBar .cbPickTile { width: 28px; height: 28px; flex: none; border-radius: 7px; }
+#siteBar .cbPickTile { display: grid; place-items: center; font-size: 13px; font-weight: 750;
+  color: var(--dim, #94a0b0); border: 1px solid var(--line, #1d2633); background: var(--panel2, #131a24); }
+#siteBar .cbPickTile svg { display: block; }
+#siteBar .cbPickText { display: flex; flex-direction: column; min-width: 0; }
+#siteBar .cbPickName { font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+#siteBar .cbPickId { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
+  color: var(--dimmer, #5f6b7c); overflow-wrap: anywhere; }
+
+/* ---- WalletConnect's panel, in the picker (walletconnect.js): the code on a
+   white ground with its quiet zone, the phone wallets' links, and the way back. */
+#siteBar .cbWc { display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 0 4px 4px; }
+#siteBar .cbWcCode { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+#siteBar .cbWcCode:empty { display: none; }
+#siteBar .cbWcStatus { margin: 0; font-size: 13px; line-height: 1.5; color: var(--dim, #94a0b0); }
+#siteBar .cbWcQr { display: block; width: 240px; height: 240px; margin: 0 auto; padding: 12px; box-sizing: content-box;
+  background: #ffffff; border-radius: 10px; image-rendering: pixelated; }
+/* THE PHONE WALLETS' LINKS, first - on a touch screen only: on a computer the
+   wallet is on another device, and the code is the way there. */
+#siteBar .cbWcApps { display: none; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+@media (pointer: coarse) { #siteBar .cbWcApps { display: grid; } }
+#siteBar .cbWc a, #siteBar .cbWcBtn {
+  display: block; padding: 9px 10px; border-radius: 9px; text-align: center; text-decoration: none;
+  font-size: 13.5px; font-weight: 650; color: var(--ink, var(--text, #eef2f7));
+  background: var(--panel2, #131a24); border: 1px solid var(--line, #1d2633);
+}
+#siteBar .cbWc a:hover, #siteBar .cbWcBtn:hover { border-color: var(--dimmer, #5f6b7c); }
+#siteBar .cbWcRow { display: flex; gap: 6px; }
+#siteBar .cbWcRow > * { flex: 1; }
+/* A PHONE GETS A SHEET, the width of the screen, rather than a box hanging off
+   a button near its edge. Fixed, so it is placed against the screen; the bar
+   spans the screen, so it lands the same if the bar holds it. */
+@media (max-width: 600px) {
+  #siteBar .cbPick { position: fixed; left: 12px; right: 12px; top: calc(var(--cb-bar-h) + 8px); width: auto; }
+  #siteBar .cbWcQr { width: min(240px, calc(100vw - 80px)); height: min(240px, calc(100vw - 80px)); }
+}
 
 /* ---- search, on every page: a button that looks like a field. The field
    itself is a sheet (search.js), because search is a screen, not a filter on

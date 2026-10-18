@@ -765,3 +765,28 @@ will be linked here. Like any contracts, they can still have bugs.
 
 To report a vulnerability, write to **security@curbfun.xyz**. Please do not disclose it publicly until it is
 fixed.
+
+---
+
+## Phone wallets (WalletConnect)
+
+**Connect wallet** lists the wallets your browser announces, each with the id it announces under its name, so two
+wallets with the same name can be told apart. The one you pick is the only one the site asks from then on, and it
+is remembered for your next visit until you press Disconnect.
+
+Where the site offers it, **Phone wallet** connects a wallet on your phone through WalletConnect: scan the code with
+the wallet, or, on the phone itself, open the wallet from the list.
+
+- **What Reown's relay sees.** WalletConnect carries the messages between this site and your wallet through Reown's
+  relay (relay.walletconnect.org). For each transaction it sees the method, the chain, the contract the transaction
+  goes to and the transaction's hash, as well as your IP address and this site's project id. To vouch for this site
+  to your wallet, Reown's Verify service loads a hidden frame from verify.walletconnect.org. The code's own usage
+  reports are switched off.
+- **What the site asks.** Only to send transactions on Base, from the account you connected. It never asks the
+  wallet to sign a message, and everything it reads comes from its own endpoint, not through the relay.
+- **One tab at a time.** WalletConnect runs in one tab of this site at a time. Another tab says so and waits.
+- **Five minutes to confirm.** A request your wallet answers later than that is lost, and the site cannot tell
+  whether the transaction went out: check your wallet's activity before you send again.
+- **The code is Reown's**, served from this site unchanged and loaded only when you pick Phone wallet, under the
+  WalletConnect Community License Agreement (linked from the [terms](terms.html)). Portions © 2025 Reown, Inc. All
+  Rights Reserved.

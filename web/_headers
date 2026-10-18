@@ -13,11 +13,17 @@
 #                data: image (token-meta.js keeps nothing else).
 #   connect-src  https: - the read endpoint is the visitor's choice (?rpc=), and a
 #                token's metadata and a payout file come from gateways.
+#                And wss://relay.walletconnect.org, by name: WalletConnect's relay
+#                (walletconnect.js), which https: does not cover. Used only once
+#                config.js names a WalletConnect project id.
+#   frame-src    https://verify.walletconnect.org: the hidden frame WalletConnect's
+#                SDK opens to have Reown vouch for this origin to the wallet. Without
+#                it each pairing and request waits out a 5 s timer. No other frame.
 #   frame-ancestors 'none' (and X-Frame-Options for older browsers): a page that
 #                sends wallet transactions is never drawn inside another site.
 # Referrer-Policy keeps a page's query (?rpc=, ?lens=) out of what other sites see.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-VXe6jHq2UwLFc787/QXj62k0l0UZuJWkqqiyy1VIuMA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-VXe6jHq2UwLFc787/QXj62k0l0UZuJWkqqiyy1VIuMA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https: wss://relay.walletconnect.org; frame-src https://verify.walletconnect.org; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

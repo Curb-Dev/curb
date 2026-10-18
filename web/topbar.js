@@ -24,8 +24,10 @@
 const host = document.getElementById("siteBar");
 if (!host) return;
 
-// THE BAR'S OWN STORE, holding one thing: whether the person chose Disconnect.
-// A new key - curb.app.v1 and curb.launch.* belong to the pages.
+// THE BAR'S OWN STORE, holding two things: whether the person chose Disconnect
+// (`hidden`), and which wallet they connected with (`wallet`: "6963:<rdns>",
+// "legacy" or "walletconnect" - see "the wallets" below). A new key -
+// curb.app.v1 and curb.launch.* belong to the pages.
 const STORE = "curb.site.v1";
 const APP_STORE = "curb.app.v1";          // read only - see config below
 
@@ -53,6 +55,9 @@ const SITE = (() => {
     banner: typeof s.banner === "string" ? s.banner.replace(/\s+/g, " ").trim().slice(0, 400) : "",
     hiddenFactories: addrs(s.hiddenFactories),
     hiddenLaunches: addrs(s.hiddenLaunches),
+    // The Reown project id: 32 hex characters, or "" (WalletConnect off).
+    walletConnect: /^[0-9a-f]{32}$/i.test(String(s.walletConnectProjectId || "").trim())
+      ? String(s.walletConnectProjectId).trim().toLowerCase() : "",
   };
 })();
 // THE BUILT-IN PAIR: config.js's endpoint and lens. With the endpoint unset
@@ -254,7 +259,9 @@ const copyBtn = el("button", { type: "button", role: "menuitem", text: "Copy add
 const outBtn = el("button", { type: "button", role: "menuitem", class: "cbOut", text: "Disconnect" });
 const menu = el("div", { class: "cbMenu", role: "menu", hidden: true }, [who, copyBtn, outBtn]);
 const note = el("div", { class: "cbNote", role: "status", hidden: true });
-actions.append(el("div", { class: "cbWallet" }, [btn, menu, note]));
+// THE WALLET PICKER, where the menu sits (see "the picker" below).
+const pickBox = el("div", { class: "cbPick", role: "dialog", "aria-label": "Choose a wallet", hidden: true });
+actions.append(el("div", { class: "cbWallet" }, [btn, menu, pickBox, note]));
 
 host.textContent = "";
 host.append(el("div", { class: "cbInner" }, [brand, nav, actions]));
@@ -330,14 +337,215 @@ function carryLinks() {
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", carryLinks);
 else carryLinks();
 
+// ---------------------------------------------------------------- the wallets
+// WHICH WALLET THE SITE TALKS TO.
+//
+// window.ethereum is whichever extension wrote it last, so a person with two
+// wallets was connected through one they never chose. Wallets announce
+// themselves now (EIP-6963): each answers "eip6963:requestProvider" with its
+// own provider, a name, an icon and a reverse-DNS id. The bar keeps what they
+// announce, the person picks one, and from then on THAT provider is the only
+// one asked - by the bar, and by every page through CurbBar.wallet() (app.js,
+// launch.js and sharing-page.js send through nothing else). A browser whose
+// wallet announces nothing still has window.ethereum, as the one choice
+// "Browser wallet" - which is every browser test that announces nothing.
+//
+// EVERY ANNOUNCEMENT IS A STRANGER'S. Any extension can announce, under any
+// name and with any picture. The name is drawn as text; the icon only as an
+// <img> from a data:image URI, so drawing it fetches nothing; and the id is
+// drawn under the name, so a second "MetaMask" shows an id that is not
+// MetaMask's. A remembered id that two wallets announce is chosen for neither.
+//
+// REMEMBERED BY ID, NEVER BY NAME OR uuid (a uuid changes on every load):
+// `wallet` in the bar's store, written when the person connects and erased by
+// Disconnect. At load, prompting nothing:
+//   - after a Disconnect, no wallet is chosen;
+//   - a remembered id announced exactly once is chosen - late too, once it
+//     arrives; announced twice, neither is, and the picker says why;
+//   - a remembered WalletConnect session is restored (walletconnect.js);
+//   - with nothing remembered and exactly one wallet in all (one injected
+//     wallet, WalletConnect off), that one - as before there was a choice;
+//   - otherwise none, until the person picks.
+const MAX_WALLETS = 16;
+const ICON_MAX = 128 * 1024;
+const ICON_URI = /^data:image\/(svg\+xml|png|jpeg|gif|webp)[;,]/i;
+const UUID = /^[0-9a-f-]{36}$/i;
+const RDNS = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
+/// Control characters, and the ones that turn the text's direction round.
+const UNSAFE_CHARS = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
+/// WALLETCONNECT IS OFFERED ONLY WITH A PROJECT ID, A DEPLOYMENT AND THE SITE'S
+/// OWN ENDPOINT: its session's one chain is config.js's, and every read it
+/// answers goes to config.js's rpc (walletconnect.js).
+const WC_ON = !!(SITE.walletConnect && SEND_CHAIN && SITE.rpc);
+
+/// A wallet's name as the bar draws it: one line, no control or direction
+/// characters, at most 40 characters; "" when nothing is left.
+function walletName(s) {
+  if (typeof s !== "string") return "";
+  const one = s.replace(/\s+/g, " ").replace(UNSAFE_CHARS, "").trim();
+  return Array.from(one).slice(0, 40).join("").trim();
+}
+/// A provider worth keeping: an object with a request function, and never a
+/// DOM node - an element with id "ethereum" IS window.ethereum on a browser
+/// with no wallet (docs.js keeps its headings off that id for this reason).
+const isProvider = (p) => !!p && typeof p === "object" && typeof p.request === "function" &&
+  !(typeof Node === "function" && p instanceof Node);
+/// A stored choice, checked as a stranger's value would be: "" for anything else.
+function walletKey(v) {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  if (s === "legacy" || s === "walletconnect") return s;
+  return s.startsWith("6963:") && s.length <= 105 && RDNS.test(s.slice(5)) ? s : "";
+}
+
+const announced = [];          // { kind, key, uuid, rdns, name, icon, provider }, in order of arrival
+let legacy = null;             // window.ethereum, as the choice "Browser wallet"
+let chosen = null;             // the wallet every page asks, or null
+let clash = "";                // a remembered id that two wallets announced
+let remembered = walletKey(readJson(STORE).wallet);
+let settledYet = false;
+let settleNow = () => {};
+/// THE LOAD'S CHOICE IS MADE ONCE DISCOVERY HAS SETTLED: as soon as the
+/// remembered wallet announces, or a moment after the page is parsed, and never
+/// later than a second in (see the startup at the end).
+const settled = new Promise((resolve) => {
+  settleNow = () => {
+    if (settledYet) return;
+    settledYet = true;
+    const first = autoChoice();
+    if (first) choose(first, false);
+    resolve();
+  };
+});
+
+/// window.ethereum as a choice, while no wallet announces itself.
+function legacyChoice() {
+  const eth = window.ethereum;
+  if (!isProvider(eth)) return null;
+  if (!legacy || legacy.provider !== eth) {
+    legacy = { kind: "legacy", key: "legacy", uuid: "", rdns: "", name: "Browser wallet", icon: "", provider: eth };
+  }
+  return legacy;
+}
+/// The wallets there are to pick from: the announced ones, else window.ethereum.
+/// The "Browser wallet" leaves the list once any wallet announces - it is one
+/// of them, and one wallet must not be listed twice - unless it is already
+/// this page's choice.
+function choices() {
+  const list = announced.length ? announced.slice() : [legacyChoice()].filter(Boolean);
+  if (chosen && chosen.kind === "legacy" && !list.includes(chosen)) list.unshift(chosen);
+  return list;
+}
+
+function onAnnounce(e) {
+  try {
+    const d = e && e.detail;
+    if (!d || typeof d !== "object") return;
+    const info = d.info;
+    const provider = d.provider;
+    if (!info || typeof info !== "object" || !isProvider(provider)) return;
+    // EACH FIELD READ ONCE: a getter may answer differently the second time.
+    const uuid = info.uuid, rdns = info.rdns, name = walletName(info.name), icon = info.icon;
+    if (typeof uuid !== "string" || !UUID.test(uuid)) return;
+    if (typeof rdns !== "string" || rdns.length > 100 || !RDNS.test(rdns)) return;
+    if (!name || announced.length >= MAX_WALLETS) return;
+    // THE FIRST WITH A uuid WINS: a repeat is the same wallet answering again, or an impostor.
+    if (announced.some((w) => w.uuid === uuid.toLowerCase())) return;
+    const entry = {
+      kind: "injected", key: "6963:" + rdns.toLowerCase(), uuid: uuid.toLowerCase(), rdns: rdns.toLowerCase(), name,
+      icon: typeof icon === "string" && icon.length <= ICON_MAX && ICON_URI.test(icon) ? icon : "",
+      provider,
+    };
+    announced.push(entry);
+    // window.ethereum, CHOSEN AS "Browser wallet", ANNOUNCING ITSELF: the same
+    // provider with a name now, so its handlers stay where they are.
+    if (chosen && chosen.kind === "legacy" && chosen.provider === provider) chosen = entry;
+    arrived(entry);
+  } catch { /* a malformed announcement is no wallet */ }
+}
+
+/// A WALLET ARRIVED. The remembered one settles the load straight away - after
+/// any other answer to the same request, so a twin is seen. Arriving after
+/// the load settled, it is chosen then, as quietly as it would have been.
+function arrived(entry) {
+  if (entry.key === remembered) {
+    if (!settledYet) setTimeout(settleNow, 0);
+    else if (!chosen && !hidden && !pickerDone) {
+      const same = announced.filter((w) => w.key === entry.key);
+      if (same.length === 1) choose(entry, true);
+      else clash = entry.rdns;
+    }
+  }
+  paint();
+  if (pickerDone && !wcRunning) drawPicker();
+}
+
+/// The wallet chosen at load, prompting nothing (see above).
+function autoChoice() {
+  clash = "";
+  if (hidden) return null;
+  if (remembered.startsWith("6963:")) {
+    const same = announced.filter((w) => w.key === remembered);
+    if (same.length > 1) clash = same[0].rdns;
+    return same.length === 1 ? same[0] : null;
+  }
+  if (remembered === "walletconnect" && WC_ON) {
+    restoreWalletConnect();
+    return null;
+  }
+  const list = choices();
+  return list.length === 1 && !WC_ON ? list[0] : null;
+}
+
+function requestWallets() {
+  try { window.dispatchEvent(new Event("eip6963:requestProvider")); } catch { /* nothing to ask */ }
+}
+
+// ---- the chosen wallet's events
+// THE PAGES SUBSCRIBE HERE, NOT ON A PROVIDER (CurbBar.walletOn): one handler
+// per event sits on the chosen provider and passes the event on, and it moves
+// when the choice does. A change of wallet after load - a pick, a WalletConnect
+// session restored late or ended - is said as "accountsChanged" with the new
+// wallet's accounts (or none), so app.js and launch.js follow it through the
+// handlers they already have.
+const WALLET_EVENTS = ["accountsChanged", "chainChanged"];
+const walletSubs = new Map(WALLET_EVENTS.map((ev) => [ev, new Set()]));
+const forwarders = new Map(WALLET_EVENTS.map((ev) => [ev, (arg) => tellWallet(ev, arg)]));
+function tellWallet(ev, arg) {
+  for (const fn of walletSubs.get(ev) || []) { try { fn(arg); } catch (e) { console.error(e); } }
+}
+function walletOn(ev, fn) { if (walletSubs.has(ev) && typeof fn === "function") walletSubs.get(ev).add(fn); }
+function walletOff(ev, fn) { if (walletSubs.has(ev)) walletSubs.get(ev).delete(fn); }
+
+/// THE CHOICE, MOVED: the handlers leave the old provider and sit on the new.
+/// @param tell  say it to the pages - a change after load
+async function choose(entry, tell) {
+  if (entry === chosen) return;
+  const before = chosen;
+  for (const [ev, fn] of forwarders) {
+    try { if (before) before.provider.removeListener?.(ev, fn); } catch { /* no events */ }
+    try { if (entry) entry.provider.on?.(ev, fn); } catch { /* no events */ }
+  }
+  chosen = entry;
+  paint();
+  if (!tell) return;
+  let a = [];
+  if (entry && !hidden) {
+    try { a = await entry.provider.request({ method: "eth_accounts" }); } catch { a = []; }
+  }
+  if (chosen !== entry) return;
+  a = Array.isArray(a) ? a : [];
+  if (before || a.length) tellWallet("accountsChanged", a);
+}
+
 // ---------------------------------------------------------------- the account
 let account = null;
 let hidden = readJson(STORE).hidden === true;
 const subs = new Set();
 
 function paint() {
+  const any = !!chosen || choices().length > 0 || WC_ON;
   btn.classList.toggle("on", !!account);
-  btn.classList.toggle("nowallet", !account && !window.ethereum);
+  btn.classList.toggle("nowallet", !account && !any);
   btn.textContent = "";
   if (account) {
     btn.append(el("span", { class: "cbDot" }), el("span", { text: short(account) }));
@@ -346,7 +554,7 @@ function paint() {
     who.textContent = account;
   } else {
     btn.textContent = "Connect wallet";
-    btn.title = window.ethereum ? "" : "No browser wallet found";
+    btn.title = any ? "" : "No browser wallet found";
     btn.setAttribute("aria-label", "Connect wallet");
     closeMenu();
   }
@@ -362,77 +570,105 @@ function setAccount(next) {
   document.dispatchEvent(new CustomEvent("curb:account", { detail: account }));
 }
 
-function unhide() {
-  if (!hidden) return;
+/// CONNECTED: a Disconnect is lifted, and the wallet it was made with is the
+/// one the next visit chooses. Written once, together, so another tab hears
+/// one change.
+function connected() {
+  const key = chosen ? chosen.key : "";
+  if (!hidden && (!key || key === remembered)) return;
   hidden = false;
-  writeSite({ hidden: false });
+  if (key) remembered = key;
+  writeSite(key ? { hidden: false, wallet: key } : { hidden: false });
 }
 
 // ASKED, NEVER REQUESTED. eth_accounts is silent: it answers with the account
 // only if this site was already allowed. After a Disconnect the bar does not
-// ask at all until the person connects again.
+// ask at all until the person connects again - and it asks the chosen wallet
+// only, never one the person did not pick.
 async function detect() {
-  const eth = window.ethereum;
-  if (!eth || hidden) return;
+  const w = chosen;
+  if (!w || hidden) return;
   try {
-    const a = await eth.request({ method: "eth_accounts" });
-    if (!hidden) setAccount(a && a[0]);
+    const a = await w.provider.request({ method: "eth_accounts" });
+    if (!hidden && chosen === w) setAccount(a && a[0]);
   } catch { /* a wallet that will not say is a wallet not connected */ }
 }
 
-let listening = false;
-function listen() {
-  const eth = window.ethereum;
-  if (!eth || listening) return;
-  listening = true;
-  // A REAL WALLET ANNOUNCES ITS OWN CHANGES - a switched account, or none after
-  // it disconnected the site. After a Disconnect here they are ignored until
-  // the person connects again.
-  try { eth.on?.("accountsChanged", (a) => { if (!hidden) setAccount(a && a[0]); }); } catch { /* no events */ }
-}
+// A REAL WALLET ANNOUNCES ITS OWN CHANGES - a switched account, or none after
+// it disconnected the site - through the chosen wallet's handler. After a
+// Disconnect here they are ignored until the person connects again.
+walletOn("accountsChanged", (a) => { if (!hidden) setAccount(a && a[0]); });
 
 // A PAGE'S OWN CONNECT TELLS THE BAR. app.js and launch.js dispatch this after
 // their #connect succeeds; a wallet is not obliged to emit accountsChanged for
 // it, and the test wallet never does.
 document.addEventListener("curb:page-account", (e) => {
-  if (isAddr(e.detail)) unhide();
+  if (isAddr(e.detail)) connected();
   setAccount(e.detail);
 });
 
 /// app.html's and launch.html's own Connect button, or null on every other page.
 function ownConnect() { return document.querySelector("main #connect"); }
 
-function showNote(text) {
+/// A line under the Connect button. It fades after 7 s unless `keep`; `link`
+/// ({ href, text }) is a link after it - only ever one of this site's own
+/// constants (walletconnect.js's wallets), never anything a wallet said.
+function showNote(text, opts) {
   note.textContent = text;
+  if (opts && opts.link) {
+    note.append(" ", el("a", { href: opts.link.href, text: opts.link.text, rel: "noreferrer noopener" }));
+  }
   note.hidden = false;
   clearTimeout(showNote.t);
-  showNote.t = setTimeout(() => { note.hidden = true; }, 7000);
+  if (!(opts && opts.keep)) showNote.t = setTimeout(() => { note.hidden = true; }, 7000);
+}
+
+/// THE WALLET TO CONNECT WITH: the chosen one; else the only one there is,
+/// chosen now; else the person's pick in the picker - null when they close it,
+/// or when there is no wallet at all (said under the button).
+async function pick() {
+  await settled;
+  if (chosen) return chosen.provider;
+  const list = choices();
+  if (!list.length && !WC_ON) {
+    showNote("No browser wallet found. Install one - Coinbase Wallet, MetaMask or Rabby - and reload this page.");
+    return null;
+  }
+  if (list.length === 1 && !WC_ON && !clash) {
+    await choose(list[0], true);
+    return list[0].provider;
+  }
+  return openPicker(!list.length);
 }
 
 async function connect() {
   if (account) return account;
-  const eth = window.ethereum;
-  if (!eth) {
-    showNote("No browser wallet found. Install one - Coinbase Wallet, MetaMask or Rabby - and reload this page.");
-    return null;
-  }
   // THE PAGE'S OWN CONNECT, WHERE IT HAS ONE. app.html's runs through its
   // guard (which refuses while an action runs - nothing is queued) and
   // refreshes the page; launch.html's switches its reads to the wallet. Doing it
   // here as well would leave the page not knowing it was connected. A disabled
   // button means an action is running - both pages disable their #connect for
-  // the length of one - and the click is simply not taken.
+  // the length of one - and the click is simply not taken: SO NO WALLET IS
+  // PICKED OR SWAPPED UNDER AN ACTION WAITING ON ONE. Both pages ask which
+  // wallet through CurbBar.pick, so the picker opens from there.
   const own = ownConnect();
   if (own) {
     if (!own.disabled) own.click();
     return null;
   }
+  await settled;
+  const fresh = !chosen;
+  const eth = await pick();
+  if (!eth) return null;
   try {
     const a = await eth.request({ method: "eth_requestAccounts" });
-    if (a && a[0]) unhide();
+    if (a && a[0]) connected();
     setAccount(a && a[0]);
     return account;
   } catch (e) {
+    // A DECLINED PICK IS NOT KEPT, nor remembered: the next Connect asks which
+    // wallet again.
+    if (fresh && chosen && chosen.provider === eth) choose(null, false);
     if (!(e && e.code === 4001)) showNote("The wallet did not connect: " + ((e && e.message) || e));
     return null;
   }
@@ -440,9 +676,11 @@ async function connect() {
 
 // DISCONNECT, AS FAR AS A WEBSITE CAN. There is no standard call that makes a
 // wallet forget a site; wallets that support wallet_revokePermissions are asked
-// to, and the choice is remembered here so no page shows the account again until
-// the person connects. app.html and launch.html hold their own copy of the
-// account, so those two are reloaded - their silent detection honours the choice.
+// to (a WalletConnect session is ended), and the choice is remembered here so no
+// page shows the account again until the person connects. The wallet chosen is
+// forgotten too: the next Connect asks which. app.html and launch.html hold
+// their own copy of the account, so those two are reloaded - their silent
+// detection honours the choice.
 //
 // NOT WHILE AN ACTION IS WAITING ON THE WALLET. A reload then cuts the page off
 // between the wallet's dialog and the record of what it sent: a transaction
@@ -459,11 +697,14 @@ async function disconnect() {
     return;
   }
   hidden = true;
-  writeSite({ hidden: true });
+  remembered = "";
+  writeSite({ hidden: true, wallet: undefined });
+  const w = chosen;
   try {
-    await window.ethereum?.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
+    if (w) await w.provider.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
   } catch { /* not supported: the local choice is what holds */ }
   setAccount(null);
+  choose(null, false);
   if (own) location.reload();
 }
 
@@ -486,6 +727,11 @@ async function disconnect() {
 // disconnected, until the person connects there (which no longer finds the
 // choice standing) or the page loads again and detects both. No reload for
 // it: a connect in another tab is no reason to throw away a form being filled.
+//
+// ANOTHER WALLET CONNECTED IN ANOTHER TAB holds here as a Disconnect would:
+// the account goes, app.html and launch.html are reloaded once idle (a send
+// already pinned keeps the provider it was pinned to - app.js beginAction),
+// and a page whose only account is the bar's takes up the new wallet.
 function reloadPageWhenIdle() {
   const own = ownConnect();
   if (!own) return;
@@ -499,13 +745,20 @@ function reloadPageWhenIdle() {
 }
 window.addEventListener("storage", (e) => {
   if (e.key !== STORE && e.key !== null) return;
-  const now = readJson(STORE).hidden === true;
-  if (now === hidden) return;
-  hidden = now;
-  if (hidden) {
+  const saved = readJson(STORE);
+  const nowHidden = saved.hidden === true;
+  const nowWallet = walletKey(saved.wallet);
+  const swapped = !nowHidden && !!nowWallet && !!chosen && nowWallet !== chosen.key;
+  remembered = nowWallet;
+  if (nowHidden === hidden && !swapped) return;
+  hidden = nowHidden;
+  if (hidden || swapped) {
     setAccount(null);
-    reloadPageWhenIdle();
-  } else if (!ownConnect()) {
+    if (swapped) choose(null, false);
+    if (ownConnect()) { reloadPageWhenIdle(); return; }
+  }
+  if (!hidden && !ownConnect()) {
+    if (!chosen) { const c = autoChoice(); if (c) choose(c, false); }
     detect();
   }
 });
@@ -516,6 +769,7 @@ function closeMenu() { menu.hidden = true; btn.setAttribute("aria-expanded", "fa
 btn.addEventListener("click", (e) => {
   e.stopPropagation();
   if (account) { menu.hidden ? openMenu() : closeMenu(); return; }
+  if (pickerDone) { closePicker(null); return; }
   connect();
 });
 copyBtn.addEventListener("click", async () => {
@@ -532,7 +786,161 @@ document.addEventListener("click", (e) => {
   // must not be the click that hides it again on its way up to the document.
   if (!note.hidden && !note.contains(e.target) && e.target !== btn && !menu.contains(e.target)) note.hidden = true;
 });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeMenu(); note.hidden = true; } });
+// THE PICKER CLOSES ON A PRESS OUTSIDE IT - a press, not a click: the click
+// that opened it (main #connect's, on app.html) is still on its way up to the
+// document when the picker appears.
+document.addEventListener("pointerdown", (e) => {
+  if (pickerDone && !pickBox.contains(e.target) && !btn.contains(e.target)) closePicker(null);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { closeMenu(); closePicker(null); note.hidden = true; }
+});
+
+// ---------------------------------------------------------------- the picker
+// WHICH WALLET, ASKED ONCE, where the menu sits: each wallet a button with its
+// icon, its name and its id, and WalletConnect's phone wallets last when it is
+// on (config.js walletConnectProjectId). A pick is chosen and then the connect
+// carries on as it did before there was a choice; it is remembered once the
+// wallet has connected (connected() above) - a declined one is not.
+// NEVER UNDER AN ACTION WAITING ON THE WALLET: the bar's Connect does not reach
+// it then (connect() above), as Disconnect is refused.
+let pickerDone = null;     // resolves the open picker's promise
+let pickerOpen = null;     // that promise
+let wcRunning = false;     // the WalletConnect panel is in the picker
+const PHONE_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10.5 18.2h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+
+/// @param phone  open on the WalletConnect panel: it is the only way there is
+function openPicker(phone) {
+  if (pickerOpen) return pickerOpen;
+  closeMenu();
+  note.hidden = true;
+  pickerOpen = new Promise((resolve) => { pickerDone = resolve; });
+  requestWallets();
+  pickBox.hidden = false;
+  btn.setAttribute("aria-expanded", "true");
+  if (phone) startWalletConnect(); else drawPicker();
+  const first = pickBox.querySelector("button");
+  if (first) first.focus();
+  return pickerOpen;
+}
+function closePicker(provider) {
+  if (!pickerDone) return;
+  const done = pickerDone;
+  pickerDone = null;
+  pickerOpen = null;
+  if (wcRunning && window.CurbWalletConnect) window.CurbWalletConnect.abort();
+  wcRunning = false;
+  pickBox.hidden = true;
+  pickBox.textContent = "";
+  btn.setAttribute("aria-expanded", "false");
+  done(provider || null);
+}
+
+/// A wallet's picture: its own data: icon (checked in onAnnounce), else its
+/// first letter on a plain tile.
+function walletIcon(w) {
+  const tile = el("span", { class: "cbPickTile", "aria-hidden": "true", text: (Array.from(w.name)[0] || "?").toUpperCase() });
+  if (!w.icon) return tile;
+  const img = el("img", { width: 28, height: 28, alt: "", decoding: "async" });
+  img.addEventListener("error", () => img.replaceWith(tile), { once: true });
+  img.src = w.icon;
+  return img;
+}
+function pickRow(icon, name, id, onPick) {
+  const b = el("button", { type: "button", class: "cbPickRow" }, [icon, el("span", { class: "cbPickText" }, [
+    el("span", { class: "cbPickName", text: name }), el("span", { class: "cbPickId", text: id })])]);
+  b.addEventListener("click", onPick);
+  return b;
+}
+function drawPicker() {
+  pickBox.textContent = "";
+  pickBox.append(el("div", { class: "cbPickHead", text: "Choose a wallet" }));
+  if (clash) {
+    pickBox.append(el("p", { class: "cbPickWarn", text: "Two wallets in this browser claim the same id, " + clash +
+      ", so neither was chosen for you: one of them is not what it says. Pick the one you mean, or remove the " +
+      "extension you do not know." }));
+  }
+  for (const w of choices()) pickBox.append(pickRow(walletIcon(w), w.name, w.rdns || "window.ethereum", () => picked(w)));
+  if (WC_ON) {
+    pickBox.append(pickRow(el("span", { class: "cbPickTile cbPickWc", html: PHONE_ICON }), "Phone wallet - WalletConnect",
+      "A QR code, or a link to your phone's wallet", () => startWalletConnect()));
+  }
+}
+async function picked(w) {
+  if (!pickerDone) return;
+  await choose(w, true);
+  closePicker(w.provider);
+}
+
+// ---- WalletConnect (walletconnect.js, fetched on the pick)
+// NOTHING OF IT IS FETCHED until the person picks "Phone wallet", or a session
+// they connected is restored; without a project id it is never offered at all.
+let wcLoading = null;
+const wcHooks = {
+  site: () => ({ chainId: SITE.chainId, rpc: SITE.rpc, projectId: SITE.walletConnect }),
+  /// A line under the button: "open in another tab", "Confirm in <wallet>".
+  say: (text, link) => showNote(text, { keep: true, link }),
+  unsay: () => { clearTimeout(showNote.t); note.hidden = true; },
+  /// The session ended (the phone disconnected it, or it expired): the
+  /// accounts are already gone (accountsChanged []); the choice goes too.
+  ended: (adapter) => {
+    if (chosen && chosen.provider === adapter) choose(null, false);
+    if (remembered === "walletconnect") { remembered = ""; writeSite({ wallet: undefined }); }
+  },
+};
+function withWalletConnect() {
+  if (window.CurbWalletConnect) return Promise.resolve(window.CurbWalletConnect);
+  if (!wcLoading) {
+    wcLoading = loadScript("walletconnect.js").then(() => {
+      if (!window.CurbWalletConnect) throw new Error("walletconnect.js did not load");
+      window.CurbWalletConnect.init(wcHooks);
+      return window.CurbWalletConnect;
+    });
+    wcLoading.catch(() => { wcLoading = null; });
+  }
+  return wcLoading;
+}
+const wcEntry = (adapter) => ({ kind: "walletconnect", key: "walletconnect", uuid: "", rdns: "", name: "Phone wallet", icon: "", provider: adapter });
+async function startWalletConnect() {
+  if (!pickerDone || wcRunning) return;
+  wcRunning = true;
+  pickBox.textContent = "";
+  const panel = el("div", { class: "cbWc" }, [el("p", { class: "cbWcStatus", role: "status", text: "Loading WalletConnect…" })]);
+  pickBox.append(el("div", { class: "cbPickHead", text: "Phone wallet" }), panel);
+  let adapter = null;
+  try {
+    const wc = await withWalletConnect();
+    if (!wcRunning) return;
+    adapter = await wc.connect(panel, {
+      back: () => { if (!wcRunning) return; wcRunning = false; drawPicker(); const b = pickBox.querySelector("button"); if (b) b.focus(); },
+      cancel: () => closePicker(null),
+    });
+  } catch (e) {
+    if (!wcRunning) return;
+    panel.textContent = "";
+    panel.append(el("p", { class: "cbWcStatus", role: "status", text: "WalletConnect could not be opened: " + ((e && e.message) || e) }));
+    const back = el("button", { type: "button", class: "cbWcBtn", text: "Back" });
+    back.addEventListener("click", () => { wcRunning = false; drawPicker(); });
+    panel.append(back);
+    return;
+  }
+  if (!wcRunning || !adapter) return;
+  wcRunning = false;
+  await choose(wcEntry(adapter), true);
+  closePicker(adapter);
+}
+/// A SESSION THE PERSON CONNECTED BEFORE, TAKEN UP AT LOAD (curb.site.v1 says
+/// "walletconnect"). Once it is back the pages hear "accountsChanged", as for
+/// any wallet chosen after load; none left to restore, the choice is forgotten.
+async function restoreWalletConnect() {
+  try {
+    const wc = await withWalletConnect();
+    const adapter = await wc.restore();
+    if (hidden || remembered !== "walletconnect") return;
+    if (!adapter) { remembered = ""; writeSite({ wallet: undefined }); paint(); return; }
+    if (!chosen) await choose(wcEntry(adapter), true);
+  } catch (e) { console.error(e); }
+}
 
 // ---------------------------------------------------------------- search
 // FETCHED ON FIRST USE, with what it needs that the page has not loaded: a page
@@ -824,8 +1232,8 @@ const chainName = (hex) => (hex === "0x2105" ? "Base" : "CURB fork " + parseInt(
 ///                   while config.js names no deployment (default: the one the
 ///                   bar's links point at)
 async function switchChain(hex, rpcForAdd) {
-  const eth = window.ethereum;
-  if (!eth) throw new Error("No injected wallet.");
+  const eth = chosen && chosen.provider;
+  if (!eth) throw new Error("No wallet is connected.");
   hex = String(hex || "").toLowerCase();
   if (!/^0x[0-9a-f]{1,16}$/.test(hex)) throw new Error("Not a chain id: " + hex);
   if (SEND_CHAIN && !sameChainId(hex, SEND_CHAIN)) {
@@ -851,11 +1259,26 @@ async function switchChain(hex, rpcForAdd) {
 }
 
 paint();
-listen();
-const ready = detect();
+// THE WALLETS ARE ASKED NOW, before any page script runs: every wallet already
+// injected answers at once, and one that injects later announces itself.
+window.addEventListener("eip6963:announceProvider", onAnnounce);
+requestWallets();
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => { requestWallets(); setTimeout(settleNow, 150); }, { once: true });
+} else {
+  setTimeout(settleNow, 150);
+}
+setTimeout(settleNow, 1000);
+const ready = settled.then(detect);
 // SOME WALLETS INJECT LATE, after the page's scripts have run, and announce it.
 if (!window.ethereum) {
-  window.addEventListener("ethereum#initialized", () => { paint(); listen(); detect(); }, { once: true });
+  window.addEventListener("ethereum#initialized", () => {
+    if (settledYet && !chosen && !hidden) {
+      const c = autoChoice();
+      if (c) choose(c, true);
+    }
+    paint();
+  }, { once: true });
 }
 
 window.CurbBar = {
@@ -890,9 +1313,22 @@ window.CurbBar = {
   /// sends (see endpointNotice).
   endpointRefusal: (rpc) => endpointRefusal(rpc),
   isHidden: () => hidden,
-  /// Settles once the load-time check has answered, so a page can wait for it
-  /// instead of drawing "not connected" for a moment first.
+  /// Settles once the wallets have been found and the load-time check has
+  /// answered, so a page can wait for it instead of drawing "not connected" for
+  /// a moment first.
   ready,
+  /// THE WALLET THE PERSON CHOSE (see "the wallets"): the one provider every
+  /// page reads the wallet through and sends through, or null while none is.
+  wallet: () => (chosen ? chosen.provider : null),
+  /// The wallet to connect with: the chosen one, else the person's pick in the
+  /// picker - null when they close it, or when there is none (see pick).
+  pick,
+  /// The chosen wallet's events (accountsChanged, chainChanged), on whichever
+  /// wallet is chosen now - and "accountsChanged" when the choice changes.
+  walletOn,
+  walletOff,
+  /// "injected", "walletconnect", or null while no wallet is chosen.
+  walletKind: () => (chosen ? (chosen.kind === "walletconnect" ? "walletconnect" : "injected") : null),
 };
 
 })();

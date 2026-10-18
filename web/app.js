@@ -988,9 +988,12 @@ const displayAt = (url, to, data) => {
 const call = (to, data, signal, gas) => (!gas && !signal ? displayAt(chainCfg.rpc, to, data)
   : callAt(chainCfg.rpc, to, data, signal, gas));
 
+/// THE WALLET THE PERSON CHOSE in the site bar (topbar.js "the wallets"), or
+/// null: never one they did not pick. window.ethereum only without the bar.
+const injected = () => (window.CurbBar && window.CurbBar.wallet ? window.CurbBar.wallet() : window.ethereum) || null;
 function wallet() {
-  if (!window.ethereum) throw new Error("No injected wallet. Reading works without one; sending does not.");
-  return window.ethereum;
+  if (!injected()) throw new Error("No injected wallet. Reading works without one; sending does not.");
+  return injected();
 }
 
 /// EVERY ACTION IS PINNED TO WHAT IT WAS BUILT AGAINST.
@@ -1014,7 +1017,7 @@ async function beginAction(scope) {
   // endpoint that was several awaits later - so a form edited in between meant
   // one endpoint was VERIFIED and a different one was PINNED. There is nothing
   // asynchronous between these lines and the reads that follow them.
-  const eth = window.ethereum;
+  const eth = injected();
   if (!eth) throw new Error("No injected wallet. Reading works without one; sending does not.");
   const pin = {
     eth, scope, from: account,
@@ -1438,6 +1441,9 @@ async function send(pin, tx, what, kind, keep, extra) {
   let sentAfterBlock = null;
   try { sentAfterBlock = await pin.read("eth_blockNumber", []); } catch { sentAfterBlock = null; }
 
+  // THE WALLET THIS WAS PINNED TO IS STILL THE ONE CHOSEN: one picked in the
+  // bar since (here or in another tab) is not the one that was checked.
+  if (injected() !== pin.eth) throw new Error("The wallet changed while this was being prepared. Nothing was sent.");
   show("wait", `Waiting for you to confirm: ${escapeHtml(what)}…`);
 
   // A REJECTION IS THE ONLY FAILURE AFTER THIS POINT THAT MEANS NOTHING WAS
@@ -1751,7 +1757,7 @@ async function* recordTransports(tx, seen) {
     const form = await atUrl(chainCfg.rpc);
     if (form) yield form;
   }
-  const w = window.ethereum;
+  const w = injected();
   if (w) {
     let id = null;
     try { id = await w.request({ method: "eth_chainId" }); seen.reached = true; }
@@ -1777,9 +1783,9 @@ async function settleRecord(tx, say) {
 
   // A NONCE THE RECORD LACKS may still be known to the wallet that sent it. An
   // endpoint does not necessarily see a pending transaction at all.
-  if (tx.sentNonce == null && window.ethereum) {
+  if (tx.sentNonce == null && injected()) {
     try {
-      const w = window.ethereum;
+      const w = injected();
       if ((await w.request({ method: "eth_chainId" })) === tx.chainId) {
         const n = await TX.nonceOfHash(tx.hash, [(m, p) => w.request({ method: m, params: p })], tx.from || tx.account);
         if (n !== null) { tx = { ...tx, sentNonce: n }; TX.updatePending(tx, { sentNonce: n }); }
@@ -9715,7 +9721,9 @@ const tellBar = (a) => document.dispatchEvent(new CustomEvent("curb:page-account
 const barHidden = () => !!(window.CurbBar && window.CurbBar.isHidden());
 
 async function connect() {
-  const accounts = await wallet().request({ method: "eth_requestAccounts" });
+  const eth = window.CurbBar && window.CurbBar.pick ? await window.CurbBar.pick() : wallet();
+  if (!eth) return;
+  const accounts = await eth.request({ method: "eth_requestAccounts" });
   account = accounts[0];
   $("wallet").textContent = "Connected: " + account;
   tellBar(account);
@@ -9731,7 +9739,7 @@ async function connect() {
 /// but its chain. { message, chainId } where chainId is the one network the
 /// wallet may be offered (chainVerdict), or null when no switch would help.
 async function walletOffNetwork() {
-  const eth = window.ethereum;
+  const eth = injected();
   if (!eth) return null;
   const [walletChain, nodeChain] = await Promise.all([
     eth.request({ method: "eth_chainId" }),
@@ -9761,7 +9769,7 @@ const switchButton = (hex) =>
 /// endpoint.
 async function switchWalletTo(hex) {
   if (window.CurbBar && window.CurbBar.switchChain) return window.CurbBar.switchChain(hex, chainCfg.rpc);
-  const eth = window.ethereum;
+  const eth = injected();
   if (!eth) throw new Error("No injected wallet.");
   if (NAMED_CHAIN && !sameChainId(hex, NAMED_CHAIN)) {
     throw new Error("This site sends only on " + chainName(NAMED_CHAIN) + ", so it does not move your wallet to chain " +
@@ -10187,18 +10195,23 @@ async function init() {
     $(id).addEventListener("input", () => renderPoolQuote());
   }
 
-  if (window.ethereum) {
-    if (!barHidden()) {
+  // THE WALLET THE BAR CHOSE, once it has found the wallets (topbar.js).
+  if (window.CurbBar && window.CurbBar.ready) await window.CurbBar.ready;
+  const eth = injected();
+  const walletOn = (window.CurbBar && window.CurbBar.walletOn) || ((e, f) => eth.on?.(e, f));
+  if (eth || window.CurbBar) {
+    if (eth && !barHidden()) {
       try {
-        const a = await window.ethereum.request({ method: "eth_accounts" });
+        const a = await eth.request({ method: "eth_accounts" });
         if (a && a[0]) { account = a[0]; $("wallet").textContent = "Connected: " + account; }
       } catch {}
     }
     // A SWITCHED ACCOUNT IS THIS PAGE'S ACCOUNT FROM THEN ON. It used to be
     // noticed only at the next send ("The wallet's account changed"), while the
     // site bar already showed the new one. Sends still re-check at dispatch.
+    // On the bar's handler, so a wallet picked or restored later is followed too.
     try {
-      window.ethereum.on?.("accountsChanged", (a) => {
+      walletOn("accountsChanged", (a) => {
         if (barHidden()) return;
         account = (a && a[0]) || null;
         $("wallet").textContent = account
