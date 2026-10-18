@@ -1,0 +1,347 @@
+================================================================================
+CURB'S CURVE AGAINST THE PONS V2 CURVE 0x LISTS ON ROBINHOOD CHAIN
+================================================================================
+Date   : 18 October 2026
+Asked  : does CURB's curve (src/vendor/PonsV2BondingCurve.sol, "vendored
+         unmodified" from ponsdotdev/ponsfamily @ debbc21f) have the same
+         external ABI and event signatures as the "Pons V2 bonding curve" 0x
+         added as a Robinhood Chain source (docs.0x.org changelog, 31 July
+         2026), and what differs around it?
+Reached: the Robinhood Chain deployment itself - its public RPC answered,
+         and Sourcify serves its verified sources. Blockscout's explorer for
+         the chain answered with a Cloudflare challenge and was not used.
+         0x's own integration is not public (SOURCES, at the end).
+
+
+THE SHORT ANSWER
+  THERE ARE TWO PONS V2 CURVES ON ROBINHOOD CHAIN, and 0x's changelog
+  predates the second.
+  - The FIRST GENERATION, live on 31 July, is CURB's curve: the same source
+    apart from whitespace, and deployed runtime code identical byte for byte
+    to $CURB's curve on Base once immutables and the metadata trailer are set
+    aside. Same functions, events, errors and constructor.
+  - The SECOND GENERATION, the factory Pons launches from today (created 3
+    August), is a strict superset: every one of CURB's 39 functions, 11
+    events and 22 errors is there unchanged, plus a snipe tax - 7 functions
+    and 2 events CURB's curve does not have.
+  Which of the two 0x routes today, and how it finds curves, is not public.
+  What differs AROUND the curve - discovery, the quote asset, who holds the
+  factory role, what the fee fields mean, the pool after graduation, and the
+  chain - is listed below, and any of it is enough to keep an integration
+  built for Pons from seeing CURB's launches unchanged.
+
+
+1. THE TWO GENERATIONS, FROM THE CHAIN
+--------------------------------------------------------------------------------
+  Robinhood Chain mainnet, chain id 4663 (eth_chainId 0x1237 from
+  rpc.mainnet.chain.robinhood.com). Block times from the chain.
+
+  FIRST GENERATION
+    factory        0x7E1EAbd52Ae29598e6483F72dCf1a70b14284dB8
+    created        block 23,551,520, 30 July 2026 19:03 UTC, by
+                   0x0815A4881f9c4073a70fdF00600EbA54c5a5baAa (still its owner)
+    source         Sourcify exact match, solc 0.8.35, verified 30 July
+    launches       1,044 TokenLaunched events, the first at block 24,364,906
+                   (31 July 17:41 UTC), the last at 24,672,736 (1 August
+                   02:15 UTC). launchEnabled() reads false today.
+    deployer       launchDeployer() 0xdd89f26bea3916233d002d1189f973b78d38aa70
+    hook           memeHook() 0x8e99D2009D60A917e9B1c00C04C077b8c0c3a044
+    sample curve   0x5e40dd2c72b76b2e51dbb33b1526b3b2e99ff016 (its first
+                   launch, paired with the AAPL token 0xaF3D...93f9; feeBps
+                   100, creatorTaxBps 0, protocolFeeShareBps 3000,
+                   buybackBurnBps 5000; graduated)
+
+  SECOND GENERATION - the one Pons's README and Bitquery's guide name
+    factory        0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e
+    created        block 26,841,846, 3 August 2026 14:41 UTC, by
+                   0xFdDE5a1E3cDF791Da71E49F817D70C7ceD72CC36; owner
+                   0x263ed295dAFaE1d9AAdD6E56c4B6F9f38eE019Dd
+    source         Sourcify exact match, solc 0.8.35, verified 4 August
+    launches       launchEnabled() true; 16 launches in the last 20,000
+                   blocks before this was written
+    deployer       launchDeployer() 0x3711ceA4feaDE896C913C68F01Eda97Cb06D1A42
+                   (Sourcify exact match; it carries the curve's source)
+    hook           memeHook() 0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044
+    snipe tax      snipeTaxStartBps() 9900, snipeTaxSeconds() 3
+    sample curve   0xf6368bfa67ae1a371a211150072bad92aee84d62 (native ETH;
+                   feeBps 100, creatorTaxBps 350, protocolFeeShareBps 3000,
+                   buybackBurnBps 5000, threshold 4.2 ETH)
+
+  WHICH CURVE CODE EACH FACTORY USES. For both sample curves, curve.factory()
+  is that factory, and the curve's metadata trailer (the CBOR at the end of
+  its code: source hash and compiler) is found inside the code of that
+  factory's launchDeployer() - the code it was created from. For the second
+  generation that deployer's own Sourcify record holds the curve's source.
+  The first generation's deployer was not looked up on Sourcify; its curve
+  source here is the one in its factory's record, and the code comparison
+  in section 2 settles what its curves are whatever the source.
+
+  0x's CHANGELOG IS DATED 31 JULY. That day the first generation made its
+  first launches, and the second generation did not exist until 3 August.
+  18 other addresses emitted the same TokenLaunched signature between 29
+  July and 1 August, 85 events between them, against the first generation's
+  1,044. They were not examined, and whether any of them is a Pons
+  deployment is not known (the TokenLaunched scan, section 5).
+
+
+2. THE CURVE ITSELF
+--------------------------------------------------------------------------------
+  SOURCE
+    CURB's vendored file is upstream debbc21f's file with a provenance header
+    added and one import path changed ("./libraries/PonsV2BondingCurveMath.sol"
+    to "./PonsV2BondingCurveMath.sol"); diff says so and nothing more, apart
+    from line endings (upstream's file is CRLF, with a trailing space on the
+    import line).
+    The first generation's curve source (Sourcify, factory 0x7E1E...) is
+    debbc21f's, IDENTICAL apart from whitespace. Its interfaces, math
+    library, token, buyback vault, deployer and hook are identical too; only
+    its factory differs from debbc21f's.
+    The second generation's curve (Sourcify, deployer 0x3711...) is
+    debbc21f's plus the snipe tax and nothing else. debbc21f's own factory is
+    the second generation's, whitespace apart: it calls exemptFromSnipeTax on
+    a curve whose file at that commit has no such function. So the upstream
+    commit pairs a second-generation factory with a first-generation curve
+    and cannot build as one project as published. That is not CURB's
+    concern: CURB vendors no Pons factory.
+
+  ABI - both curve sources compiled with solc 0.8.30 for their ABI and
+  method identifiers, then compared: functions by selector, state
+  mutability and outputs; events by signature and indexed layout; errors
+  and constructor by signature.
+
+    against the FIRST generation: no difference of any kind.
+
+    against the SECOND generation:
+      functions    39 identical (selector, mutability, outputs), 0 changed,
+                   0 only in CURB's, 7 only in Pons's:
+                     currentSnipeTaxBps(address)   0xd7e1ef39  view
+                     exemptFromSnipeTax(address)   0x31ff7f22  factory only
+                     launchSupply()                0x3f7ed6b7  view
+                     launchedAt()                  0xbf56b371  view
+                     snipeTaxExempt(address)       0xd44bdfe7  view
+                     snipeTaxSeconds()             0x6783774b  view
+                     snipeTaxStartBps()            0x50e25ac2  view
+      events       11 identical, 2 only in Pons's:
+                     SnipeTaxCharged(address indexed recipient, uint256 amount)
+                       0x3bc39a5562b28f5fe8f36cecabfbaa12bb969acf05717994709225fc412a9934
+                     SnipeTaxExempted(address indexed account)
+                       0xe4b7e48fbd47c2f602bacadee76ad33b16542ddb4997cfc0de04c311adcfa8c7
+      errors and   22 errors and the constructor identical, (address,
+      constructor  address, address, address, (address,uint16,uint16,uint16,
+                   uint16), address, address, uint256, uint256, uint256,
+                   bool, uint256)
+      neither curve has a fallback or receive function, so a call to one of
+      the seven against CURB's curve reverts.
+
+    THE ELEVEN SHARED EVENTS AND THEIR TOPICS - the same on all three
+    deployed curves:
+      CurveBuy(address indexed buyer, address indexed recipient, uint256 quoteIn, uint256 tokensOut, uint256 fee, uint256 tax)
+        0xec36bf571f136799e8dc0b0b8bea4b04d8bd3d43de838aab0d5fc21d4cbfc455
+      CurveSell(address indexed seller, address indexed recipient, uint256 tokensIn, uint256 quoteOut, uint256 fee, uint256 tax)
+        0x8113d738abdcb6b38357e9d53a54a7157861a09031b453651f0fe7fe151f59df
+      CurveBuyRefunded(address indexed buyer, uint256 refund)
+        0xa69e8258ccc7b9bbb70ab953fc2d1062b4ee28b8ca827534097e1732e87b0262
+      CurveCompleted(address recipient, uint256 quoteOut, uint256 tokenOut)
+        0xf8d37a90738ae063b8b8058b66f5880cf3cf7ab0c5d4fa78219696591dfbfb67
+      FeesSwept(uint256 protocolAmount, uint256 buybackAmount, uint256 creatorAmount)
+        0x9f4cd7c4ed99d08a797804560c9c5d71d2cf7e101f2e3b5e7d1ca8a24c370e4f
+      FeesRescued(address indexed protocolRecipient, address indexed creatorRecipient, uint256 protocolAmount, uint256 creatorAmount)
+        0x6460dc5c867a0678a8bcc5e64f629fae539901c53a4a8b42fe21d7a6c5e6437d
+      BuybackLocked(uint256 quoteSpent, uint256 tokensLocked)
+        0x5feba9b0d52c92ada4b9c571c2bee52390c54f2947208ab250221e6ee32f12ff
+      Initialized(address token)
+        0x908408e307fc569b417f6cbec5d5a06f44a0a505ac0479b47d421a4b2fd6a1e6
+      CreatorFeeRecipientUpdated(address indexed previousRecipient, address indexed newRecipient)
+        0x2cc664e1ac1e2d05c0d4637bb63ec8189113b6ac39276be8977e26216a8cdd19
+      BuybackEnabledUpdated(bool enabled)
+        0xbfe799fb5e0148a5f2590ff531306d42a5d512b74a5029ceb805abb808b0f1a0
+      AutoGraduationFailed(address indexed token, uint256 gasRemaining)
+        0xe2cd2f31ebc05ec28640102987f4c8fc5f20e269e1b3aa82577f3f2f0e35c7c6
+
+  THE DEPLOYED CODE
+    $CURB's curve on Base (0x65CfF633dA0F81924242467D0C1404c6e0FEA7e4), the
+    first-generation sample and this checkout's build of the vendored file
+    are each 9,193 bytes, and are identical once the curve's 14 immutables
+    (48 places, from the build's immutableReferences) are zeroed and the
+    metadata trailer is cut. Not one byte differs. The trailers differ
+    because the compiler (0.8.35 there, 0.8.30 here) and the source text (the
+    header) do. $CURB's curve also equals the build with its trailer: a full
+    match. This agrees with ADDRESSES.txt, where Sourcify already held a
+    partial match for $CURB's curve "from another submission (solc 0.8.35,
+    same runtime code)".
+    The second-generation sample is 10,229 bytes. As a cross-check on the
+    ABI comparison, the PUSH4 and PUSH32 constants in each deployed code were
+    listed: all 39 shared selectors and all 11 shared event topics are in all
+    three; the 7 snipe-tax selectors and the 2 snipe-tax topics are in the
+    second-generation code only. (A constant in code is evidence, not proof,
+    of a dispatch entry; the byte comparison above is the proof for the first
+    generation.)
+
+  BEHAVIOUR THAT CHANGED WITH THE SAME SIGNATURES (second generation)
+    - CurveBuy's `fee` is the base fee PLUS any snipe tax; SnipeTaxCharged
+      reports the tax separately. On CURB's curve and the first generation it
+      is the base fee alone.
+    - buy() prices with the snipe tax for the recipient (currentSnipeTaxBps,
+      up to 9,900 bps in the launch second, zero after snipeTaxSeconds = 3)
+      unless the recipient was exempted at launch. Outside that window the
+      arithmetic is CURB's.
+    - initialize() also reads snipeTaxStartBps() and snipeTaxSeconds() from
+      its factory (IPonsV2SnipeTax). Internal to that deployment.
+
+
+3. WHAT DIFFERS AROUND THE CURVE
+--------------------------------------------------------------------------------
+  THE CHAIN. 0x lists the source under Robinhood Chain (4663) alone. CURB is
+  on Base (8453). Identical code is not routed until 0x adds it on Base.
+
+  FINDING THE CURVES. Pons: one factory per generation, emitting
+    TokenLaunched(address indexed token, address indexed curve,
+      address indexed deployer, address pairToken, uint256 launchConfigId,
+      uint256 graduationThreshold)       0x8d4aad4953d0ca700d468f3753aa14432d1b35b43ec6409f051fb6aa43a89607
+  CURB emits no TokenLaunched. One LaunchRegistry for every asset,
+  0x86e9a01F3959A96469051AE1a73D5C09b0BaC110, emits
+    LaunchRegistered(address indexed launchToken, address indexed curve,
+      address indexed beneficiary)       0x9fd8d418cff1010152155e55a312f5c2bbc5ce471864e9320174e12587793f0a
+  and each of the fourteen CurbLaunchFactory contracts (ADDRESSES.txt)
+  emits
+    LaunchCreated(address indexed launchToken, address indexed curve,
+      address indexed creator, uint256 supply, uint16 totalTaxBps)
+                                         0x0280b3c18566ead1ee0d23f14d7732eeb3b1876056abe38c8548ceaee8ec5ef8
+  registry.launchAt(i) and the registry's record give the curve and quote
+  asset of each launch. An integration that finds curves through a Pons
+  factory's address or its TokenLaunched topic finds none of CURB's.
+
+  THE FACTORY ROLE. curve.factory() is the Pons factory there. On CURB it is
+  the Graduator (0xA9865e07Ce4EC0cCf7A521B98640031285C92712): that role
+  gates graduate(), and graduate() is what moves value
+  (CurbLaunchFactory, where it builds the curve). The curve's auto-graduation
+  calls IPonsV2LaunchFactoryGraduation(factory).graduate(token) on both, so
+  on CURB the crossing buy calls the Graduator.
+
+  THE QUOTE ASSET. A Pons ETH launch is native: pairToken() zero,
+  isNativeQuote() true, buy() paid with msg.value equal to quoteIn (the
+  second-generation sample). CURB has no native curve. Its ETH factory quotes
+  WETH, 0x4200000000000000000000000000000000000006, as an ERC-20: approve,
+  then buy() with no value. ETH in and out on CURB goes through CurbRouter
+  0xEa20C3266229a01cd0f45D9c7921a45d5b359561 (buyWithEth, sellForEth), which
+  converts on pairs other than WETH along a Uniswap v3 path through
+  SwapRouter02. The
+  other quote assets are CURB's fourteen on Base, not Pons's USDG, cbBTC and
+  tokenized stocks on Robinhood Chain.
+
+  WHAT THE FEE FIELDS MEAN - same code, other numbers.
+    Pons (both samples): feeBps 100 is a base fee split by the frozen policy,
+    protocolFeeShareBps 3000 to the protocol and, with buyback on,
+    buybackBurnBps 5000 of the rest to its buyback vault, the remainder to
+    the creator; creatorTaxBps is an extra creator tax (0 and 350 in the
+    samples).
+    CURB (CurbLaunchFactory, at curve creation): feeBps is the platform's
+    share frozen at launch (50 at deployment, FeeHook.platformFeeBps());
+    creatorTaxBps is the launch's tax minus that share, the tax being 100 to
+    500 bps; protocolFeeShareBps 10000, so the whole base fee is the
+    platform's; buybackBurnBps 0 and buybackEnabled false.
+    So in CurveBuy and CurveSell, CURB's `fee` is the platform's part and
+    `tax` the creator's; Pons's `fee` is the shared base fee (plus the snipe
+    tax, second generation) and `tax` the creator tax. A quote computed from
+    getReserves(), feeBps() and creatorTaxBps() is right on both, because
+    the curve's arithmetic is the same - on the second generation only
+    outside the snipe window, or with currentSnipeTaxBps added.
+
+  THE FEE POLICY THE CURVE CALLS. The curve asks its feePolicy for
+  feeSweepOperator() and pays into its feeEscrow and buybackVault through
+  the same interfaces (ILaunchpadV2.sol, identical in CURB's vendored copy
+  and the first generation's record). Pons's operator is an address its
+  owner sets. CURB's FeePolicy.feeSweepOperator() returns the zero address:
+  there is no such role, so only the curve's deployer() can call sweepFees
+  (the creator, or the launch's holder distributor once sharing is switched
+  on - Graduator.enableHolderSharing), and with buyback off
+  buybackQuoteBalance stays zero, so no sweep needs an operator. Neither
+  difference reaches a trade.
+
+  AFTER GRADUATION the curve stops trading on both, and the market moves to
+  a Uniswap v4 pool - another source for any aggregator, not the curve.
+  Pons: its own PonsV2MemeHook (per its README, an afterSwap cut converted to
+  the quote asset; LP fee 0 and tick spacing 200 per Bitquery's guide, not
+  read from the chain here). CURB: FeeHook
+  0xF85Ce05c2Ba8533d79f009fd3A3c8517aaBda0cC, LP fee 500 (0.05%), tick
+  spacing 10 (DeployCurb POOL_FEE, TICK_SPACING), the launch's tax on buys
+  and sells, exact-output swaps refused (ExactOutputNotSupported), and the
+  position locked forever in a PositionLock. Whether an aggregator routes a
+  v4 pool depends on its support for that particular hook.
+
+  NO SNIPE TAX ON CURB. REFERENCE_ALIGNMENT.txt 4.1 records it as never
+  decided; CURB's curve is the first generation's and has none.
+
+
+4. WHAT THIS MEANS, AND WHAT IS NOT KNOWN
+--------------------------------------------------------------------------------
+  - Per curve, CURB is the Pons V2 first-generation contract, and a strict
+    subset of the second generation's. Code that reads a curve through the
+    39 shared functions and decodes the 11 shared events works on CURB's
+    curves as written. Code that calls any of the seven snipe-tax functions
+    reverts on them.
+  - What an integration needs that is CURB's own: Base, discovery through
+    the LaunchRegistry (or the factories' LaunchCreated), ERC-20 quote
+    assets with WETH in place of native ETH, the fee fields' meaning above,
+    and FeeHook pools after graduation.
+  - NOT KNOWN: how 0x finds Pons curves (factory address, event topic, code
+    hash or something else), whether it routes the first generation, the
+    second or both today, and whether it would add a source on Base. 0x's
+    integration code is not public, its changelog names the source and
+    nothing more, and its API, which could list a chain's sources, takes an
+    API key; none was used. Only 0x can answer these.
+
+
+5. HOW IT WAS CHECKED
+--------------------------------------------------------------------------------
+  Read-only throughout: eth_chainId, eth_blockNumber, eth_getCode, eth_call,
+  eth_getLogs and eth_getBlockByNumber against Robinhood Chain's public RPC
+  and Base through Tenderly's keyless gateway, and GETs to Sourcify's API.
+  The scripts were working files and are not committed; what they did:
+  - Sourcify's records ("fields=all") of both Pons factories, the second
+    generation's deployer and its hook: match level, compiler, deployment
+    transaction and block, sources. The curve, interface, library, token,
+    vault, deployer and factory sources written out and diffed against
+    reference/ponsfamily (debbc21f) and src/vendor.
+  - The ABI comparison: the vendored curve's standard JSON from base-forge
+    (as in README.txt), the second generation's from its deployer's Sourcify
+    record, both compiled with solc 0.8.30 for abi and methodIdentifiers.
+    Event topics with cast keccak of each signature.
+  - The code comparison: eth_getCode of the three curves; the vendored curve
+    compiled in full for its immutableReferences; immutables zeroed and the
+    trailer cut on all three before comparing.
+  - Provenance: curve.factory(), factory.launchDeployer(), and the curve's
+    trailer searched for in the deployer's code.
+  - The TokenLaunched scan: eth_getLogs for its topic over blocks 19,441,846
+    to 26,843,846 (26 July 00:30 UTC to just after the second factory's
+    creation) in windows of 30,000 blocks, the largest the public RPC allows
+    without an address; one window refused with 429 was asked again. And the
+    second factory's own logs over its last 20,000 blocks.
+
+
+SOURCES
+  - 0x changelog, 31 July 2026, "New Liquidity Sources", Robinhood Chain:
+    https://docs.0x.org/changelog/2026/7/31 - names "Pons V2 bonding curve"
+    among the chain's sources and Robinhood Chain as chain id 4663; nothing
+    about how.
+  - Pons's repository, github.com/ponsdotdev/ponsfamily at debbc21f, as
+    cloned to reference/ponsfamily on 11 September 2026 (README.md names the
+    V2 factory 0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e on Robinhood
+    Chain).
+  - Robinhood Chain's public RPC, https://rpc.mainnet.chain.robinhood.com
+  - Sourcify, chain 4663: https://sourcify.dev/server/v2/contract/4663/<address>
+    for 0x7E1EAbd52Ae29598e6483F72dCf1a70b14284dB8,
+    0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e,
+    0x3711ceA4feaDE896C913C68F01Eda97Cb06D1A42 and
+    0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044. Curves themselves are not
+    verified there (404 for three of them).
+  - Base mainnet through https://base.gateway.tenderly.co, and ADDRESSES.txt
+    for CURB's addresses.
+  - Bitquery's Pons guide, a third party:
+    https://docs.bitquery.io/docs/blockchain/robinhood/pons-api/ - its
+    second-generation addresses and event signatures agree with the chain;
+    used only for the graduated pool's LP fee and tick spacing.
+  - The Cryptonomist, 23 July 2026, on Pons V2 being "scheduled for next
+    week": https://en.cryptonomist.ch/2026/07/23/pons-v2-upgrade-eth-bonding-curve/
+  - robinhoodchain.blockscout.com: both of its APIs (/api/v2/smart-contracts
+    and /api?module=contract) answered with a Cloudflare challenge; not used.
