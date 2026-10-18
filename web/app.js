@@ -1473,11 +1473,13 @@ async function send(pin, tx, what, kind, keep, extra) {
       // so in its own words rather than parse these.
       throw Object.assign(new Error(`Nothing was sent: you declined ${what} in the wallet. You can try again.`), { declined: true });
     }
-    throw new Error(
+    // MARKED TOO (`uncertain`), so a caller with something riding on this send
+    // - a two-step buy's step 2, a sale back - does not call it "not made".
+    throw Object.assign(new Error(
       `The wallet was asked to send ${what} and then failed: ${e && e.message ? e.message : String(e)}. ` +
       `IT IS NOT CERTAIN NOTHING WAS BROADCAST — check your wallet's activity before sending again, ` +
       `because a second attempt would pay for the same thing twice.`
-    );
+    ), { uncertain: true });
   } finally {
     try { pin.eth.removeListener && pin.eth.removeListener("chainChanged", onChainChanged); } catch {}
   }
@@ -1554,7 +1556,16 @@ async function send(pin, tx, what, kind, keep, extra) {
     }
   }
 
-  const receipt = await TX.waitForReceipt(record, pin.eth, { timeoutMs: 60000 });
+  // A WAIT THAT ENDS WITHOUT A RECEIPT - the minute up, the wallet on another
+  // network - says nothing about the transaction: it was sent, its record
+  // stays, and it may still be mined. Marked (`sent`), so a caller with
+  // something riding on it says that rather than "not made".
+  let receipt;
+  try {
+    receipt = await TX.waitForReceipt(record, pin.eth, { timeoutMs: 60000 });
+  } catch (e) {
+    throw Object.assign(e instanceof Error ? e : new Error(String(e)), { sent: hash });
+  }
   if (!keep) TX.clearPending(record);
   receipt.record = record;
   return finishSend(receipt, what, hash);
@@ -1667,9 +1678,13 @@ async function resumePendingInner(opts) {
       if (s.why.state === "held") {
         const here = same(s.tx.token, chainCfg.token) && same(s.tx.lens, chainCfg.lens);
         if (here || s.tx.heldSaid) continue;
-        TX.updatePending(s.tx, { heldSaid: true });
+        // AS IT IS NOW: a step 2 or a sale back judged in this same pass may
+        // have spent it (settleRecord, spendsHeld) since it was read.
+        const key = TX.keyOf(s.tx);
+        const now = TX.loadPendingAll().find((t) => TX.keyOf(t) === key);
+        if (!now || !now.held || !TX.updatePending(now, { heldSaid: true })) continue;
         let amount = null;
-        try { amount = BigInt(s.tx.held); } catch { amount = null; }
+        try { amount = BigInt(now.held); } catch { amount = null; }
         parts.push(`You hold ${amount === null ? "" : escapeHtml(fmt(amount, Number(s.tx.assetDecimals) || 0, 6)) + " "}` +
           `${escapeHtml(s.tx.assetSym || "of the asset")} from a swap for <a href="` +
           `${escapeHtml(tokenPageHref(s.tx.token, { rpc: s.tx.rpc, lens: s.tx.lens }))}">this launch</a>: open it to ` +
@@ -1822,6 +1837,14 @@ async function settleRecord(tx, say) {
         TX.updatePending(tx, { held: held.toString(), heldAt: Date.now(), heldBlock: receipt.blockNumber });
         return { still: { state: "held" } };
       }
+    }
+    // A SEND THAT SPENT WHAT A SWAP LEFT HELD - step 2, a sale back - mined
+    // after its own wait gave up (a timeout, a network switch, a reload): what
+    // it took from this account is no longer held. Without this the swap's
+    // record kept the whole amount, and beside other units of the asset the
+    // held row and the refusal of ETH buys went on about units already spent.
+    if (receipt.status === "0x1" && tx.spendsHeld && !foreign && isAddr(tx.asset)) {
+      spendHeldOf(tx.chainId, tx.from, tx.lens, tx.token, netSpent(receipt, tx.asset, tx.from));
     }
     TX.clearPending(tx);
     say(receipt.status === "0x1" ? "ok" : "err",
@@ -3741,16 +3764,19 @@ async function quoteLiquidityNote(pin, threshold) {
       ]);
       let cheapest = null;
       let venue = null;
-      let anyAnswered = false;
       for (const r of priced) {
         if (r.cost !== undefined && (cheapest === null || r.cost < cheapest)) { cheapest = r.cost; venue = r.venue; }
-        if (!r.unavailable) anyAnswered = true;
       }
       if (cheapest !== null) return { costWeth: cheapest, enough: true, asked: true, venue };
-      // EVERY PATH REFUSED is the thin case. EVERY PATH SILENT is not: the
+      // EVERY VENUE ASKED REFUSED is the thin case. A SILENT ONE is not: the
       // quoter refusing is the pools speaking, a timeout is nobody speaking,
-      // and only the first is worth a warning about liquidity.
-      if (anyAnswered) return { costWeth: null, enough: false, asked: true, aeroAsked: !!aero.ok };
+      // and only the first is worth a warning about liquidity. Asked of each
+      // venue: Uniswap refusing while Aerodrome timed out was called thin on
+      // both, about pools that never answered and can fill it.
+      const answered = (where) => priced.some((r) => r.venue === where && !r.unavailable);
+      if (answered("uniswap") && (!aero.ok || answered("aerodrome"))) {
+        return { costWeth: null, enough: false, asked: true, aeroAsked: !!aero.ok };
+      }
       return { unreadable: true, enough: false, asked: true };
     } catch (e) {
       /* fall through to what custody can say */
@@ -3863,7 +3889,7 @@ function showQuoteLiquidity(el, ctx, threshold, res) {
     if (res.unreadable) {
       el.textContent =
         "Whether this site's ETH route can buy the " + need + " " + sym + " a launch needs could not be read: " +
-        "no route answered in time. That is this endpoint or the quoter, not the market \u2014 try again.";
+        "a route did not answer in time. That is this endpoint or the quoter, not the market \u2014 try again.";
       return;
     }
     if (res.enough) {
@@ -5468,18 +5494,43 @@ function heldNote(offered, wethOnly) {
 let curveQuoteSeq = 0;
 
 /// THE CURVE QUOTE ON SCREEN, as the press compares it (curveActionInner): the
-/// route it showed, its minimum, whether that minimum is a price, and how many
+/// route it showed, its minimums (the swap's and the curve's, and what the
+/// curve's is per), whether that minimum is a price, and how many
 /// confirmations it said. Keyed by the exact fields it was priced from, so a
 /// press of other fields matches nothing - and nothing has to clear it when the
 /// card writes the same fields again.
+/// ON THE TOKEN PAGE ONLY THE CARD WRITES IT (token.js requote): the long
+/// page's fields are hidden there, and a refresh priced them on its own - a
+/// quote the card had not drawn yet stood for the one on screen, and a press in
+/// between sent Aerodrome under a card that said the CURB router.
 let curveDrawn = null;
 const drawnKey = (f, curve, from) =>
   [f.side, f.text, f.slipText, f.via, curve, from].map((x) => String(x || "").toLowerCase()).join("|");
 function noteDrawn(v) {
   curveDrawn = v && !v.error && v.form && v.curve
-    ? { key: drawnKey(v.form, v.curve, account), via: v.via || "", min: v.min,
+    ? { key: drawnKey(v.form, v.curve, account), via: v.via || "", min: v.min, midMin: v.midMin,
+        minBasis: v.minBasis, minIsPrice: !!v.minIsPrice,
         clamped: !!((v.q && v.q.clamped) || v.minIsPrice), steps: v.steps || 1 }
     : null;
+}
+
+/// NEVER BELOW THE MINIMUMS SHOWN, on the route that was shown. The press
+/// prices it again, and a pool or a curve that moved since the quote was drawn
+/// moved the fresh minimums with it - sent as they were, they were lower than
+/// the "at least" the card printed. So each is the higher of the two: a move
+/// within the slippage still fills, and one past it is refused by the
+/// simulation rather than sent lower. A minimum that is a price (a clamped buy)
+/// is held as a price: the one shown, per unit of what this press offers.
+function floorAtDrawn(v, d) {
+  if (!d || d.via !== v.via) return v;
+  const out = { ...v };
+  if (typeof d.midMin === "bigint" && typeof v.midMin === "bigint" && d.midMin > v.midMin) out.midMin = d.midMin;
+  if (typeof d.min !== "bigint" || typeof v.min !== "bigint") return out;
+  const shown = (d.minIsPrice || v.minIsPrice) && d.minBasis > 0n && v.minBasis > 0n
+    ? (d.min * v.minBasis + d.minBasis - 1n) / d.minBasis
+    : d.min;
+  if (shown > v.min) out.min = shown;
+  return out;
 }
 /// WHAT THE PRESS SAYS WHEN THE ROUTE OR PRICE IT WOULD SEND IS NOT THE ONE SHOWN.
 const ROUTE_CHANGED = "The price or route changed since the quote was shown. Nothing was sent. Check the new " +
@@ -5530,7 +5581,7 @@ async function renderCurveQuote() {
     const v = await computeCurveQuote({ ...liveWhere(shown), quoteDecimals: c.quoteDecimals, quote: c.quote, quoteSym: c.quoteSym,
       graduator: c.graduator });
     if (stale()) return;
-    noteDrawn(v);
+    if (!TOKEN_VIEW) noteDrawn(v);
     if (v.error) return invalid(v.error);
     // WHY THE ROUTER IS NOT USED, when ETH was asked for and it is not.
     const routerLine = v.routerNote ? note(escapeHtml(v.routerNote)) : "";
@@ -5639,7 +5690,7 @@ async function renderCurveQuote() {
     act.disabled = !account || busy;
   } catch (e) {
     if (stale()) return;
-    noteDrawn(null);
+    if (!TOKEN_VIEW) noteDrawn(null);
     invalid(e.message || String(e));
   }
 }
@@ -8014,7 +8065,7 @@ async function curveActionInner(pin) {
   // sending. The preview is a display; this is the number that gets spent, and
   // it is priced against the launch this action was authorised for rather than
   // whatever the page is showing by now.
-  const v = await computeCurveQuote(pin);
+  let v = await computeCurveQuote(pin);
   if (v.error) throw new Error(v.error);
   // A SWAP TO OR FROM ETH THAT COULD NOT BE CHECKED AGAINST CHAINLINK IS NOT SENT
   // (withConversion): the router's buy and sale, and the two-step buy.
@@ -8034,7 +8085,9 @@ async function curveActionInner(pin) {
   // and has no lower minimum. The quote is taken again here, and a route that
   // changed in between - Aerodrome winning at the press after a one-send quote,
   // or an Aerodrome read failing after an Aerodrome quote, which would send the
-  // other route at whatever minimum it has - is refused rather than sent.
+  // other route at whatever minimum it has - is refused rather than sent. The
+  // route shown is sent with the minimums shown where the fresh ones are lower
+  // (floorAtDrawn).
   if (v.side === "buy" && v.form && v.form.via === "eth" && !same(pin.quote, WETH)) {
     const d = pin.drawn && pin.drawn.key === drawnKey(v.form, v.curve, pin.from) ? pin.drawn : null;
     const clamped = !!((v.q && v.q.clamped) || v.minIsPrice);
@@ -8043,6 +8096,8 @@ async function curveActionInner(pin) {
                     (d.via === "aero" && v.aeroUnread))) {
       throw new Error(ROUTE_CHANGED);
     }
+    // AND THE ROUTE SHOWN IS SENT AT NO LOWER A MINIMUM THAN IT SHOWED.
+    v = floorAtDrawn(v, d);
   }
   if (v.via === "router") return curveTradeViaRouter(pin, v);
   if (v.via === "aero") return curveBuyViaAerodrome(pin, v);
@@ -8478,6 +8533,17 @@ function heldError(pin, amount, e, approved) {
   return Object.assign(new Error(text), { html: escapeHtml(text) + heldButtons(pin.quote, amount), held: amount });
 }
 
+/// THE SWAP WENT THROUGH AND THE BUY WAS SENT, OR MAY HAVE BEEN, WITHOUT BEING
+/// SEEN MINED: not "not made", and no Buy with it or Sell it back for what it
+/// is about to spend. Its record settles it once the chain does (settleRecord).
+function stepTwoUnsettled(pin, amount, e) {
+  const r = `${fmt(amount, pin.quoteDecimals, 6)} ${pin.quoteSym}`;
+  return new Error(e && e.uncertain
+    ? `The swap went through: you hold ${r}. ${e.message}`
+    : `The swap went through and delivered ${r}. The curve buy with it was sent but is not mined yet; its hash is ` +
+      `in your wallet's activity. Once it is mined, this page shows what is left of it.`);
+}
+
 /// THE CURVE'S OWN REFUSALS OF A BUY, for step 2's simulation
 /// (PonsV2BondingCurve's errors; PolicyForbids is a B20's).
 function curveRefusal(e, sym) {
@@ -8507,7 +8573,8 @@ function stepTwoFloor(v, received, q2, bps) {
 /// arrived - its status, the issuer's graduation questions and its prices read
 /// again, an exact approval when the allowance is short, and the buy simulated
 /// before the wallet is asked.
-/// @param st  { approved } is set once step 2's approval was sent.
+/// @param st  { approved } is set once step 2's approval was sent; { unsettled }
+///            when the buy itself went to the wallet and was not seen mined.
 /// @return { receipt, refund }
 async function buyCurveWithArrived(pin, v, received, st) {
   const sym = pin.quoteSym;
@@ -8536,8 +8603,18 @@ async function buyCurveWithArrived(pin, v, received, st) {
     }
     throw new Error(curveRefusal(e, sym));
   }
-  const receipt = await send(pin, { to: v.curve, data },
-    `buy on the curve with the ${r} the swap delivered (step 2 of 2)`);
+  // THE RECORD SAYS WHAT IT SPENDS, so one that mines after this page stopped
+  // waiting for it still takes what it spent off the swap's (settleRecord).
+  let receipt;
+  try {
+    receipt = await send(pin, { to: v.curve, data },
+      `buy on the curve with the ${r} the swap delivered (step 2 of 2)`, "action", false,
+      { spendsHeld: true, asset: pin.quote });
+  } catch (e) {
+    // SENT, OR MAYBE SENT, AND NOT SEEN MINED: not a buy that was not made.
+    st.unsettled = !!(e && (e.sent || e.uncertain));
+    throw e;
+  }
   const refundLog = logsOf(receipt, v.curve, TOPIC.curveRefund)[0];
   return { receipt, refund: refundLog ? wordToBig(words(refundLog.data)[0]) : 0n, q2 };
 }
@@ -8554,9 +8631,13 @@ async function finishTwoStep(pin, v, swap, venue) {
   }
   TX.updatePending(record, { held: received.toString(), heldAt: Date.now(), heldBlock: swap.blockNumber });
   if (bal === null) throw heldError(pin, received, "what arrived could not be read just now", false);
-  const st = { approved: false };
+  const st = { approved: false, unsettled: false };
   let out;
-  try { out = await buyCurveWithArrived(pin, v, received, st); } catch (e) { throw heldError(pin, received, e, st.approved); }
+  try {
+    out = await buyCurveWithArrived(pin, v, received, st);
+  } catch (e) {
+    throw st.unsettled ? stepTwoUnsettled(pin, received, e) : heldError(pin, received, e, st.approved);
+  }
   // A REFUND PAST THE THRESHOLD IS THE ASSET, AND IT IS HELD like what step 1
   // left: Sell it back is offered for it.
   if (out.refund > 0n) {
@@ -8656,29 +8737,57 @@ function heldSwaps() {
   return heldRecordsOf(chainIdShown, account, chainCfg.lens, chainCfg.token);
 }
 
+/// The newest block any of these records' amounts was read at.
+const newestHeldBlock = (recs) =>
+  recs.reduce((m, t) => { try { const b = BigInt(t.heldBlock); return b > m ? b : m; } catch { return m; } }, 0n);
+
 /// WHAT THIS ACCOUNT STILL HOLDS FROM SWAPS FOR THE PINNED LAUNCH, capped by its
-/// balance read through the pin. A balance that cannot be read leaves the
-/// records' sum: refusing a second swap on it is the safe side.
+/// balance read through the pin - AT A BLOCK AT OR AFTER EVERY RECORD'S, as the
+/// held row reads it (renderHeld). Read at "latest", an endpoint whose backend
+/// was still behind the swap answered the balance from before it, 0, and a
+/// second step 1 went out on that. A balance that cannot be read, or an
+/// endpoint behind the swap, leaves the records' sum: refusing a second swap
+/// on it is the safe side.
 async function heldFor(pin) {
   const recs = heldRecordsOf(pin.chainId, pin.from, pin.lens, pin.token);
   const sum = heldSum(recs);
   if (sum === 0n) return 0n;
   try {
-    const w = words(await pin.call(pin.quote, SEL.balanceOf + pad32(pin.from)));
+    const n = await pin.read("eth_blockNumber", []);
+    if (BigInt(n) < newestHeldBlock(recs)) return sum;
+    const w = words(await pin.read("eth_call", [{ to: pin.quote, data: SEL.balanceOf + pad32(pin.from) }, n]));
     if (w.length && wordToBig(w[0]) < sum) return wordToBig(w[0]);
   } catch { /* the sum stands */ }
   return sum;
 }
 
-/// KNOWN SPENDS OF WHAT IS HELD - a curve buy paid in the asset, a sell-back -
-/// taken off the records, oldest first; a record brought to 0 is cleared.
+/// KNOWN SPENDS OF WHAT IS HELD - a curve buy paid in the asset, a sell-back,
+/// step 2 - taken off the records, oldest first; a record brought to 0 is
+/// cleared.
 function spendHeld(pin, spent) {
+  spendHeldOf(pin.chainId, pin.from, pin.lens, pin.token, spent);
+}
+function spendHeldOf(chainId, from, lens, token, spent) {
   let left = spent;
-  for (const t of heldRecordsOf(pin.chainId, pin.from, pin.lens, pin.token)) {
+  for (const t of heldRecordsOf(chainId, from, lens, token)) {
     if (left <= 0n) break;
     const h = BigInt(t.held);
     if (h <= left) { TX.clearPending(t); left -= h; } else { TX.updatePending(t, { held: (h - left).toString() }); left = 0n; }
   }
+}
+
+/// WHAT A TRANSACTION TOOK OF `token` FROM `who`, net: its transfers out of the
+/// account less those back to it - a curve buy past the threshold pulls what
+/// it was offered and refunds the rest.
+function netSpent(receipt, token, who) {
+  let out = 0n;
+  for (const l of logsOf(receipt, token, TOPIC.transfer)) {
+    if (l.topics.length < 3) continue;
+    const amount = wordToBig(words(l.data)[0]);
+    if (same(wordToAddress(l.topics[1].slice(2)), who)) out += amount;
+    if (same(wordToAddress(l.topics[2].slice(2)), who)) out -= amount;
+  }
+  return out;
 }
 
 /// THE HELD ROW, on the swap card (#tvHeld) and the long page (#heldRow):
@@ -8702,8 +8811,7 @@ async function renderHeld() {
   let amount = heldSum(recs);
   try {
     const n = await rpc("eth_blockNumber", []);
-    const newest = recs.reduce((m, t) => { try { const b = BigInt(t.heldBlock); return b > m ? b : m; } catch { return m; } }, 0n);
-    if (BigInt(n) >= newest) {
+    if (BigInt(n) >= newestHeldBlock(recs)) {
       const w = words(await rpcAt(chainCfg.rpc, "eth_call", [{ to: asset, data: SEL.balanceOf + pad32(account) }, n]));
       if (w.length) {
         const bal = wordToBig(w[0]);
@@ -8731,8 +8839,10 @@ function buyWithHeld(carried, asset) {
   if (!ctx || !same(asset, ctx.quote)) return;
   const recs = heldSwaps();
   const amount = recs.length && heldShown && same(heldShown.asset, asset) ? heldShown.amount : carried;
-  const d = ctx.quoteDecimals;
-  const text = fmt(amount, d, Math.min(8, d)).replace(/,/g, "");
+  // TO THE LAST UNIT, not at the % buttons' eight places: on an 18-decimal
+  // asset those left a remainder held, a "You hold 0" row, and ETH buys
+  // refused for it.
+  const text = plainUnits(amount, ctx.quoteDecimals);
   if (TOKEN_VIEW) {
     document.dispatchEvent(new CustomEvent("curb:buyWithHeld", { detail: { text } }));
     return;
@@ -8810,7 +8920,21 @@ async function sellHeldBackInner(pin, slipText, carried) {
     await simulateAero(pin, tx, "selling it back");
     const sent = await withGasRoom(pin, tx);
     await aeroStillThere(pin);
-    const receipt = await send(pin, sent, `sell ${r} back for ETH on Aerodrome`);
+    // THE RECORD SAYS WHAT IT SPENDS (settleRecord), as step 2's does.
+    let receipt;
+    try {
+      receipt = await send(pin, sent, `sell ${r} back for ETH on Aerodrome`, "action", false,
+        { spendsHeld: true, asset: pin.quote });
+    } catch (e) {
+      // SENT, OR MAYBE SENT, AND NOT SEEN MINED: not a sale that was not made,
+      // and no Revoke for an allowance it is about to use.
+      if (e && e.sent) {
+        throw Object.assign(new Error(`The sale of ${r} was sent but is not mined yet; its hash is in your wallet's ` +
+          `activity. Once it is mined, this page shows what is left of it.`), { unsettled: true });
+      }
+      if (e && e.uncertain) throw Object.assign(e, { unsettled: true });
+      throw e;
+    }
     spendHeld(pin, amount);
     await report(receipt, async () => {
       const eth = logsOf(receipt, WETH, TOPIC.wethWithdrawal)
@@ -8821,7 +8945,7 @@ async function sellHeldBackInner(pin, slipText, carried) {
         exactly([["sold", amount], ["received", eth]]));
     });
   } catch (e) {
-    if (!approved) throw e;
+    if (!approved || (e && e.unsettled)) throw e;
     // THE APPROVAL WAS SENT AND MINED, AND IT STANDS - for exactly what was to
     // be sold, and only Aerodrome's router may use it, inside a swap of this
     // account's own. Said, with the way to take it back.
@@ -10123,7 +10247,7 @@ window.CurbApp = {
   // floor, as pure functions a test can hold against the chain; the quote on
   // screen as the press compares it; and what a swap left held.
   AERODROME, AERO_PATHS, preferAerodrome, aeroPathBytes, aeroBuyData, aeroSellData, decodeQuote, stepTwoFloor,
-  noteDrawn, get drawn() { return curveDrawn; }, heldSwaps, renderHeld,
+  floorAtDrawn, noteDrawn, get drawn() { return curveDrawn; }, heldSwaps, renderHeld,
 };
 
 if (!window.__CURB_APP_TEST__) init();

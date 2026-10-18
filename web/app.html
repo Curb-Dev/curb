@@ -965,6 +965,9 @@
       <span id="unwrapText"></span>
       <button id="unwrap" class="ghost" type="button">Unwrap to ETH</button>
     </div>
+    <!-- WHAT A SWAP LEFT HELD (app.js renderHeld), whatever the launch's phase:
+         a threshold refund is held exactly when the curve has closed. -->
+    <div id="heldRow" class="note heldRow" hidden></div>
 
     <div id="curveBox" hidden style="margin-top:28px; border-top:1px solid var(--line); padding-top:28px">
       <h2>Trade the curve</h2>
@@ -986,7 +989,6 @@
         </div>
       </div>
       <div id="curveQuote" style="margin-top:12px"></div>
-      <div id="heldRow" class="note heldRow" hidden></div>
       <div style="margin-top:28px"><button id="curveAct">Buy on the curve</button></div>
       </div>
 

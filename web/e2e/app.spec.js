@@ -3010,6 +3010,36 @@ test("a quote asset too thin to fill a launch says so, and a deep one does not",
   await expect(note).toContainText("(on Aerodrome)", { timeout: 20000 });
   await expect(page.locator("#quoteLiquidity.unbounded")).toHaveCount(0);
 
+  // AERODROME SILENT WHILE UNISWAP REFUSES IS NOT THIN EITHER: Uniswap's
+  // refusal is its pools speaking, Aerodrome's quoter not answering in time is
+  // nobody speaking - and its pools are the ones that can fill this.
+  const silentAero = await page.evaluate(async () => {
+    const sel = window.CurbKeccak
+      .keccak256("0x" + window.CurbAbi.utf8Hex("quoteExactOutput(bytes,uint256)"))
+      .slice(0, 10);
+    const quoter = "0x514c8b5f54112481e28028f1166bd78501089259";
+    const real = window.fetch;
+    window.fetch = (url, init) => {
+      let body = {};
+      try { body = JSON.parse((init && init.body) || "{}"); } catch (e) { /* not ours */ }
+      const p = body.params && body.params[0];
+      if (!p || String(p.to || "").toLowerCase() !== quoter || typeof p.data !== "string" || !p.data.startsWith(sel)) {
+        return real(url, init);
+      }
+      return new Promise((_, reject) => {
+        if (init && init.signal) init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+      });
+    };
+    try {
+      await window.CurbApp.refresh(true);
+      return document.getElementById("quoteLiquidity").textContent;
+    } finally {
+      window.fetch = real;
+    }
+  });
+  expect(silentAero, "Aerodrome not answering was reported as a thin route").not.toContain("THIN ETH ROUTE");
+  expect(silentAero).toContain("could not be read");
+
   // THE THIN HALF, WITH AERODROME'S QUOTER GONE: its code hash then mismatches
   // for a fresh read, and an answer it cannot give is no price.
   const AERO_QUOTER = "0x514c8b5f54112481e28028f1166bd78501089259";

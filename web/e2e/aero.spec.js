@@ -336,6 +336,39 @@ async function settled(p, line) {
   await expect(p.locator("#tvQuote")).toContainText(line);
 }
 const clearMsg = (p) => p.evaluate(() => { document.getElementById("msg").textContent = ""; });
+/// THE QUOTE ON SCREEN, as the press will compare it.
+const drawnNow = (p) => p.evaluate(() => {
+  const d = window.CurbApp.drawn;
+  return d ? { key: d.key, via: d.via, midMin: String(d.midMin), min: String(d.min) } : null;
+});
+/// ARMED, THEN PRESSED IN THE SAME TICK OF THE PAGE AS A LOOK AT THE QUOTE ON
+/// SCREEN. The card draws again on its own - its heartbeat, a dollar rate
+/// landing - and a quote it draws after the market was moved is the new one on
+/// screen, rightly the one compared: then nothing is pressed.
+/// @return whether it was pressed (and `done` said)
+async function armAndPress(p, arm, done) {
+  const shown = await drawnNow(p);
+  arm();
+  await expect(p.locator("#tvAct")).toBeEnabled({ timeout: 30_000 });
+  await rpc("evm_mine", []);
+  const out = await p.evaluate((s) => {
+    const d = window.CurbApp.drawn;
+    if (!s || !d || d.key !== s.key || String(d.midMin) !== s.midMin || String(d.min) !== s.min) return "redrawn";
+    document.getElementById("msg").textContent = "";
+    document.getElementById("tvAct").click();
+    return "pressed";
+  }, shown);
+  if (out !== "pressed") return false;
+  await expect(p.locator("#msg")).toContainText(done, { timeout: 120_000 });
+  return true;
+}
+/// A CASE SET UP AGAINST THE QUOTE ON SCREEN, tried again - drawn afresh, for
+/// another amount - when the card drew a new one before its press.
+async function untilPressed(attempt) {
+  for (let i = 0; i < 3; i++) if (await attempt(i)) return;
+  throw new Error("the card drew a new quote before every press");
+}
+const ROUTE_CHANGED = "The price or route changed since the quote was shown. Nothing was sent.";
 async function press(p, done = /Done/) {
   await expect(p.locator("#tvAct")).toBeEnabled({ timeout: 30_000 });
   await rpc("evm_mine", []);
@@ -378,6 +411,36 @@ const declineSend = (p, nth) => p.evaluate((nth) => {
   };
 }, nth);
 const unarm = (p) => p.evaluate(() => { window.ethereum.cfg.onSend = null; window.ethereum.cfg.sendError = null; });
+/// THE n-TH SEND FROM NOW FAILS IN THE WALLET, not as a decline: it may or may
+/// not have gone out (the page cannot tell).
+const failSend = (p, nth) => p.evaluate((nth) => {
+  let n = 0;
+  window.ethereum.cfg.onSend = (tx, w) => {
+    n += 1;
+    w.cfg.sendError = n === nth ? new Error("the connection to the wallet dropped") : null;
+    if (n > nth) w.cfg.onSend = null;
+  };
+}, nth);
+/// THE n-TH SEND FROM NOW GOES OUT AND IS MINED, and the wallet is on another
+/// network by the time the page asks for its receipt (its chain read once more
+/// as this one, then 0x1): the page's wait ends without one.
+const switchAfterSend = (p, nth) => p.evaluate((nth) => {
+  let n = 0;
+  window.ethereum.cfg.onSend = (tx, w) => {
+    n += 1;
+    if (n !== nth) return;
+    w.cfg.chainIdSequence = [w.cfg.chainId];
+    w.cfg.chainId = "0x1";
+    w.cfg.onSend = null;
+  };
+}, nth);
+const switchBack = (p) => p.evaluate(() => {
+  window.ethereum.cfg.chainId = "0x2105";
+  window.ethereum.cfg.chainIdSequence = null;
+  window.ethereum.cfg.onSend = null;
+});
+/// An 8-decimal amount as the card's field takes it.
+const dec8 = (x) => { const s = BigInt(x).toString().padStart(9, "0"); return (s.slice(0, -8) + "." + s.slice(-8)).replace(/\.?0+$/, ""); };
 /// What the step-1 swap delivered to `who`: SPCXc's Transfers to it since `fromBlock`, by transaction.
 async function deliveredTo(asset, who, fromBlock) {
   const logs = await rpc("eth_getLogs", [{ address: asset, topics: [TRANSFER, null, "0x" + pad(who)], fromBlock, toBlock: "latest" }]);
@@ -389,6 +452,17 @@ const L = {};
 async function spaceLaunch() { if (!L.space) L.space = await createOn(await factoryFor(SPCXC), "Aero Space", "ASP"); return L.space; }
 async function btcLaunch() { if (!L.btc) L.btc = await createOn(await factoryFor(CBBTC), "Aero Btc", "ABT"); return L.btc; }
 const curveOf = (p) => p.evaluate(() => window.CurbApp.state.view.curve.toLowerCase());
+
+/// SPCXc OF THE BUYER'S OWN, FROM ELSEWHERE: bought on Aerodrome directly,
+/// beside the page. What a swap leaves held is then only part of the balance.
+/// @return the buyer's SPCXc after
+async function spcxcFromElsewhere(p, who, eth) {
+  const now = BigInt((await rpc("eth_getBlockByNumber", ["latest", false])).timestamp);
+  const data = await p.evaluate(([path, to, d, v]) => window.CurbApp.aeroBuyData(path, to, BigInt(d), BigInt(v), 1n),
+    [SPCXC_ROWS[0], who, (now + 600n).toString(), eth.toString()]);
+  await sendMined({ from: who, to: AERO_ROUTER, data, value: "0x" + eth.toString(16), gas: "0x" + (3_000_000).toString(16) });
+  return balanceOf(SPCXC, who);
+}
 
 /// A SWAP LEFT HELD: an Aerodrome buy whose approval is declined in the wallet.
 /// @return R, what the swap delivered
@@ -492,6 +566,14 @@ test("A2 the rule, the encodings, the quote decode and the step-2 floor, as pure
         // CLAMPED CARD: its price, scaled to what arrived, rounded up.
         A.stepTwoFloor({ minIsPrice: true, min: 1000n, minBasis: 30n }, 60n, { out: 10n, offered: 60n, spent: 60n, clamped: false }, 100),
       ].map(String),
+      // NEVER BELOW THE MINIMUMS SHOWN, on the route shown: each the higher of
+      // the two; a price held as a price per unit offered; another route as it is.
+      shownFloors: [
+        A.floorAtDrawn({ via: "aero", midMin: 90n, min: 900n, minBasis: 90n }, { via: "aero", midMin: 100n, min: 1000n, minBasis: 100n }),
+        A.floorAtDrawn({ via: "router", midMin: 110n, min: 1100n, minBasis: 110n }, { via: "router", midMin: 100n, min: 1000n, minBasis: 100n }),
+        A.floorAtDrawn({ via: "aero", midMin: 50n, min: 400n, minBasis: 50n, minIsPrice: true }, { via: "aero", midMin: 30n, min: 300n, minBasis: 30n, minIsPrice: true }),
+        A.floorAtDrawn({ via: "router", midMin: 90n, min: 900n, minBasis: 90n }, { via: "aero", midMin: 100n, min: 1000n, minBasis: 100n }),
+      ].map((x) => [x.midMin, x.min].map(String)),
     };
   });
   expect(r.margin49).toBe("margin");
@@ -528,11 +610,12 @@ test("A2 the rule, the encodings, the quote decode and the step-2 floor, as pure
   expect(dec[1]).toEqual({ out: "5", partial: true });
   expect(dec[2], "an answer cut short was read").toBeNull();
   expect(r.floors).toEqual(["1000", String(slip(2000n, 100)), String((1000n * 60n + 29n) / 30n)]);
+  expect(r.shownFloors).toEqual([["100", "1000"], ["110", "1100"], ["50", "500"], ["90", "900"]]);
   await p.close();
 });
 
 // ================================================================== A3 a small buy stays one step
-test("A3 a small buy stays one confirmation through the CURB router: the gain is under the floor", async () => {
+test("A3 a small buy stays one confirmation through the CURB router: the gain is under the floor; a price that moved since the quote is sent at the quote's minimums", async () => {
   test.setTimeout(240_000);
   const token = await spaceLaunch();
   const buyer = await freshAccount("small buy");
@@ -541,10 +624,23 @@ test("A3 a small buy stays one confirmation through the CURB router: the gain is
   const p = await routedToken(token, buyer, R);
   await ethBuy(p, "0.01", ROUTER_LINE);
   expect(await whyNow(p)).toBe("floor");
-  const before = await sentCount(p);
-  await press(p, "Done, in one transaction through the CURB router");
+  // UNISWAP 2% WORSE AT THE PRESS, the route the same: the fresh minimums are
+  // lower than the ones the card printed, and the card's are what is sent.
+  let drawn;
+  let before;
+  await untilPressed(async (i) => {
+    R.uni = scaleOut(99);
+    if (i) await ethBuy(p, "0.01" + i, ROUTER_LINE);
+    await settled(p, ROUTER_LINE);
+    drawn = await drawnNow(p);
+    before = await sentCount(p);
+    return armAndPress(p, () => { R.uni = scaleOut(97); }, "Done, in one transaction through the CURB router");
+  });
   const sent = await sentSince(p, before);
   expect(sent.map((t) => t.to)).toEqual([CURB_ROUTER]);
+  const w = argWords(sent[0].data);
+  expect(BigInt("0x" + w[3]), "the swap's floor is below the one the card showed").toBe(BigInt(drawn.midMin));
+  expect(BigInt("0x" + w[4]), "the curve's floor is below the one the card showed").toBe(BigInt(drawn.min));
   await p.close();
 });
 
@@ -673,53 +769,109 @@ test("A7 the press sends another route than the one shown only when it needs no 
   const token = await spaceLaunch();
   const buyer = await freshAccount("drawn quote");
   const R = routed();
-  // (a) DRAWN AS THE ROUTER; Aerodrome wins at the press: more confirmations.
-  R.uni = scaleOut(120);
+  // (a) DRAWN AS THE ROUTER; Aerodrome wins at the press with a HIGHER
+  // minimum: only its confirmations refuse it.
   const p = await routedToken(token, buyer, R);
-  await ethBuy(p, "0.1", ROUTER_LINE, { slip: 5 });
-  await settled(p, ROUTER_LINE);
-  let before = await sentCount(p);
-  R.uni = scaleOut(50);
-  await press(p, "The price or route changed since the quote was shown. Nothing was sent.");
+  let before;
+  await untilPressed(async (i) => {
+    R.uni = scaleOut(120);
+    R.aero = null;
+    await ethBuy(p, "0.10" + i, ROUTER_LINE, { slip: 5 });
+    await settled(p, ROUTER_LINE);
+    before = await sentCount(p);
+    return armAndPress(p, () => { R.aero = scaleOut(150); }, ROUTE_CHANGED);
+  });
   expect(await sentCount(p)).toBe(before);
-  await expect(p.locator("#tvQuote")).toContainText(AERO_LINE, { timeout: 30_000 });
+  // AND ONCE AERODROME IS THE QUOTE ON SCREEN, it is sent.
+  R.aero = null;
+  R.uni = scaleOut(50);
+  await ethBuy(p, "0.104", AERO_LINE, { slip: 5 });
+  await settled(p, AERO_LINE);
   await press(p, "Done. You paid");
   expect((await sentSince(p, before)).map((t) => t.to)).toEqual([AERO_ROUTER, SPCXC, await curveOf(p)]);
   // (b) DRAWN AS AERODROME at 15%; the router wins at the press with a higher
   // minimum and fewer confirmations: one send.
-  R.uni = scaleOut(95);
-  await p.fill("#tvSlip", "15");
-  await p.fill("#tvPay", "0.11");
-  await settled(p, AERO_LINE);
-  before = await sentCount(p);
-  R.uni = scaleOut(110);
-  await press(p, "Done, in one transaction through the CURB router");
+  await untilPressed(async (i) => {
+    R.uni = scaleOut(95);
+    await p.fill("#tvSlip", "15");
+    await p.fill("#tvPay", "0.11" + i);
+    await settled(p, AERO_LINE);
+    before = await sentCount(p);
+    return armAndPress(p, () => { R.uni = scaleOut(110); }, "Done, in one transaction through the CURB router");
+  });
   expect((await sentSince(p, before)).map((t) => t.to)).toEqual([CURB_ROUTER]);
   // (c) DRAWN AS AERODROME; the router wins at the press with a LOWER minimum.
-  R.uni = scaleOut(95);
-  R.aero = scaleOut(110);
-  await p.fill("#tvSlip", "1");
-  await p.fill("#tvPay", "0.12");
-  await settled(p, AERO_LINE);
-  before = await sentCount(p);
-  R.uni = scaleOut(100);
-  R.aero = scaleOut(50);
-  await press(p, "The price or route changed since the quote was shown. Nothing was sent.");
+  await untilPressed(async (i) => {
+    R.uni = scaleOut(95);
+    R.aero = scaleOut(110);
+    await p.fill("#tvSlip", "1");
+    await p.fill("#tvPay", "0.12" + i);
+    await settled(p, AERO_LINE);
+    before = await sentCount(p);
+    return armAndPress(p, () => { R.uni = scaleOut(100); R.aero = scaleOut(50); }, ROUTE_CHANGED);
+  });
   expect(await sentCount(p)).toBe(before);
-  // (d) DRAWN AS AERODROME; Aerodrome cannot be read at the press.
-  R.uni = scaleOut(95);
-  R.aero = null;
-  await p.fill("#tvPay", "0.13");
-  await settled(p, AERO_LINE);
-  R.aero = http(503);
-  await press(p, "The price or route changed since the quote was shown. Nothing was sent.");
+  // (d) DRAWN AS AERODROME; Aerodrome cannot be read at the press, and the
+  // router's fresh minimum is HIGHER: only the unread Aerodrome refuses it.
+  await untilPressed(async (i) => {
+    R.uni = scaleOut(95);
+    R.aero = null;
+    await p.fill("#tvPay", "0.13" + i);
+    await settled(p, AERO_LINE);
+    return armAndPress(p, () => { R.aero = http(503); R.uni = scaleOut(110); }, ROUTE_CHANGED);
+  });
   expect(await sentCount(p)).toBe(before);
   // (e) NO QUOTE ON SCREEN for these fields, and the press would take Aerodrome.
   R.aero = null;
+  R.uni = scaleOut(95);
   await p.fill("#tvPay", "0.14");
   await settled(p, AERO_LINE);
   await p.evaluate(() => window.CurbApp.noteDrawn(null));
-  await press(p, "The price or route changed since the quote was shown. Nothing was sent.");
+  await press(p, ROUTE_CHANGED);
+  expect(await sentCount(p)).toBe(before);
+  // (f) THE ROUTE SHOWN, AT A WORSE PRICE: Aerodrome's pool 3% worse at the
+  // press. Still Aerodrome (Uniswap is 5% worse), and sent - at the minimums
+  // the card printed, not 1% off the fresh quote.
+  let drawn;
+  await untilPressed(async (i) => {
+    R.aero = null;
+    await p.fill("#tvPay", "0.15" + i);
+    await settled(p, AERO_LINE);
+    drawn = await drawnNow(p);
+    return armAndPress(p, () => { R.aero = scaleOut(97); }, "Done. You paid");
+  });
+  const sent = await sentSince(p, before);
+  expect(sent.map((t) => t.to)).toEqual([AERO_ROUTER, SPCXC, await curveOf(p)]);
+  const x = exactInputOf(bytesArray("0x" + sent[0].data.slice(10), 0)[0]);
+  expect(x.minOut, "step 1's floor is below the \"at least\" the card showed").toBe(BigInt(drawn.midMin));
+  expect(BigInt("0x" + argWords(sent[2].data)[1]) >= BigInt(drawn.min), "step 2's floor is below the card's minimum").toBe(true);
+  // (g) THE CARD'S QUOTE IS THE ONE COMPARED. The card draws the router; then
+  // the page's hidden long-page quote is priced again (as every refresh does)
+  // while Uniswap is halved, and finds Aerodrome. A press while the card still
+  // says the router is refused - not sent through Aerodrome under it.
+  let outcome = "redrawn";
+  for (let attempt = 0; attempt < 3 && outcome === "redrawn"; attempt++) {
+    R.aero = null;
+    R.uni = scaleOut(120);
+    await p.fill("#tvSlip", "5");
+    await p.fill("#tvPay", "0.16" + attempt);
+    await settled(p, ROUTER_LINE);
+    before = await sentCount(p);
+    R.uni = scaleOut(50);
+    await rpc("evm_mine", []);
+    // PRICED AND PRESSED IN ONE TICK OF THE PAGE, while the card still shows
+    // the router: its own heartbeat may redraw it meanwhile, and then it is
+    // tried again.
+    outcome = await p.evaluate(async () => {
+      await window.CurbApp.renderCurveQuote();
+      if (!document.getElementById("tvQuote").textContent.includes("1 confirmation: the CURB router")) return "redrawn";
+      document.getElementById("msg").textContent = "";
+      document.getElementById("tvAct").click();
+      return "pressed";
+    });
+  }
+  expect(outcome, "the card was redrawn under every attempt").toBe("pressed");
+  await expect(p.locator("#msg")).toContainText("The price or route changed since the quote was shown. Nothing was sent.", { timeout: 120_000 });
   expect(await sentCount(p)).toBe(before);
   await p.close();
 });
@@ -1064,7 +1216,7 @@ test("A16 a sped-up step 1 is held by what the replacement delivered; a cancelle
 });
 
 // ================================================================== A17 held-row safety
-test("A17 the held row: a lagging endpoint keeps the record, the asset gone clears it, an ETH buy is refused while holding, Dismiss clears it", async () => {
+test("A17 the held row: a lagging endpoint keeps the record and still refuses an ETH buy, the asset gone clears it, an ETH buy is refused while holding, Dismiss clears it", async () => {
   test.setTimeout(480_000);
   const token = await spaceLaunch();
   const buyer = await freshAccount("held safety");
@@ -1086,6 +1238,13 @@ test("A17 the held row: a lagging endpoint keeps the record, the asset gone clea
   await p.evaluate(() => window.CurbApp.renderHeld());
   await expect(p.locator("#tvHeld")).toContainText("You hold", { timeout: 30_000 });
   expect((await swapRecords(p)).length, "a lagging endpoint cleared the record").toBe(1);
+  // (a2) AND THE PRESS ASKS AT SUCH A BLOCK TOO: behind the swap, the balance
+  // it would read is the one from before it, 0 - and an ETH buy went out on
+  // that, a second step 1 while the first one's asset was held.
+  await ethBuy(p, "0.121", AERO_LINE);
+  const lagged = await sentCount(p);
+  await press(p, "from an earlier swap for this launch. Nothing was sent.");
+  expect(await sentCount(p), "a lagging endpoint let a second swap through").toBe(lagged);
   // (b) CAUGHT UP: the balance is 0 at a block past the swap's - hidden, cleared.
   R.other = null;
   await p.evaluate(() => window.CurbApp.renderHeld());
@@ -1192,7 +1351,7 @@ test("A19 the issuer blocks the Graduator between the steps: step 2 is refused w
 });
 
 // ================================================================== A20 a threshold refund is held
-test("A20 a buy the threshold clamps: the curve's refund is held, and step 2's floor is the card's price scaled to what arrived", async () => {
+test("A20 a buy the threshold clamps: not sent on another route at the press; the curve's refund is held, on the long page too; and step 2's floor is the card's price scaled to what arrived", async () => {
   test.setTimeout(600_000);
   await inSnapshot(async () => {
     const factory = await factoryFor(SPCXC);
@@ -1202,7 +1361,9 @@ test("A20 a buy the threshold clamps: the curve's refund is held, and step 2's f
     const filler = await freshAccount("clamped filler");
     const R = routed();
     R.uni = scaleOut(95);
-    const p = await routedToken(token, buyer, R);
+    // ONE CONTEXT, so the long page at the end reads the same records.
+    const context = await browserRef.newContext();
+    const p = await routedToken(token, buyer, R, { context });
     // WHAT THE BUYER'S 0.5 ETH WOULD DELIVER, and the curve filled to about half of it.
     const half = (await aeroQuoteAt(SPCXC_ROWS[0], 5n * 10n ** 17n, "latest")) / 2n;
     const fill = async () => {
@@ -1228,7 +1389,22 @@ test("A20 a buy the threshold clamps: the curve's refund is held, and step 2's f
     await sendMined({ from: filler, to: curve, data: sel("buy(uint256,uint256,address)") + word(F) + word(1) + pad(filler),
       gas: "0x" + (12_000_000).toString(16) });
     await p.evaluate(() => window.CurbApp.refresh(true));
-    await ethBuy(p, "0.5", AERO_LINE);
+    // A CLAMPED QUOTE IS NOT TAKEN ON ANOTHER ROUTE: the CURB router wins at the
+    // press with fewer confirmations and a higher minimum, and is refused only
+    // because the threshold clamps the buy - its minimum is a price.
+    let n0;
+    await untilPressed(async (i) => {
+      R.uni = scaleOut(95);
+      await ethBuy(p, "0.5" + "0".repeat(i), AERO_LINE);
+      expect(await p.evaluate(() => window.CurbApp.drawn.clamped), "the card's quote is not a clamped one").toBe(true);
+      await settled(p, AERO_LINE);
+      n0 = await sentCount(p);
+      return armAndPress(p, () => { R.uni = scaleOut(200); }, ROUTE_CHANGED);
+    });
+    expect(await sentCount(p)).toBe(n0);
+    R.uni = scaleOut(95);
+    await ethBuy(p, "0.5000", AERO_LINE);
+    await settled(p, AERO_LINE);
     await expect(p.locator("#tvQuote")).toContainText("Refunded (past the threshold):");
     await expect(p.locator("#tvQuote")).not.toContainText("in the same transaction");
     const drawn = await p.evaluate(() => ({ min: window.CurbApp.drawn.min.toString(), clamped: window.CurbApp.drawn.clamped }));
@@ -1253,7 +1429,17 @@ test("A20 a buy the threshold clamps: the curve's refund is held, and step 2's f
     const min2 = BigInt("0x" + argWords(sent[2].data)[1]);
     const card = (BigInt(drawn.min) * received + x.minOut - 1n) / x.minOut;
     expect(min2 >= card, `step 2's floor ${min2} is under the card's price ${card}`).toBe(true);
-    await p.close();
+    // AND ON THE LONG PAGE, where the curve has closed: the held row is not
+    // inside the curve's box, which is hidden past the threshold.
+    const lp = await newPage(buyer, {}, (q) => routeEndpoint(q, HOST, async () => undefined), context);
+    await lp.goto("/app.html?" + new URLSearchParams({ rpc: HOST, factory, lens: APP.lens, token }).toString());
+    await lp.waitForFunction(() => !!window.CurbApp, null, { timeout: 8_000 });
+    await lp.evaluate(() => window.CurbApp.connect());
+    await expect.poll(() => lp.evaluate(() => (window.CurbApp.state.view || {}).status), { timeout: 30_000 }).toBeGreaterThan(1);
+    await expect(lp.locator("#heldRow")).toBeVisible({ timeout: 30_000 });
+    await expect(lp.locator("#heldRow")).toContainText("You hold");
+    await expect(lp.locator("#heldRow")).toContainText("Sell it back");
+    await context.close();
   });
 });
 
@@ -1341,4 +1527,140 @@ test("A23 the long page: the routed-on-Aerodrome row and its note, the same thre
   expect(words).toContain("It comes back to you as SPCXc with the curve buy.");
   expect(words).not.toContain("same transaction");
   await lp.close();
+});
+
+// ================================================================== A24 beside other units of the asset
+test("A24 a buyer who holds other SPCXc: what a swap left is spent exactly - by Buy with it, Sell it back, and a step 2 or a sale whose wait ended without a receipt - and a swap the page has not yet seen held refuses nothing", async () => {
+  test.setTimeout(900_000);
+  const token = await spaceLaunch();
+  const buyer = await freshAccount("other units");
+  const R = routed();
+  R.uni = scaleOut(95);
+  const p = await routedToken(token, buyer, R);
+  // THE BUYER'S OWN SPCXc, from elsewhere: the balance never reads 0 below,
+  // so nothing but the records' own bookkeeping can clear them.
+  const own = await spcxcFromElsewhere(p, buyer, 2n * 10n ** 16n);
+  expect(own > 0n).toBe(true);
+  const settledHeld = async (label) => {
+    await expect.poll(() => p.evaluate(() => window.CurbTx.loadPendingAll().filter((t) => t.kind === "eth-swap" || t.spendsHeld).length),
+      { timeout: 60_000, message: label + ": a record of what the swap left outlived its spending" }).toBe(0);
+    await expect(p.locator("#tvHeld"), label).toBeHidden({ timeout: 30_000 });
+    expect(await balanceOf(SPCXC, buyer), label + ": the buyer's own SPCXc moved").toBe(own);
+  };
+
+  // (a) A SWAP MINED BUT NOT YET SEEN HELD - step 1's wait ended, and the
+  // chain mined it since - is judged held at the next press, which goes on.
+  // Made so once the resume after the swap has run, which would otherwise
+  // judge it first.
+  const runs = await p.evaluate(() => window.CurbApp.state.resumeRuns);
+  const r1 = await heldBySwap(p, buyer);
+  await expect.poll(() => p.evaluate(() => window.CurbApp.state.resumeRuns), { timeout: 60_000 }).toBeGreaterThan(runs);
+  await p.evaluate(() => {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith("curb.launch.pending.v3:")) continue;
+      const t = JSON.parse(localStorage.getItem(k));
+      if (t.kind !== "eth-swap") continue;
+      delete t.held; delete t.heldAt; delete t.heldBlock;
+      localStorage.setItem(k, JSON.stringify(t));
+    }
+  });
+  expect((await swapRecords(p)).map((t) => t.held)).toEqual([undefined]);
+  await payWith(p, "asset");
+  await p.fill("#tvPay", dec8(r1));
+  await expect(p.locator("#tvQuote")).toContainText("Minimum received", { timeout: 30_000 });
+  await press(p, "Done. The curve gave you");
+  await settledHeld("Buy with it");
+
+  // (b) SOLD BACK: exactly what the swap left.
+  await heldBySwap(p, buyer, "0.13");
+  await clearMsg(p);
+  await p.locator("#tvHeld button[data-held-sell]").click();
+  await expect(p.locator("#msg")).toContainText("on Aerodrome.", { timeout: 120_000 });
+  await settledHeld("Sell it back");
+
+  // (c) STEP 2 SENT, ITS WAIT ENDED WITHOUT A RECEIPT (the wallet on another
+  // network meanwhile), and mined: not "not made", no buttons for what it is
+  // spending - and its record takes what it spent off the swap's.
+  await ethBuy(p, "0.14", AERO_LINE);
+  await switchAfterSend(p, 3);
+  await press(p, "The curve buy with it was sent but is not mined yet");
+  await switchBack(p);
+  await expect(p.locator("#msg")).not.toContainText("was not made");
+  await expect(p.locator("#msg button[data-held-buy], #msg button[data-held-sell]")).toHaveCount(0);
+  await settledHeld("step 2 mined after its wait");
+
+  // (d) THE SAME FOR A SALE BACK, after its approval.
+  await heldBySwap(p, buyer, "0.15");
+  await switchAfterSend(p, 2);
+  await clearMsg(p);
+  await p.locator("#tvHeld button[data-held-sell]").click();
+  await expect(p.locator("#msg")).toContainText("was sent but is not mined yet", { timeout: 120_000 });
+  await switchBack(p);
+  await expect(p.locator("#msg")).not.toContainText("The sale was not made");
+  await expect(p.locator("#msg button[data-held-revoke]")).toHaveCount(0);
+  await settledHeld("a sale mined after its wait");
+
+  // (e) STEP 2 MAYBE SENT: the wallet failed, not declined. Said as the
+  // wallet's uncertainty, with no buttons to spend it again.
+  await ethBuy(p, "0.16", AERO_LINE);
+  await failSend(p, 3);
+  await press(p, "IT IS NOT CERTAIN NOTHING WAS BROADCAST");
+  await unarm(p);
+  await expect(p.locator("#msg")).toContainText("The swap went through: you hold");
+  await expect(p.locator("#msg")).not.toContainText("was not made");
+  await expect(p.locator("#msg button[data-held-buy], #msg button[data-held-sell]")).toHaveCount(0);
+  await p.close();
+});
+
+// ================================================================== A25 ETH for the later steps
+test("A25 a two-step ETH buy keeps ETH back for its later steps: an account with the amount and not the gas after it is refused before step 1, on Aerodrome and on the UniversalRouter", async () => {
+  test.setTimeout(400_000);
+  const token = await spaceLaunch();
+  const buyer = await freshAccount("gas for later");
+  const R = routed();
+  R.uni = scaleOut(95);
+  /// The buy priced, then the account left with the amount and 0.0001 ETH -
+  /// under the 0.0003 ETH kept back - and pressed.
+  const short = async (p, amount, line, opts) => {
+    await ethBuy(p, amount, line, opts);
+    const left = BigInt(Math.round(Number(amount) * 1e6)) * 10n ** 12n + 10n ** 14n;
+    await rpc("anvil_setBalance", [buyer, "0x" + left.toString(16)]);
+    const before = await sentCount(p);
+    await press(p, "and its later steps need gas; this account holds");
+    expect(await sentCount(p), "a send went out").toBe(before);
+    expect(await ethOf(buyer), "ETH moved").toBe(left);
+    await rpc("anvil_setBalance", [buyer, "0x" + (100n * 10n ** 18n).toString(16)]);
+  };
+  let p = await routedToken(token, buyer, R);
+  await short(p, "0.1", AERO_LINE);
+  await p.close();
+  await withoutCurbRouter(async () => {
+    R.uni = scaleOut(105);
+    p = await routedToken(token, buyer, R);
+    await short(p, "0.011", "Swapped first through Uniswap", { slip: 10 });
+    await p.close();
+  });
+});
+
+// ================================================================== A26 Buy with it, to the last unit
+test("A26 Buy with it fills what is held to the last unit, on an 18-decimal asset too", async () => {
+  const p = await newPage(OWNER);
+  await p.goto("/app.html?" + new URLSearchParams({ rpc: STATE.rpc, factory: await factoryFor(WETH), lens: APP.lens }).toString());
+  await p.waitForFunction(() => !!window.CurbApp, null, { timeout: 8_000 });
+  await p.evaluate(() => window.CurbApp.connect());
+  await expect.poll(() => p.evaluate(() => ((window.CurbApp.state.ctx || {}).quote || "").toLowerCase()), { timeout: 30_000 }).toBe(WETH);
+  // THE BUTTON A HELD MESSAGE CARRIES, for an amount of an 18-decimal asset
+  // past eight places: filled to the wei.
+  await p.evaluate((weth) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.id = "heldProbe";
+    b.setAttribute("data-held-buy", "1234567890123456789");
+    b.setAttribute("data-held-asset", weth);
+    document.body.append(b);
+    b.click();
+  }, WETH);
+  await expect(p.locator("#curveAmount")).toHaveValue("1.234567890123456789");
+  await p.close();
 });

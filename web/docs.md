@@ -549,8 +549,10 @@ Aerodrome's contracts the way it pins the CURB router:
 - **When it is used.** With the CURB router usable, only when Aerodrome delivers at least 0.5% more of the asset
   than the CURB router's route and the difference is worth at least 0.0005 ETH, or when Uniswap cannot fill the
   amount. Without the CURB router, whenever Aerodrome is usable and delivers at least what the other two-step route
-  would. Decided on every quote; the press quotes again, and if the route or price it would send is worse than the
-  one shown, it sends nothing and asks you to press again.
+  would. Decided on every quote; the press quotes again, and if it would take another route than the one shown
+  that needs more confirmations or has a lower minimum, it sends nothing and asks you to press again. Whatever the
+  route, a buy is never sent with a lower minimum than the quote showed: if the price moved past your slippage
+  since, it is refused rather than sent lower.
 - **The issuer, before the first step.** The route is offered only when the issuer has positively allowed you to
   send and receive the asset, the curve to receive and pull it, and Aerodrome's router to pull it (for a sale
   back), or, for cbXRP, has not blacklisted the router.
