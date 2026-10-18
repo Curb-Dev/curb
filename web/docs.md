@@ -177,8 +177,10 @@ anyone's. Pools, the curve, the lock and CURB's contracts are left out, so token
 claims inside Uniswap v4, earn nothing. At most 2% of each payout covers the keeper's gas; the cap is in the
 contract.
 
-**The safety hour.** Every payout waits one hour before it pays, and the CURB multisig or CURB's guardian - a separate
-service that recomputes every payout - can stop it in that hour. A distributor never pays out more than it received.
+**The safety hour.** Every payout waits one hour before it pays, and in that hour any of CURB's vetoers - the CURB
+multisig, a second CURB Safe and CURB's guardian, a separate service that recomputes every payout - can stop it. The
+multisig or a vetoer can also freeze publishing, which holds every waiting payout. A distributor never pays out more
+than it received.
 
 **Getting paid.** Shares are sent automatically once they are worth the gas (about $0.05 or more); a smaller share
 builds up until it is. You can claim yours on [Holder fees](sharing.html) at any time, and it never expires. If a
@@ -194,10 +196,11 @@ removing a vetoer, ending a freeze: each waits 48 hours, then anyone may carry i
 distributor versions a creator may switch to are the ones the catalog approves; a new one waits 7 days after it
 is proposed, and retiring one stops only new switches to it.
 
-**What CURB cannot do:** turn sharing off, take a distributor's funds, pay out more than it received, or take more
-than 2% for gas. CURB does compute the split, so holders rely on it; every split can be checked and stopped.
-Payouts also need CURB's keeper to keep publishing them: nobody else can, and if it stopped, what arrived after the
-last payout would wait in the distributor, unpaid - it never expires.
+**What CURB cannot do:** turn sharing off, withdraw a distributor's funds, pay out more than it received, or take
+more than 2% for gas. CURB does compute the split, so holders rely on it: anyone can check every split, and CURB's
+vetoers can stop one. Payouts also need CURB's keeper to keep publishing them: nobody else can, and if it stopped,
+what arrived after the last payout would wait in the distributor, unpaid - it never expires. The whole list is
+under [What CURB can and cannot do](#what-curb-can-and-cannot-do).
 
 ---
 
@@ -227,7 +230,7 @@ Fixed for each launch when it is created, and not changeable by anyone, CURB inc
 - the creator wallet, which receives the creator's fees and owns the locked liquidity - its fees can be switched
   to the launch's holders once, and that switch is for good;
 - the paired asset and the graduation threshold;
-- the tax and the platform's share of it;
+- the tax, the platform's share of it and the address that share goes to;
 - the 0.05% pool fee and the lock, which is forever.
 
 The token has no owner: nobody can mint more of it, pause it or block its holders. The paired asset's issuer can
@@ -238,8 +241,55 @@ unlock date and no withdrawal. Nobody can take the liquidity out - not the creat
 time. The lock only collects the position's LP fees, for the creator wallet or, once the launch shares its fees, for
 its holders (see [Functions](#functions)).
 
-**What can change:** the platform's share and who receives it, for launches created later. Existing launches are
-not affected.
+**What can change** is under [What CURB can and cannot do](#what-curb-can-and-cannot-do); none of it changes the
+list above for a launch that exists.
+
+---
+
+## What CURB can and cannot do
+
+**Nobody can, CURB included:**
+
+- withdraw or recover the funds, or upgrade the contracts that hold them: what a curve, a lock, a fee escrow, the
+  hook or a holder distributor holds leaves only by their fixed rules, as a trade, a graduation, a payment to
+  whoever is owed or a holder payout;
+- unlock the liquidity, which is locked forever;
+- change a launch's fees: its tax, the platform's share, the address that share goes to and the pool fee are
+  fixed when it is created.
+
+**Holder payouts** are time-weighted, and anyone can recompute each one from the chain (see
+[Holder sharing contracts](#holder-sharing-contracts)). The distributor checks a payout's totals, not each
+holder's line, so holders rely on CURB to split it rightly.
+
+**What CURB can do:**
+
+- **Publish payouts.** CURB's keeper is the only publisher; there is no backup publisher today. The CURB multisig
+  can remove the publisher at once, and name a new one 48 hours after announcing it, but not while publishing is
+  frozen. While nobody publishes, what a distributor received after its last payout waits there, unpaid.
+- **Stop payouts.** CURB's vetoers - today the CURB multisig, a second CURB Safe and CURB's guardian - can stop a
+  payout in its hour, and the multisig or any vetoer can freeze publishing. A freeze holds every waiting payout,
+  which a vetoer can then stop at any time, until it is lifted; the multisig must announce that 48 hours ahead.
+  Payouts already in force keep paying.
+- **Change the vetoers.** The multisig adds one at once. Removing one is announced 48 hours ahead, and waits for
+  the hour of the latest payout to end.
+- **Change who receives the keeper's gas share** (at most 2% of each payout), 48 hours after announcing it.
+- **Change the platform's share** (at most 0.80%) **and the address that receives it**, for launches created
+  later, 24 hours after announcing it.
+- **Add a paired asset**, at once.
+- **Run the sharing catalog**, the list of distributor versions a creator may switch to: a new version waits 7
+  days; retiring one, or choosing the one the site offers first, is at once. Neither changes a launch that
+  already switched.
+- **Pay a curve's pending fees** straight to the platform and the creator, at any time - the way out when an
+  issuer blocks the fee escrow (see [Functions](#functions)).
+
+The multisig can cancel a change it has announced, hand its powers to a new owner, who must accept them, or give
+up a contract's owner powers for good.
+
+**What the site can do:** hide a launch or a paired asset from its own pages. Trading, claims and payouts on
+chain go on as before, and a hidden launch's own page still opens.
+
+**One limit of the pool:** in a graduated pool, a holder who trades through a range position of their own pays no
+tax on that side (see [Fees](#fees)).
 
 ---
 
@@ -257,12 +307,14 @@ not affected.
 - **Waiting.** Between reaching the threshold and the move into the pool, nothing can be traded.
 - **Keys.** A creator's fees and locked position belong to the creator wallet. A lost key cannot be recovered.
 - **Dollar figures** are for display only. Nothing trades at them.
-- **Holder sharing.** CURB's keeper computes each split off chain. The contracts cap what it can do, and every
-  split can be checked and stopped within its hour, but a wrong split nobody stops would pay holders wrongly.
+- **Holder sharing.** CURB's keeper computes each split off chain. The contracts cap what it can do; anyone can
+  check every split, and CURB's vetoers can stop one within its hour, but a wrong split nobody stops would pay
+  holders wrongly.
 - **Smart contracts** can have bugs. They have been reviewed in house only.
-- **No pause, no upgrade.** Nothing in the contracts can be paused, upgraded or reversed, and no admin can recover
-  funds. A bug in a contract every launch shares would affect launches that already exist. The CURB multisig can
-  add a new paired asset at any time, effective at once; it cannot change an existing launch.
+- **No upgrade.** Nothing in the contracts can be upgraded or reversed, nothing can be paused but the publishing of
+  holder payouts, and no admin can recover funds. A bug in a contract every launch shares would affect launches
+  that already exist. The CURB multisig can add a new paired asset at any time, effective at once; it cannot
+  change an existing launch.
 - **Future terms.** The platform share can change for new launches, within 0.80% and after 24 hours' notice.
 
 ---
@@ -472,8 +524,9 @@ approve, sell and unwrap.
 `factory` must be one the `SharingCatalog` approves (`isApproved(f)`; `recommended()`). The Graduator builds that
 factory's distributor for the token (`factory.deploy(token)`, at `predict(token)`), checks that it is one, pays the
 creator what was pending (the curve's unswept fees, or the lock's accrued LP fees, best effort), records the switch
-(`holderDistributorOf(token)`, `sharingSince(token)`, write-once) and moves the creator legs to it. The catalog
-admits a new version 7 days after it is proposed and retires one at once; retiring stops new switches only.
+(`holderDistributorOf(token)`, `sharingSince(token)`, write-once) and moves the creator legs to it. The catalog,
+owned by the platform's multisig, admits a new version 7 days after its owner proposes it and retires one at once;
+retiring stops new switches only.
 
 **The distributor** (`HolderFeeDistributor`, one per launch, no owner, not upgradeable) takes in the launch's fees
 with `harvest()`, which anyone may call: the curve's pending fees, its escrow credit, the hook's debt and the lock's
@@ -497,10 +550,10 @@ cum1))))`, so a proof is valid on one distributor only.
 
 **The factory** (`HolderDistributorFactory`, owned by the platform's multisig) holds the roles: `publisher()`,
 `keeperPayee()`, `isVetoer(a)`, `frozen()`. `freeze()` (the owner or a vetoer) stops publishing at once and holds
-every pending root; `veto` and `vetoMany` stop pending roots. A new publisher or keeper payee, removing a vetoer
-and unfreezing are announced first and can be carried out by anyone after `ROLE_DELAY` (48 hours), within
-`ROLE_WINDOW` (7 days): `pendingPublisher`, `pendingPublisherAt`, `pendingKeeperPayee`, `pendingKeeperPayeeAt`,
-`vetoerRemovalAt(a)`, `pendingUnfreezeAt`.
+every pending root; `veto` and `vetoMany` stop pending roots; `revokePublisher()` and `addVetoer(a)` (the owner)
+also take effect at once. A new publisher or keeper payee, removing a vetoer and unfreezing are announced first
+and can be carried out by anyone after `ROLE_DELAY` (48 hours), within `ROLE_WINDOW` (7 days): `pendingPublisher`,
+`pendingPublisherAt`, `pendingKeeperPayee`, `pendingKeeperPayeeAt`, `vetoerRemovalAt(a)`, `pendingUnfreezeAt`.
 
 **The epoch file** (`curb.sharing.epoch/1`) is canonical JSON - sorted keys, every number a decimal string - and
 its sha256 is the root's `contentHash`. The site serves it at `/sharing/<chainId>/<distributor>/<epoch>.json` and

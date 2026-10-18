@@ -28,6 +28,9 @@ WHO IT IS FOR, AND IN WHAT ORDER
                             checking it, what CURB cannot do - one screen
     Dev buy
     What is permanent       the lock, which is forever, said plainly
+    What CURB can and       the one full statement of the platform's powers
+      cannot do             and their limits (below); every other page
+                            that claims trust links to it
     Risks                   short bullets
     FAQ                     6-8 questions, one of them about $CURB
     ---
@@ -167,22 +170,75 @@ FACTS docs.md AND curb.html MUST AGREE ON
 FACTS docs.md AND terms.html MUST AGREE ON
   Added 8 October 2026. Change both pages together, or neither.
 
-  - THE SAFETY HOUR. A payout root waits one hour (VETO_WINDOW), and the CURB
-    multisig or CURB's guardian - a separate service that recomputes every
-    payout - can stop it in that hour. terms.html named the multisig alone,
-    which left out the vetoer docs.md names. Never "independent": every
-    vetoer is CURB's own (the guardian, Safe B and the policy Safe,
-    ADDRESSES.txt), 16 October 2026.
+  - THE SAFETY HOUR. A payout root waits one hour (VETO_WINDOW), and CURB
+    can stop it in that hour. docs.md names today's vetoers (the CURB
+    multisig, a second CURB Safe and CURB's guardian, a separate service that
+    recomputes every payout); terms.html, the launch form and the switch's
+    dialog say "CURB" and name no one, because a role holder can change and
+    a page that names one goes stale (until 18 October 2026 they named the
+    multisig and the guardian, which left out Safe B). Never "independent":
+    every vetoer is CURB's own (the guardian, Safe B and the policy Safe,
+    ADDRESSES.txt), 16 October 2026. Both pages also say that payouts need
+    CURB's keeper and that CURB can freeze them, terms.html in one line that
+    links to the docs' "What CURB can and cannot do".
   - TRADE COSTS are not quoted as figures. terms.html quoted measured costs
     for a pool shape that no longer exists (NVDAc at a 60 threshold, where
     DeployCurb now sets 49.1 and a thinner graduated pool); both pages point
     to the confirmation screen, which shows the trade in front of the user.
-  - NOTHING CAN BE PAUSED OR UPGRADED, and no admin can recover funds; a bug
-    in a contract every launch shares reaches existing launches; the multisig
-    can add a paired asset at once (LaunchRegistry.addLauncher, once the
-    registry is handed to it) and cannot change an existing launch. docs.md's
-    Risks says so in one bullet; INCIDENT.txt is the same fact written for
-    the operator.
+  - NOTHING CAN BE UPGRADED, nothing can be paused but the publishing of
+    holder payouts (HolderDistributorFactory.freeze), and no admin can
+    recover funds; a bug in a contract every launch shares reaches existing
+    launches; the multisig can add a paired asset at once
+    (LaunchRegistry.addLauncher, once the registry is handed to it) and
+    cannot change an existing launch. docs.md's Risks says so in one bullet;
+    INCIDENT.txt is the same fact written for the operator: its first
+    section, the exploit playbook's banner ("trading and launching cannot be
+    paused", before its own step 5 freezes holder sharing) and the post
+    template. Until 18 October 2026 all three, and docs.md's Risks, said that
+    nothing could be paused, which a freeze contradicts.
+
+
+WHAT CURB CAN AND CANNOT DO (docs.md's section of that name)
+  Added 18 October 2026, the one place the whole statement is made, and the
+  whole list: Holder sharing says so. The site's pages keep at most one short
+  line, name no role holder, and link to it: terms.html (holder sharing),
+  curb.html (the fee rules), the launch form's "Share fees with holders" list
+  (app.html #shareLimits) and the switch's dialog (sharing-token.js
+  #shEnableLimits). The heading stays short enough for one line in the
+  contents: "What the platform can and cannot do" took two, and pushed
+  "Paired-asset addresses" under a 1280 by 900 window's fold (docs.html's
+  .toc note, site.spec.js). Each claim, and where it was checked:
+  - CANNOT: no contract is upgradeable or has a withdrawal for an admin
+    (PositionLock, FeeEscrow, HolderFeeDistributor: no owner; the
+    distributor "no sweep, no upgrade"); the lock is forever; a launch's tax,
+    platform share, platform recipient and pool fee are stamped into its
+    record (CurbLaunchFactory reads the hook's pair once; FeeHook.LaunchFee
+    keeps the record's copy).
+  - PAYOUTS are time-weighted (CURB-SHARE v1) and recomputable by anyone
+    (services/sharer `verify`); the distributor checks a root's totals, not
+    each line (HolderDistributorFactory's header).
+  - CAN, read on Base on 18 October 2026: one publisher, a single key, the
+    keeper's, not a vetoer, no pendingPublisher - no backup publisher
+    (PRE_MAINNET C9, finding 25); vetoers the guardian, Safe B (1 of 2) and
+    the policy Safe (2 of 3), which owns the hook, the registry, the
+    SharingCatalog and the HolderDistributorFactory; frozen() false.
+    HolderDistributorFactory: freeze() is the owner's or any vetoer's, and
+    while frozen a vetoer may veto whatever the hour; revokePublisher() and
+    addVetoer() are the owner's, at once; an unfreeze, a new publisher, a new
+    keeperPayee and a vetoer's removal are announced and wait ROLE_DELAY (48
+    hours); executePublisher() not while frozen, removeVetoer() not before
+    vetoableUntil (the latest root's hour). The hook's platform share and
+    recipient change for later launches only, after POLICY_CHANGE_DELAY
+    (FeeHook announce/execute). SharingCatalog: a version waits
+    ADMISSION_DELAY (7 days); retire() and setRecommended() are at once, and
+    neither reaches a launch already switched. Graduator.rescueCurveFees is
+    the platform recipient's (and the creator's) at any time. The owner of
+    each can cancel what it announced (cancelPending, cancel, the hook's
+    cancels; addVetoer for a removal) and hand it on (Ownable2Step).
+  - THE POOL: one-sided range liquidity in a graduated pool avoids the tax on
+    its side (PRE_MAINNET C9, finding 23); Fees says it in full, the section
+    in one sentence that points there. Recheck the role reads when a role
+    changes (ADDRESSES.txt, "changed since the run").
 
 
 PLACEHOLDERS THE OWNER MUST FILL

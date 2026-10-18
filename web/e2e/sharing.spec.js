@@ -340,10 +340,15 @@ test("the launch form's toggle: off, the launch's last field is zero; on, the fi
   await expect(p.locator("#shareZero")).toHaveText("Your creator share becomes 0%, permanently.");
   await expect(p.locator("#shareWhat")).toHaveText(/Holders receive your tax share, before and after graduation, plus the locked\s+position's LP fees\./);
   await expect(p.locator("#sharePrincipal")).toHaveText("The LP principal stays locked forever; nobody can withdraw it.");
-  await expect(p.locator("#shareHow")).toHaveText(/Shares are time-weighted and paid about hourly\. At most 2% of each payout covers\s+gas\. Every payout is public and can be stopped by the CURB multisig or CURB's guardian\s+for 1 hour\./);
+  await expect(p.locator("#shareHow")).toHaveText(/Shares are time-weighted and paid about hourly\. At most 2% of each payout covers\s+gas\. Every payout is public and can be stopped by CURB for 1 hour\./);
   // AND THAT PAYOUTS NEED CURB'S KEEPER, said where the switch is thrown (audit, item 25).
   await expect(p.locator("#sharePublisher")).toHaveText(/^Payouts need CURB's keeper to keep publishing them; unpaid shares wait in the\s+distributor\.$/);
   await expect(p.locator("#shareNever")).toHaveText("Unclaimed shares never expire.");
+  // AND THAT CURB CAN FREEZE THEM, in one line that links to the whole list,
+  // in a new tab so the form is kept. Who the vetoers are is the docs' to say.
+  await expect(p.locator("#shareLimits")).toHaveText("CURB can also freeze payouts: what CURB can and cannot do.");
+  await expect(p.locator("#shareLimits a")).toHaveAttribute("href", "docs.html#what-curb-can-and-cannot-do");
+  await expect(p.locator("#shareLimits a")).toHaveAttribute("target", "_blank");
   await expect(p.locator("#shareVersion")).toContainText(recommended, { ignoreCase: true });
   await expect(p.locator("#shareVersion")).toContainText("version 1");
   // AND THE SPLIT SAYS WHOSE IT IS.
@@ -931,6 +936,9 @@ test("the switch after launch is the creator wallet's alone, behind a typed conf
   await expect(dlg).toContainText("Your creator share becomes 0%, permanently.");
   await expect(dlg).toContainText("Unclaimed shares never expire.");
   await expect(p.locator("#shEnablePublisher")).toHaveText("Payouts need CURB's keeper to keep publishing them; unpaid shares wait in the distributor.");
+  await expect(dlg).toContainText("Every payout is public and can be stopped by CURB for 1 hour.");
+  await expect(p.locator("#shEnableLimits")).toHaveText("CURB can also freeze payouts: what CURB can and cannot do.");
+  await expect(p.locator("#shEnableLimits a")).toHaveAttribute("href", "docs.html#what-curb-can-and-cannot-do");
   await expect(p.locator("#shEnablePending")).toContainText((await fmtOn(p, pendingTax)) + " NVDAc of creator tax not yet swept");
   await expect(p.locator("#shEnableAct")).toBeDisabled();
   await p.fill("#shEnableConfirm", "SHAR");

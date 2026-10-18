@@ -49,8 +49,9 @@
   <p class="lede">
     Everything below is decided when the launch transaction is mined. There is no
     function anywhere &mdash; not for the creator and not for us &mdash; that changes any of
-    it later. It is here rather than in the form because a form nobody finishes
-    reading is not a form that informs anyone.
+    it later, other than the creator&#39;s one-way switch to holder sharing. It is here
+    rather than in the form because a form nobody finishes reading is not a form that
+    informs anyone.
   </p>
   <div class="panel">
         <p class="note">
@@ -71,7 +72,8 @@
           <strong>The creator wallet receives the creator fees and owns the locked LP position.</strong>
           Leave it blank and it is the account you are connected with. Fill it in and it is permanent: the
           curve&#39;s creator fee, the pool&#39;s creator share and the locked position all answer to it, and
-          there is no function anywhere that can point them at another address afterwards. <strong>An address
+          there is no function anywhere that can point them at another address afterwards, other than the
+          switch of their fees to the launch&#39;s holders below. <strong>An address
           you do not control loses you all three.</strong>
         </p>
         <p class="note">
@@ -80,9 +82,9 @@
           pool&#39;s creator share and the locked position&#39;s LP fees go to the launch&#39;s holders instead, and
           nothing can switch them back - not the creator and not us. Your creator share becomes 0%. What you earned
           before stays yours. The locked position stays in the lock forever, as on every launch. Shares are time-weighted and paid about hourly; at most 2% of
-          each payout covers gas; every payout is public and waits one hour before it pays, in which the CURB
-          multisig or CURB's guardian, a separate service that recomputes every payout, can stop it; and unclaimed
-          shares never expire.
+          each payout covers gas; every payout is public and waits one hour before it pays, in which CURB can
+          stop it; and unclaimed shares never expire. Payouts need CURB&#39;s keeper, and CURB can freeze them:
+          <a href="docs.html#what-curb-can-and-cannot-do" data-carry>what CURB can and cannot do</a>.
         </p>
         <p class="note">
           <strong>The name, image, description and links are optional, and all of them are permanent.</strong>

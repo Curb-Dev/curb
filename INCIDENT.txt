@@ -18,10 +18,14 @@ WHAT THIS IS
   14, and this file points there rather than repeating them. How a Safe
   signature is made safely is SAFE_OPS.txt.
 
-THE FIRST THING TO KNOW: NOTHING CAN BE PAUSED, AND THAT IS BY DESIGN
-  No CURB contract has a pause, an upgrade path or an admin who can move
-  somebody's funds. The token has no owner; the curve has no owner; the
-  graduated pool is an ordinary Uniswap v4 pool; the lock has no withdrawal.
+THE FIRST THING TO KNOW: NOTHING CAN BE PAUSED BUT HOLDER PAYOUTS, BY DESIGN
+  No CURB contract has an upgrade path or an admin who can move somebody's
+  funds, and the one pause is the freeze of holder-payout publishing
+  (HolderDistributorFactory.freeze, below): it holds payouts not yet in
+  force, and naming a new publisher waits until it is lifted; it stops
+  nothing on any curve, pool or lock. The token has no owner; the curve has no
+  owner; the graduated pool is an ordinary Uniswap v4 pool; the lock has no
+  withdrawal.
   Launching is open to anyone on every factory, and factories can never be
   removed from the registry. So in an incident there is no switch that stops
   trading, stops launching, or gives anything back - on any launch, ever.
@@ -175,7 +179,9 @@ THE LEVERS, AND THE LIMIT OF EACH
                                        keeper - but no new root without it.
 
   WHAT NOTHING CAN DO
-    stop trading on any curve or pool       change any launch's terms
+    stop trading on any curve or pool       change any launch's fees (only
+                                            its creator, once, can switch the
+                                            creator's share to its holders)
     stop launching on any factory           take liquidity out of a lock
     move or freeze anybody's tokens         recover a lost creator key
     undo a payout that was made             pay out more than a distributor
@@ -189,7 +195,8 @@ PLAYBOOKS
     1. Triage 1-4. Reproduce it on the fork; know which contracts and which
        launches before saying anything specific.
     2. Banner at once: what is affected, what to avoid ("do not buy on X
-       pair", "do not approve Y"), that the contracts cannot be paused.
+       pair", "do not approve Y"), that trading and launching cannot be
+       paused.
     3. Hide what leads people into it: hiddenLaunches, hiddenFactories, or
        the router out of CURB_ROUTER, whichever the bug lives in.
     4. Post on X (COMMS below), then update at fixed times.
@@ -266,8 +273,9 @@ COMMS
     what happened, in one sentence; which contracts and which launches, by
     address; what users should do now (stop trading X, revoke the approval to
     Y with their wallet or a token-approval tool, nothing to do); what CURB
-    can do and cannot do - the contracts cannot be paused, nothing can be
-    reversed; when the next update comes.
+    can do and cannot do - nothing in the contracts can be paused but the
+    publishing of holder payouts, nothing can be reversed (docs.md, "What
+    CURB can and cannot do"); when the next update comes.
   WHAT IT NEVER SAYS OR DOES
     asks anyone for a seed phrase, a private key or a transaction to sign;
     links to a "fix", a "migration" or a claim page; guesses at a cause or a
