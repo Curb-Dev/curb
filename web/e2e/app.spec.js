@@ -2919,7 +2919,7 @@ test("a symbol that is markup is not shown as a symbol, and does not execute", a
 // one. At the end it can only break itself.
 test("a quote asset too thin to fill a launch says so, and a deep one does not", async () => {
   // Some listed assets cannot be bought one graduation threshold at a time
-  // through Uniswap v3, the site's only ETH route. That is a fact about the
+  // through Uniswap v3 (or, for nine assets, Aerodrome). That is a fact about the
   // pools rather than about this code, so the page reads it at render time -
   // and this checks both answers, because a warning that is always on screen
   // is not a warning.
@@ -3005,32 +3005,54 @@ test("a quote asset too thin to fill a launch says so, and a deep one does not",
     "the thin case is untested: " + (found.why || "?") +
     ". The picker offered: " + JSON.stringify(found.labels || null)).toBe(true);
 
-  await expect(page.locator("#quoteLiquidity.unbounded")).toHaveCount(1, { timeout: 20000 });
-  // THE ROUTE, NOT THE MARKET: the check asks Uniswap v3 alone, and an asset
-  // thin there can be deep at Aerodrome (app.js quoteLiquidityNote).
-  await expect(note).toContainText("THIN ETH ROUTE");
-  await expect(note).toContainText("Uniswap v3");
-  await expect(note).toContainText("before it can graduate");
+  // WITH AERODROME, AAPLc IS NOT THIN: its pools there can buy one threshold,
+  // and the line says where the price came from.
+  await expect(note).toContainText("(on Aerodrome)", { timeout: 20000 });
+  await expect(page.locator("#quoteLiquidity.unbounded")).toHaveCount(0);
 
-  // AND THE NUMBER IS THE CHAIN'S, not the sentence's, or the warning is
-  // decoration that happens to be the right colour.
-  //
-  // IT IS THE THRESHOLD NOW, NOT A BALANCE. The warning stopped being about
-  // what the pools hold - a balance says where liquidity sits, not what is
-  // reachable - and became about what the quoter would charge to buy one
-  // threshold. So the figure to check is the size that could not be priced,
-  // and it has to be the factory's own.
-  const text = await note.innerText();
-  const quoted = text.match(/buying\s+([\d,.]+)/);
-  expect(quoted, "the warning quotes no size at all: " + text).not.toBeNull();
-  const onChain = await page.evaluate(() => ({
-    threshold: window.CurbApp.state.ctx.threshold.toString(),
-    decimals: Number(window.CurbApp.state.ctx.quoteDecimals),
-  }));
-  expect(
-    Number(quoted[1].replace(/,/g, "")),
-    "the size in the warning is not this factory's threshold"
-  ).toBeCloseTo(Number(onChain.threshold) / 10 ** onChain.decimals, 1);
+  // THE THIN HALF, WITH AERODROME'S QUOTER GONE: its code hash then mismatches
+  // for a fresh read, and an answer it cannot give is no price.
+  const AERO_QUOTER = "0x514c8b5f54112481e28028f1166bd78501089259";
+  const node = async (method, params) => {
+    const r = await fetch(STATE.rpc, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+    const j = await r.json();
+    if (j.error) throw new Error(method + ": " + JSON.stringify(j.error));
+    return j.result;
+  };
+  const quoterCode = await node("eth_getCode", [AERO_QUOTER, "latest"]);
+  await node("anvil_setCode", [AERO_QUOTER, "0x"]);
+  try {
+    await page.evaluate(() => window.CurbApp.refresh(true));
+    await expect(page.locator("#quoteLiquidity.unbounded")).toHaveCount(1, { timeout: 20000 });
+    // THE ROUTE, NOT THE MARKET: with Aerodrome's quoter gone the check asks
+    // Uniswap v3 alone, where this asset is thin (app.js quoteLiquidityNote).
+    await expect(note).toContainText("THIN ETH ROUTE");
+    await expect(note).toContainText("Uniswap v3");
+    await expect(note).toContainText("before it can graduate");
+
+    // AND THE NUMBER IS THE CHAIN'S, not the sentence's, or the warning is
+    // decoration that happens to be the right colour.
+    //
+    // IT IS THE THRESHOLD NOW, NOT A BALANCE. The warning stopped being about
+    // what the pools hold - a balance says where liquidity sits, not what is
+    // reachable - and became about what the quoter would charge to buy one
+    // threshold. So the figure to check is the size that could not be priced,
+    // and it has to be the factory's own.
+    const text = await note.innerText();
+    const quoted = text.match(/buying\s+([\d,.]+)/);
+    expect(quoted, "the warning quotes no size at all: " + text).not.toBeNull();
+    const onChain = await page.evaluate(() => ({
+      threshold: window.CurbApp.state.ctx.threshold.toString(),
+      decimals: Number(window.CurbApp.state.ctx.quoteDecimals),
+    }));
+    expect(
+      Number(quoted[1].replace(/,/g, "")),
+      "the size in the warning is not this factory's threshold"
+    ).toBeCloseTo(Number(onChain.threshold) / 10 ** onChain.decimals, 1);
+  } finally {
+    await node("anvil_setCode", [AERO_QUOTER, quoterCode]);
+  }
 
   // ---- 3. AND IT GOES AWAY AGAIN, so nothing here is a one-way latch.
   // BY ADDRESS HERE TOO. This line matched on the label and threw

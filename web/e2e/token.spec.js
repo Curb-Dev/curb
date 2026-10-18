@@ -188,6 +188,15 @@ async function withoutRouter(fn) {
     if (code !== "0x") await rpc("anvil_setCode", [CURB_ROUTER, code]);
   }
 }
+/// AERODROME'S QUOTER WITH NO CODE, so its route is off: without the CURB
+/// router it would be taken wherever it is not worse (aero.spec.js), and SPCXc's
+/// pools there pay more at this block. Put back in a finally.
+const AERO_QUOTER = "0x514c8b5f54112481e28028f1166bd78501089259";
+async function withoutAerodrome(fn) {
+  const code = await rpc("eth_getCode", [AERO_QUOTER, "latest"]);
+  await rpc("anvil_setCode", [AERO_QUOTER, "0x"]);
+  try { return await fn(); } finally { await rpc("anvil_setCode", [AERO_QUOTER, code]); }
+}
 
 /// The launch's page, connected, with app.js's drawing of it in place.
 async function openToken(token, account = OWNER) {
@@ -595,7 +604,7 @@ test("launches paired with assets no pool prices (AAPLc, cbZEC) show their marke
   }
 });
 
-test("WITHOUT THE ROUTER: a stock pair's curve is bought with ETH: swapped into the stock first, then the curve, from a wallet holding none of it", async () => withoutRouter(async () => {
+test("WITHOUT THE ROUTER: a stock pair's curve is bought with ETH: swapped into the stock first, then the curve, from a wallet holding none of it", async () => withoutRouter(() => withoutAerodrome(async () => {
   test.setTimeout(240_000);
   // THE OWNER'S EXAMPLE: a launch paired with SPCXc, bought with ether.
   const f = await factoryFor(SPCXC);
@@ -632,7 +641,7 @@ test("WITHOUT THE ROUTER: a stock pair's curve is bought with ETH: swapped into 
   expect(held > 0n, "no tokens arrived").toBe(true);
   expect(await stock(), "the SPCXc the swap delivered was not spent on the curve").toBe(0n);
   await p.close();
-}));
+})));
 
 test("the market cap is in dollars on a fork that serves another chain id, as the owner's does", async () => {
   // THE OWNER'S FORK SERVES 84531, and the dollars were only asked for on 8453

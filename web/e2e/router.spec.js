@@ -128,6 +128,40 @@ async function routeEndpoint(p, url, answer) {
     return route.fulfill({ status: res.status, headers: cors, contentType: "application/json", body: await res.text() });
   });
 }
+/// QUOTERV2'S ANSWERS ON AN ENDPOINT OF THE TEST'S OWN (SCALED): the amount
+/// times scale.k / 100 while scale.k is set - a pool that pays a set share of
+/// what it does, at a small amount, where the pools here are deep - and with
+/// scale.partial, every path's last price at the bound: a pool that ran out
+/// before the input was used, which is refused before Chainlink is asked.
+const SCALED = "http://uni-scaled.test:8703";
+async function scaledUniswap(q, scale) {
+  await routeEndpoint(q, SCALED, async (b) => {
+    if ((!scale.k && !scale.partial) || b.method !== "eth_call" ||
+        String((b.params[0] || {}).to || "").toLowerCase() !== QUOTER_V2) return undefined;
+    const res = await fetch(STATE.rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
+    const j = await res.json();
+    if (!j.result) return { error: j.error };
+    let h = j.result.replace(/^0x/, "");
+    if (scale.k) h = word((wordAt(j.result, 0) * BigInt(scale.k)) / 100n) + h.slice(64);
+    if (scale.partial) {
+      const off = Number(wordAt(j.result, 1) / 32n);
+      const i = off + Number(wordAt(j.result, off));
+      h = h.slice(0, i * 64) + word(4295128740n) + h.slice(i * 64 + 64);
+    }
+    return { result: "0x" + h };
+  });
+}
+/// AERODROME'S QUOTER WITH NO CODE: its hash then mismatches, so the Aerodrome
+/// route is off for anything opened meanwhile (aero.spec.js says why it would
+/// otherwise be taken). Put back in a finally.
+const AERO_QUOTER = "0x514c8b5f54112481e28028f1166bd78501089259";
+const AERO_ROUTER = "0x698cb2b6dd822994581fea6ea4fc755d1363a92f";
+async function withoutAerodrome(fn) {
+  const code = await rpc("eth_getCode", [AERO_QUOTER, "latest"]);
+  await rpc("anvil_setCode", [AERO_QUOTER, "0x"]);
+  try { return await fn(); } finally { await rpc("anvil_setCode", [AERO_QUOTER, code]); }
+}
+const UNI_PARTIAL_NVDAC = "Uniswap cannot swap this much ETH into NVDAc in full. Nothing is sent - pay with NVDAc instead, or use a smaller amount.";
 const isGetCodeOfRouter = (b) => b.method === "eth_getCode" && String(b.params[0]).toLowerCase() === ROUTER;
 const isCallToRouter = (b) => b.method === "eth_call" && String((b.params[0] || {}).to || "").toLowerCase() === ROUTER;
 const SOLD = keccak("SoldForEth(address,address,address,address,uint256,uint256,uint256,bool)");
@@ -730,31 +764,51 @@ test("a slippage that would leave a router trade with no floor is refused before
 });
 
 // ================================================================== the swap against the market
+// THE LOSS IS SET BY THE QUOTER'S ANSWER, NOT ONLY BY SIZE: the warning and the
+// refusal come from the quoter answering 0.8 and 0.45 of what it would at 0.01
+// ETH, and a leg whose pools run out before the input is used is refused at the
+// quote, before Chainlink is asked (the UniversalRouter left the unspent input
+// on itself). Twenty ETH, as the pools answer at this block, is the strong
+// warning it always was. Aerodrome off: it would take these otherwise.
 test("the swap between ETH and the pair's asset is checked against Chainlink: past 15% it is warned strongly, past 50% nothing is sent", async () => {
   test.setTimeout(180_000);
   const token = await nvdaLaunch();
-  const buyer = await freshAccount("nvda conversion");
-  const p = await openToken(token, buyer);
-  const before = await sentCount(p);
-  await cardSide(p, "buy");
-  await payWith(p, "eth");
-  // A SMALL BUY: the pool pays close to the market, and only the figure is said.
-  await p.fill("#tvPay", "0.01");
-  await expect(p.locator("#tvQuote .tvConv")).toHaveText(/^Conversion: \d+\.\d\d% below market$/, { timeout: 30_000 });
-  await expect(p.locator("#tvQuote .tvConv")).not.toHaveClass(/warn|strong/);
-  await expect(p.locator("#tvQuote")).not.toContainText("VERY COSTLY CONVERSION");
-  // TWENTY ETH takes every NVDAc this pool holds at this block: about a third
-  // below the market.
-  await p.fill("#tvPay", "20");
-  await expect(p.locator("#tvQuote")).toContainText("VERY COSTLY CONVERSION", { timeout: 30_000 });
-  await expect(p.locator("#tvQuote .tvConv")).toHaveClass(/strong/);
-  // FORTY: more than half of it lost - refused, and the button with it.
-  await p.fill("#tvPay", "40");
-  await expect(p.locator("#tvQuote")).toContainText("less than the market price (Chainlink)", { timeout: 30_000 });
-  await expect(p.locator("#tvQuote")).toContainText("pay with NVDAc instead");
-  await expect(p.locator("#tvAct")).toBeDisabled();
-  expect(await sentCount(p), "something was sent for a conversion past half").toBe(before);
-  await p.close();
+  await withoutAerodrome(async () => {
+    const buyer = await freshAccount("nvda conversion");
+    const scale = { k: null };
+    const p = await openToken(token, buyer, { rpc: SCALED, before: (q) => scaledUniswap(q, scale) });
+    const before = await sentCount(p);
+    await cardSide(p, "buy");
+    await payWith(p, "eth");
+    // A SMALL BUY: the pool pays close to the market, and only the figure is said.
+    await p.fill("#tvPay", "0.01");
+    await expect(p.locator("#tvQuote .tvConv")).toHaveText(/^Conversion: \d+\.\d\d% below market$/, { timeout: 30_000 });
+    await expect(p.locator("#tvQuote .tvConv")).not.toHaveClass(/warn|strong/);
+    await expect(p.locator("#tvQuote")).not.toContainText("VERY COSTLY CONVERSION");
+    // A FIFTH BELOW THE MARKET: warned strongly.
+    scale.k = 80;
+    await p.fill("#tvPay", "0.011");
+    await expect(p.locator("#tvQuote")).toContainText("VERY COSTLY CONVERSION", { timeout: 30_000 });
+    await expect(p.locator("#tvQuote .tvConv")).toHaveClass(/strong/);
+    // MORE THAN HALF OF IT LOST - refused, and the button with it.
+    scale.k = 45;
+    await p.fill("#tvPay", "0.012");
+    await expect(p.locator("#tvQuote")).toContainText("less than the market price (Chainlink)", { timeout: 30_000 });
+    await expect(p.locator("#tvQuote")).toContainText("pay with NVDAc instead");
+    await expect(p.locator("#tvAct")).toBeDisabled();
+    // TWENTY ETH, as the pools answer: about a third below the market.
+    scale.k = null;
+    await p.fill("#tvPay", "20");
+    await expect(p.locator("#tvQuote")).toContainText("VERY COSTLY CONVERSION", { timeout: 30_000 });
+    await expect(p.locator("#tvQuote .tvConv")).toHaveClass(/strong/);
+    // A LEG THE POOLS CANNOT FILL: refused.
+    scale.partial = true;
+    await p.fill("#tvPay", "0.013");
+    await expect(p.locator("#tvQuote")).toContainText(UNI_PARTIAL_NVDAC, { timeout: 30_000 });
+    await expect(p.locator("#tvAct")).toBeDisabled();
+    expect(await sentCount(p), "something was sent for a conversion past half").toBe(before);
+    await p.close();
+  });
 });
 
 // THE SAME CHECK ON EVERY OTHER ETH ROUTE: a router sale, the two-step buy the
@@ -878,48 +932,69 @@ test("an NVDAc router sale is checked against Chainlink as a buy is: warned past
   await p.close();
 });
 
-test("WITHOUT THE ROUTER the two-step ETH buy is checked against Chainlink the same: strongly warned at 20 ETH, refused at 40, on the card and on the long page", async () => {
+test("WITHOUT THE ROUTER the two-step ETH buy is checked against Chainlink the same: strongly warned, refused past half, and refused where Uniswap cannot fill it, on the card and on the long page", async () => {
   test.setTimeout(240_000);
   const token = await nvdaLaunch();
-  await inSnapshot(async () => {
+  await inSnapshot(() => withoutAerodrome(async () => {
     await rpc("anvil_setCode", [ROUTER, "0x"]);
     const buyer = await freshAccount("no router conversion");
-    const p = await openToken(token, buyer);
+    const scale = { k: null };
+    const p = await openToken(token, buyer, { rpc: SCALED, before: (q) => scaledUniswap(q, scale) });
     await cardSide(p, "buy");
     await payWith(p, "eth");
     await p.fill("#tvPay", "0.01");
     await expect(p.locator("#tvQuote")).toContainText("Swapped first through Uniswap", { timeout: 30_000 });
     expect((await convOnCard(p)).level, "a small two-step buy was warned").toBe("");
-    // TWENTY ETH takes every NVDAc the pool holds: about a third below the market.
-    await p.fill("#tvPay", "20");
+    // A FIFTH BELOW THE MARKET: warned strongly.
+    scale.k = 80;
+    await p.fill("#tvPay", "0.011");
     await expect(p.locator("#tvQuote")).toContainText("VERY COSTLY CONVERSION: the swap of ETH into NVDAc", { timeout: 30_000 });
     expect((await convOnCard(p)).level).toBe("strong");
-    // FORTY: refused, before either of the two sends.
-    await p.fill("#tvPay", "40");
+    // MORE THAN HALF: refused, before either of the two sends.
+    scale.k = 45;
+    await p.fill("#tvPay", "0.012");
     await expect(p.locator("#tvQuote")).toContainText("The swap from ETH into NVDAc would pay", { timeout: 30_000 });
     await expect(p.locator("#tvQuote")).toContainText("pay with NVDAc instead");
     await expect(p.locator("#tvAct")).toBeDisabled();
+    // TWENTY ETH, as the pools answer: about a third below the market.
+    scale.k = null;
+    await p.fill("#tvPay", "20");
+    await expect(p.locator("#tvQuote")).toContainText("VERY COSTLY CONVERSION: the swap of ETH into NVDAc", { timeout: 30_000 });
+    // A LEG THE POOLS CANNOT FILL: the UniversalRouter would have left what they
+    // could not take on itself, for anybody to sweep. Refused.
+    scale.partial = true;
+    await p.fill("#tvPay", "0.013");
+    await expect(p.locator("#tvQuote")).toContainText(UNI_PARTIAL_NVDAC, { timeout: 30_000 });
+    await expect(p.locator("#tvAct")).toBeDisabled();
+    scale.partial = false;
     expect(await sentCount(p), "something was sent for a two-step buy losing more than half in its swap").toBe(0);
     await p.close();
-    // THE LONG PAGE: the conversion row, warned strongly, and the refusal.
-    const lp = await newPage(buyer);
-    await lp.goto("/app.html?" + new URLSearchParams({ rpc: STATE.rpc, factory: APP.factory, lens: APP.lens, token }).toString());
+    // THE LONG PAGE, ON THE SAME ENDPOINT: the conversion row, warned strongly, and the refusal.
+    const lp = await newPage(buyer, {}, (q) => scaledUniswap(q, scale));
+    await lp.goto("/app.html?" + new URLSearchParams({ rpc: SCALED, factory: APP.factory, lens: APP.lens, token }).toString());
     await lp.waitForFunction(() => !!window.CurbApp, null, { timeout: 8_000 });
     await lp.evaluate(() => window.CurbApp.connect());
     await lp.selectOption("#curveSide", "buy");
     await lp.selectOption("#curveVia", "eth");
-    await lp.fill("#curveAmount", "20");
+    scale.k = 80;
+    await lp.fill("#curveAmount", "0.011");
     await lp.evaluate(() => window.CurbApp.refresh(true));
     // THE ROW NAMED "conversion" - other rows mention the conversion in their words.
     const row = lp.locator("#curveQuote .row", { hasText: /^conversion\s*\d+\.\d\d%/ });
     await expect(row).toContainText("below the market price (Chainlink)", { timeout: 30_000 });
     await expect(row.locator(".impact.strong")).toHaveText(/^\d+\.\d\d%$/);
     await expect(lp.locator("#curveQuote")).toContainText("VERY COSTLY CONVERSION");
-    await lp.fill("#curveAmount", "40");
+    scale.k = 45;
+    await lp.fill("#curveAmount", "0.012");
     await lp.evaluate(() => window.CurbApp.refresh(true));
     await expect(lp.locator("#curveQuote")).toContainText("The swap from ETH into NVDAc would pay", { timeout: 30_000 });
+    scale.k = null;
+    scale.partial = true;
+    await lp.fill("#curveAmount", "0.013");
+    await lp.evaluate(() => window.CurbApp.refresh(true));
+    await expect(lp.locator("#curveQuote")).toContainText(UNI_PARTIAL_NVDAC, { timeout: 30_000 });
     await lp.close();
-  });
+  }));
 });
 
 test("a graduated NVDAc launch's pool ETH route is checked against Chainlink: a 40 ETH buy and a sale past half are refused, on the card and on the long page", async () => {
@@ -1093,7 +1168,9 @@ async function inSnapshot(fn) {
 test("with no code at the router's address, nothing is sent there: the buy swaps then buys, as before, and says why", async () => {
   test.setTimeout(240_000);
   const token = await nvdaLaunch();
-  await inSnapshot(async () => {
+  // AERODROME OFF: without the CURB router it would be taken where it is not
+  // worse, and these pin the UniversalRouter flow.
+  await inSnapshot(() => withoutAerodrome(async () => {
     await rpc("anvil_setCode", [ROUTER, "0x"]);
     const buyer = await freshAccount("no router buyer");
     const p = await openToken(token, buyer);
@@ -1112,7 +1189,7 @@ test("with no code at the router's address, nothing is sent there: the buy swaps
     await expect(p.locator("#tvGetAsset")).toHaveText("NVDAc");
     await expect(p.locator("#tvGetAsset")).not.toHaveClass(/tvPick/);
     await p.close();
-  });
+  }));
 });
 
 test("with other code at the router's address, nothing is sent there: the WETH pair wraps, approves and buys, as before", async () => {
@@ -1140,7 +1217,9 @@ test("with other code at the router's address, nothing is sent there: the WETH p
 test("when NVDAc's issuer refuses the router, the buy takes the old way and says so; a refused account is refused outright", async () => {
   test.setTimeout(300_000);
   const token = await nvdaLaunch();
-  await inSnapshot(async () => {
+  // AERODROME OFF: without the CURB router it would be taken where it is not
+  // worse, and these pin the UniversalRouter flow.
+  await inSnapshot(() => withoutAerodrome(async () => {
     // THE REAL MECHANISM, as test/fork/B20Restrictions.t.sol uses it: the
     // policy's own admin adds the router to its blocklist.
     const scope = await ethCall(NVDAC, sel("TRANSFER_RECEIVER_POLICY()"));
@@ -1182,7 +1261,7 @@ test("when NVDAc's issuer refuses the router, the buy takes the old way and says
     expect(await sentCount(q)).toBe(n);
     await q.close();
     await p.close();
-  });
+  }));
 });
 
 /// A LAUNCH THE ISSUER WOULD STOP GRADUATING TAKES NO BUY (audit, item 11). A
@@ -1664,7 +1743,7 @@ test("an ETH sale on cbBTC and on cbXRP is two sends and then one, and the node 
 });
 
 // ================================================================== the create form
-test("the create form refuses the router, WETH and SwapRouter02 as the creator wallet", async () => {
+test("the create form refuses the router, WETH, SwapRouter02 and Aerodrome's router as the creator wallet", async () => {
   const p = await newPage(OWNER);
   await p.goto("/app.html?" + new URLSearchParams({ rpc: STATE.rpc, factory: APP.factory, lens: APP.lens }).toString());
   await p.waitForFunction(() => !!window.CurbApp, null, { timeout: 8_000 });
@@ -1674,7 +1753,8 @@ test("the create form refuses the router, WETH and SwapRouter02 as the creator w
   if (!(await advanced.evaluate((d) => d.open))) await advanced.locator("summary").click();
   await p.fill("#nName", "Router Payee");
   await p.fill("#nSymbol", "RPY");
-  for (const [addr, words] of [[ROUTER, "the CURB router's address"], [WETH, "WETH's address"], [SWAP_ROUTER02, "Uniswap's SwapRouter02"]]) {
+  for (const [addr, words] of [[ROUTER, "the CURB router's address"], [WETH, "WETH's address"], [SWAP_ROUTER02, "Uniswap's SwapRouter02"],
+    [AERO_ROUTER, "Aerodrome's swap router"]]) {
     const before = await sentCount(p);
     await p.fill("#nCreator", addr);
     await p.click("#create");
