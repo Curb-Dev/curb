@@ -7,8 +7,11 @@ STATUS: DEPLOYED to Base mainnet on 16 October 2026. Filled in at DEPLOY.txt
         factory or its getter, and check-deployment.sh --accepted ending
         "check-deployment: ok, 506 checks passed". The run's console output
         was not kept, so the "as printed" lines below are the same getters the
-        script prints, read again. Every contract is verified on Sourcify;
-        Basescan and Blockscout are still open (EXPLORER VERIFICATION).
+        script prints, read again. Every contract is verified on Sourcify.
+        On 19 October 2026 Basescan showed an Exact Match for every contract
+        read there but CurbRouter, which it does not show, and Blockscout
+        the source of every one - CurbRouter and the $CURB curve as partial
+        matches (EXPLORER VERIFICATION).
 
         Filling this in is step 5 of DEPLOY.txt and is part of A1, not an
         afterthought: an address book written later from recollection is how a
@@ -354,8 +357,8 @@ EXPLORER VERIFICATION
   and Blockscout's API answered forge with a Cloudflare challenge; Blockscout
   did not yet show the Sourcify matches when this was written. A tick below
   means Sourcify serves the source; "exact" is a full match, metadata
-  included. Basescan and Blockscout are still open, and the hook allowlist
-  wants a block explorer [PRE_MAINNET C7].
+  included. Basescan and Blockscout are below, as of 19 October; the hook
+  allowlist wants a block explorer [PRE_MAINNET C7].
 
   [x] LaunchRegistry      [x] Graduator        [x] LaunchLens     [x] FeeHook
   [x] SharingCatalog      [x] HolderDistributorFactory          (all exact)
@@ -376,6 +379,34 @@ EXPLORER VERIFICATION
       this build's as "already verified"
   [ ] PositionLock        (made at graduation)
   [ ] HolderFeeDistributor clone (a launch that shares)
+
+  BASESCAN AND BLOCKSCOUT, AS OF 19 OCTOBER 2026, read off each contract's
+  own page - basescan.org/address/<address>#code and
+  base.blockscout.com/address/<address>?tab=contract - and quoted in
+  deploy/verify/README.txt, STATUS. A tick means the page shows the source;
+  "exact" and "partial" are the page's own words. Nothing was submitted
+  from here.
+                              Basescan                Blockscout
+  LaunchRegistry              [x] Exact Match         [x] exact match
+  Graduator                   [x] Exact Match         [x] exact match
+  LaunchLens                  [x] Exact Match         [x] exact match
+  FeeHook                     [x] Exact Match         [x] exact match
+  SharingCatalog              [x] Exact Match         [x] exact match
+  HolderDistributorFactory    [x] Exact Match         [x] exact match (shown
+                                                          as a "Proxy"; only on
+                                                          the fourth visit)
+  $CURB token                 [x] Exact Match         [x] exact match
+  $CURB curve                 [x] Exact Match         [x] partial match, from
+                                                          another submission
+                                                          (solc 0.8.35)
+  the WETH factory            [x] Exact Match         [x] exact match
+  CurbRouter                  [ ] NOT VERIFIED        [x] partial match
+  Not read on 19 October: the HolderFeeDistributor implementation and the
+  per-asset contracts other than the WETH factory. The FeeHook, which the
+  hook allowlist wants verified on a block explorer [PRE_MAINNET C7], is an
+  Exact Match on both. LEFT: CurbRouter on Basescan, with the inputs in
+  deploy/verify/ (README.txt, THE FORM, CurbRouter); its Blockscout partial
+  match can take the same file.
 
 
 ================================================================================

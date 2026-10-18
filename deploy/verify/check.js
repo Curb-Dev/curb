@@ -8,7 +8,7 @@
 //      an EMPTY directory over stdin, so a source missing from the JSON fails
 //      instead of being read off disk (README.txt "TO RUN IT AGAIN"):
 //        (cd "$(mktemp -d)" && solc-0.8.30 --standard-json < <checkout>/deploy/verify/FeeHook.standard-json-input.json) > <dir>/FeeHook.out.json
-//      and the same for Graduator and PositionLock.
+//      and the same for Graduator, PositionLock and CurbRouter.
 //   2. node deploy/verify/check.js <dir> [--rpc <url>] [--lock <PositionLock address>]
 //      --rpc defaults to https://base.gateway.tenderly.co (keyless).
 //      --lock also checks one PositionLock and prints its constructor
@@ -34,23 +34,37 @@ if (!OUT || OUT.startsWith("--") || (argv.includes("--lock") && !/^0x[0-9a-fA-F]
   process.exit(2);
 }
 
-// FROM ADDRESSES.txt AND deployments/base-mainnet/run.json (the run's record).
+// FROM ADDRESSES.txt AND THE RUNS' RECORDS in deployments/base-mainnet:
+// run.json (DeployCurb) and router-run.json (DeployRouter, DEPLOY.txt STEP 4A).
 const CREATE2_DEPLOYER = "0x4e59b44847b379578588920ca78fbf26c0b4956c";
 const DEPLOYED = {
   FeeHook: {
     address: "0xF85Ce05c2Ba8533d79f009fd3A3c8517aaBda0cC",
     tx: "0xedd4296d1f3ffed26a86d2530e3538f3bd602aef4c4ee834c6fde6e444a24e99",
     salt: "0000000000000000000000000000000000000000000000000000000000002bea",
+    record: "run.json",
   },
   Graduator: {
     address: "0xA9865e07Ce4EC0cCf7A521B98640031285C92712",
     tx: "0xfee92de7b93b6c11011060a985ad02821ddaef3332d1c60060374d97146049c3",
+    record: "run.json",
+  },
+  // Compiled in the "router" profile, bytecode_hash None (foundry.toml): its
+  // code ends in no metadata hash, only the compiler version. No constructor,
+  // so its arguments file is empty.
+  CurbRouter: {
+    address: "0xEa20C3266229a01cd0f45D9c7921a45d5b359561",
+    tx: "0xd067dae04d9729baa4ff80a51946aabd3e59b5dad3b3e13be6b6b65f6edfccc6",
+    salt: "088fbe04e4b31e7ab7b495d4bdd4f817062afb40ec511c1728d6da45b92e2483",
+    record: "router-run.json",
+    noMetadataHash: true,
   },
 };
 const SOURCE = {
   FeeHook: "src/curb/FeeHook.sol",
   Graduator: "src/curb/Graduator.sol",
   PositionLock: "src/curb/PositionLock.sol",
+  CurbRouter: "src/curb/CurbRouter.sol",
 };
 // PositionLock's constructor, in order: (positionManager, beneficiary,
 // poolKey, tokenId, sharingSource, launchToken). Every part is static, so the
@@ -101,12 +115,13 @@ function argsFile(name) {
   return fs.readFileSync(path.join(HERE, `${name}.constructor-args.txt`), "utf8").trim().toLowerCase();
 }
 
-// THE RECORD'S ARGUMENTS, ENCODED. Every constructor argument of these two is
-// an address, so the encoding is each one left-padded to 32 bytes.
-function recordArgs(name) {
-  const run = JSON.parse(fs.readFileSync(path.join(HERE, "../../deployments/base-mainnet/run.json"), "utf8"));
+// THE RECORD'S ARGUMENTS, ENCODED. Every constructor argument of FeeHook and
+// the Graduator is an address, so the encoding is each one left-padded to 32
+// bytes. CurbRouter has no constructor: its record's arguments are null.
+function recordArgs(name, record) {
+  const run = JSON.parse(fs.readFileSync(path.join(HERE, "../../deployments/base-mainnet", record), "utf8"));
   const t = run.transactions.find((x) => x.contractName === name && x.transactionType.startsWith("CREATE"));
-  return t.arguments.map((a) => strip(a).padStart(64, "0")).join("");
+  return (t.arguments || []).map((a) => strip(a).padStart(64, "0")).join("");
 }
 
 // The code with every immutable's bytes zeroed, and the values found there.
@@ -129,18 +144,32 @@ function trailer(hex) {
   const len = parseInt(hex.slice(-4), 16);
   return hex.slice(-(len * 2 + 4));
 }
+// A trailer compiled with bytecodeHash "none": a CBOR map of one entry,
+// "solc" => its three version bytes, then the length 0x000a. No ipfs key.
+const SOLC_ONLY = /^a164736f6c6343([0-9a-f]{6})000a$/;
 
 // Runtime against the build: length, immutables masked, trailer, and each
 // immutable's value one of the constructor's words.
-function compareRuntime(name, code, b, args) {
+function compareRuntime(name, code, b, args, noMetadataHash) {
   report(code.length === b.runtime.length, `runtime length: chain ${code.length / 2} bytes, compiled ${b.runtime.length / 2} bytes`);
   const onChain = mask(code, b.immutables);
   const fromBuild = mask(b.runtime, b.immutables);
+  const count = Object.keys(b.immutables).length;
   const places = Object.values(b.immutables).reduce((n, refs) => n + refs.length, 0);
   const same = onChain.hex === fromBuild.hex;
-  report(same, `runtime == compiled runtime with its ${Object.keys(b.immutables).length} immutables (${places} places) zeroed on both sides`);
-  report(trailer(code) === trailer(b.runtime), `metadata trailer (CBOR: ipfs hash, solc version) identical: ${trailer(code)}`);
-  if (same) console.log(`      unmasked they differ ${code === b.runtime ? "nowhere" : "only at the immutables"}; the immutables on chain:`);
+  report(same, count ? `runtime == compiled runtime with its ${count} immutables (${places} places) zeroed on both sides` : "runtime == compiled runtime, byte for byte (it has no immutables)");
+  if (noMetadataHash) {
+    // NOTHING TO COMPARE A HASH WITH: the profile drops it, so the trailer
+    // names the compiler and nothing else. Say so, and hold both sides to
+    // that shape - a build with an ipfs key here would be the wrong profile.
+    const t = [trailer(code), trailer(b.runtime)].map((x) => x.match(SOLC_ONLY));
+    const ok = t[0] && t[1] && t[0][1] === t[1][1];
+    const v = ok ? t[0][1].match(/../g).map((x) => parseInt(x, 16)).join(".") : "?";
+    report(ok, `NO METADATA HASH (compiled with bytecodeHash none): the CBOR trailer on both sides is only "solc" ${v}, ${trailer(code)}; no source hash to compare, the sources rest on the bytecode match alone`);
+  } else {
+    report(trailer(code) === trailer(b.runtime), `metadata trailer (CBOR: ipfs hash, solc version) identical: ${trailer(code)}`);
+  }
+  if (same && count) console.log(`      unmasked they differ ${code === b.runtime ? "nowhere" : "only at the immutables"}; the immutables on chain:`);
   const words = args.match(/.{64}/g) || [];
   for (const [id, vals] of Object.entries(onChain.values)) {
     const ok = vals.length === 1 && words.includes(vals[0]);
@@ -158,14 +187,19 @@ async function main() {
     const b = built[name];
     const args = argsFile(name);
     console.log(`\n== ${name} ${d.address}`);
-    report(args === recordArgs(name), `${name}.constructor-args.txt is the record's arguments, encoded`);
+    report(
+      args === recordArgs(name, d.record),
+      args
+        ? `${name}.constructor-args.txt is the record's arguments, encoded (deployments/base-mainnet/${d.record})`
+        : `${name}.constructor-args.txt is empty, and the record has no arguments (deployments/base-mainnet/${d.record})`,
+    );
 
     // CREATION: what the chain's creating transaction carried.
     const tx = await rpc("eth_getTransactionByHash", [d.tx]);
     let initcode = strip(tx.input);
     if (d.salt) {
       report((tx.to || "").toLowerCase() === CREATE2_DEPLOYER, `creation tx was sent to the CREATE2 deployer ${CREATE2_DEPLOYER}`);
-      report(initcode.slice(0, 64) === d.salt, `its first 32 bytes are the salt 0x${d.salt.replace(/^0+/, "")}`);
+      report(initcode.slice(0, 64) === d.salt, `its first 32 bytes are the salt 0x${/^0{8}/.test(d.salt) ? "..." + d.salt.replace(/^0+/, "") : d.salt}`);
       initcode = initcode.slice(64);
     } else {
       report(tx.to === null, "creation tx is a plain CREATE (no to)");
@@ -175,7 +209,7 @@ async function main() {
     // RUNTIME: eth_getCode, with the immutables masked on both sides.
     const code = strip(await rpc("eth_getCode", [d.address, "latest"]));
     chainCode[name] = code;
-    compareRuntime(name, code, b, args);
+    compareRuntime(name, code, b, args, d.noMetadataHash);
   }
 
   // POSITIONLOCK: one per launch, created by the Graduator at graduation, so
