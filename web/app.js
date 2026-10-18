@@ -3659,9 +3659,9 @@ function renderTaxSplit() {
     (Number(bps - platform) / 100).toFixed(2) + " to " + (shareWanted() ? "the holders" : "you" + paidIn) + ".";
 }
 
-/// THE "SHARE FEES WITH HOLDERS" CARD: the five statements while it is on, the
-/// version it would switch to, and - when the catalog approves none, or could
-/// not be read - a toggle that cannot be turned on, with the reason.
+/// THE "WHO EARNS YOUR TAX" CARD: the five statements while Holders is chosen,
+/// the version it would switch to, and - when the catalog approves none, or
+/// could not be read - a Holders choice that cannot be made, with the reason.
 function renderShare() {
   const box = $("nShare");
   if (!box) return;
@@ -3673,15 +3673,22 @@ function renderShare() {
       : !offer.catalog
         ? "This deployment has no holder sharing."
         : !available ? "Holder sharing is not available yet: no distributor version is approved." : "";
-  // A TOGGLE THAT CANNOT BE HONOURED IS OFF AND STAYS OFF; one turned on before
-  // the version was retired is turned off with it, and the reason is shown.
-  if (!available && ctx && box.checked) box.checked = false;
+  // A CHOICE THAT CANNOT BE HONOURED IS NOT MADE, AND CANNOT BE; Holders chosen
+  // before the version was retired goes back to You with it, and the reason is
+  // shown. (Through the You radio: a radio unchecked by itself leaves the pair
+  // with neither chosen.)
+  if (!available && ctx && box.checked) {
+    if ($("earnYouPick")) $("earnYouPick").checked = true;
+    else box.checked = false;
+  }
   box.disabled = !!ctx && !available;
   $("shareUnavailable").hidden = !why;
   $("shareUnavailable").textContent = why;
   const on = box.checked;
   $("shareTerms").hidden = !on;
   $("shareOff").hidden = on;
+  // "Later, from the token page" only while there is a version to switch to.
+  if ($("shareLater")) $("shareLater").hidden = !!ctx && !available;
   const v = $("shareVersion");
   v.replaceChildren();
   if (on && available) {
@@ -6013,11 +6020,11 @@ async function createLaunch() {
     const offer = shown.sharing;
     if (!offer || !offer.known) {
       throw new Error("Whether holder sharing is available could not be read from this deployment just now. " +
-        "Nothing was sent - press Refresh, or turn sharing off.");
+        "Nothing was sent - press Refresh, or choose You under Who earns your tax.");
     }
     if (!offer.approved || same(offer.factory, ZERO_ADDRESS)) {
       throw new Error("Holder sharing is not available on this deployment: its catalog approves no distributor " +
-        "version. Nothing was sent - turn sharing off to launch without it.");
+        "version. Nothing was sent - choose You under Who earns your tax to launch without it.");
     }
     share = offer.factory;
   }
@@ -6025,7 +6032,7 @@ async function createLaunch() {
   return withSendLock(pin, () => createLaunchInner(pin, name, symbol, tax, creatorWallet, devBuy, expected));
 }
 
-/// Whether the form's "Share fees with holders" is on.
+/// Whether the form's "Who earns your tax" says Holders.
 const shareWanted = () => !!($("nShare") && $("nShare").checked);
 
 /// THE ONE NUMBER A CREATOR CHOOSES. Read as a percentage, sent as basis
@@ -6709,7 +6716,7 @@ const LAUNCH_REFUSALS = {
   // THE GRADUATOR'S, met inside launch() when holder sharing is switched on in it.
   [sig("FactoryNotApproved(address)")]: (w) =>
     "the holder sharing version " + wordToAddress(w[0]) + " is not approved by the catalog now. Press Refresh to " +
-    "read the version it approves, or turn sharing off.",
+    "read the version it approves, or choose You under Who earns your tax.",
   [sig("CurveIsAnotherLaunchs(address,address)")]: (w) =>
     "the graduator would not switch holder sharing on: the curve " + wordToAddress(w[0]) + " this factory " +
     "recorded sells another token (" + wordToAddress(w[1]) + "). This factory makes no launch the graduator " +
@@ -8945,8 +8952,11 @@ async function init() {
     const el = $(id);
     if (el) el.addEventListener("input", renderLaunchSummary);
   }
-  // THE SHARING TOGGLE: its terms, the split and the summary follow it at once.
-  if ($("nShare")) $("nShare").addEventListener("change", () => { renderTaxSplit(); renderLaunchSummary(); });
+  // WHO EARNS THE TAX: its terms, the split and the summary follow the choice at
+  // once. Both radios: a radio says change only when it becomes the chosen one.
+  for (const id of ["nShare", "earnYouPick"]) {
+    if ($(id)) $(id).addEventListener("change", () => { renderTaxSplit(); renderLaunchSummary(); });
+  }
   // THE FILE IS READ ONCE, WHEN IT IS CHOSEN. Shrinking on every keystroke
   // would be wasteful and the result never changes until the file does.
   if ($("nImageFile")) {

@@ -202,7 +202,7 @@ WHAT CURB CAN AND CANNOT DO (docs.md's section of that name)
   Added 18 October 2026, the one place the whole statement is made, and the
   whole list: Holder sharing says so. The site's pages keep at most one short
   line, name no role holder, and link to it: terms.html (holder sharing),
-  curb.html (the fee rules), the launch form's "Share fees with holders" list
+  curb.html (the fee rules), the launch form's "Who earns your tax" list
   (app.html #shareLimits) and the switch's dialog (sharing-token.js
   #shEnableLimits). The heading stays short enough for one line in the
   contents: "What the platform can and cannot do" took two, and pushed

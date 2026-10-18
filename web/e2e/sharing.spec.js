@@ -313,8 +313,8 @@ test("the calculator the site serves is services/sharer's own browser build, ser
   expect(res.headers()["content-type"]).toMatch(/javascript/);
 });
 
-// ================================================================== the form's toggle
-test("the launch form's toggle: off, the launch's last field is zero; on, the five statements, and the catalog's recommended version in that field", async () => {
+// ================================================================== the form's choice
+test("the launch form's choice: You, the launch's last field is zero; Holders, the five statements, and the catalog's recommended version in that field", async () => {
   test.setTimeout(180_000);
   const recommended = addrOf(await ethCall(APP.catalog, sel("recommended()")));
   expect(/^0x0{40}$/.test(recommended), "the catalog recommends no version, so this proves nothing").toBe(false);
@@ -337,6 +337,29 @@ test("the launch form's toggle: off, the launch's last field is zero; on, the fi
   await p.click("label.shareToggle");
   await expect(p.locator("#nShare")).toBeChecked();
   await expect(p.locator("#shareTerms")).toBeVisible();
+  // ONE CHOICE OF TWO, NOT A TOGGLE: the chosen one pressed again keeps the
+  // choice, "You" takes it back, "Holders" gives it again - by mouse, and by
+  // Space and the arrow keys as on any radio pair.
+  await expect(p.locator("#earnYouPick")).not.toBeChecked();
+  await p.click("#earnHolders");
+  await expect(p.locator("#nShare")).toBeChecked();
+  await p.locator("#nShare").press("Space");
+  await expect(p.locator("#nShare")).toBeChecked();
+  await p.click("#earnYou");
+  await expect(p.locator("#nShare")).not.toBeChecked();
+  await expect(p.locator("#earnYouPick")).toBeChecked();
+  await expect(p.locator("#shareTerms")).toBeHidden();
+  await expect(p.locator("#shareOff")).toBeVisible();
+  await expect(p.locator("#shareLater")).toBeVisible();
+  await p.click("#earnYou");
+  await expect(p.locator("#nShare")).not.toBeChecked();
+  await expect(p.locator("#earnYouPick")).toBeChecked();
+  await p.locator("#earnYouPick").press("ArrowRight");
+  await expect(p.locator("#nShare")).toBeChecked();
+  await expect(p.locator("#shareTerms")).toBeVisible();
+  await p.click("#earnYou");
+  await p.click("#earnHolders");
+  await expect(p.locator("#nShare")).toBeChecked();
   await expect(p.locator("#shareZero")).toHaveText("Your creator share becomes 0%, permanently.");
   await expect(p.locator("#shareWhat")).toHaveText(/Holders receive your tax share, before and after graduation, plus the locked\s+position's LP fees\./);
   await expect(p.locator("#sharePrincipal")).toHaveText("The LP principal stays locked forever; nobody can withdraw it.");
@@ -400,6 +423,10 @@ test("a version the catalog stops approving cannot be switched on from the form,
     // and cannot be turned on.
     await expect(p.locator("#nShare")).not.toBeChecked({ timeout: 30_000 });
     await expect(p.locator("#nShare")).toBeDisabled();
+    // ...and the choice went back to You, not to neither of the two; the
+    // promise of a later switch waits for a version to switch to.
+    await expect(p.locator("#earnYouPick")).toBeChecked();
+    await expect(p.locator("#shareLater")).toBeHidden();
     // READ AGAIN: the toggle cannot be turned on, and says why.
     await p.reload();
     await p.evaluate(() => window.CurbApp.connect());

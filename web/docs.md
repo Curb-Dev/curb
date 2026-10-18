@@ -18,8 +18,8 @@ or gives it to the launch's holders, for good.
 1. **Connect.** Use a wallet on Base with a little ETH for gas. If it is on another network, the site says so
    and offers to switch - to Base only: nothing is sent on any other network.
 2. **Launch.** Open [Launch a token](app.html#create-launch). Add a name, symbol, image and links, pick a creator
-   tax and a paired asset (ETH unless you choose another), add a dev buy if you want one, and turn on **Share fees
-   with holders** if your creator share should go to your holders. Press **Create the launch** and confirm. Launching costs gas only, plus the dev buy if you chose one. When it is
+   tax and who earns it - **You**, or **Holders** under **Who earns your tax** if your creator share should go to
+   your holders - add a dev buy if you want one, and pick a paired asset (ETH unless you choose another). Press **Create the launch** and confirm. Launching costs gas only, plus the dev buy if you chose one. When it is
    mined, the site takes you to your launch's page, with its swap box ready for a first trade.
 3. **Trade.** Find a launch on [Launches](browse.html) or with the search in the top bar, and buy or sell on its
    page. Each card on Launches shows the token, its paired asset, its market cap in dollars, how close it is to
@@ -164,8 +164,8 @@ once the launch shares its fees.
 
 ## Holder sharing
 
-A creator can give their whole creator share to the launch's holders, for good: with **Share fees with holders**
-when launching, or **Enable holder sharing** on the launch's page later. Nobody can turn it off, CURB included.
+A creator can give their whole creator share to the launch's holders, for good: by choosing **Holders** under
+**Who earns your tax** when launching, or with **Enable holder sharing** on the launch's page later. Nobody can turn it off, CURB included.
 
 - The creator share becomes 0%. The holders get it, on the curve and in the pool, plus the locked position's LP
   fees.

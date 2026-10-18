@@ -156,9 +156,10 @@ A LAUNCH'S OWN PAGE: /token/0x...
   web/e2e/token.spec.js tests it, the notices and the ETH default.
 
 HOLDER SHARING - web/sharing.js, web/sharing-token.js, /sharing
-  The launch form's "Share fees with holders" puts the SharingCatalog's
-  recommended distributor version into LaunchConfig's last field
-  (holderShareFactory; zero when off), and reads the catalog again right before
+  The launch form's "Who earns your tax" card, with Holders chosen, puts the
+  SharingCatalog's recommended distributor version into LaunchConfig's last
+  field (holderShareFactory; zero with You chosen), and reads the catalog again
+  right before
   the send - a version retired while the form was open is not sent. On a
   launch's page, sharing-token.js draws the "Holders earn" card once its switch
   is on (the Graduator's holderDistributorOf, never the lens's word 15): the
