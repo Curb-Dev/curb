@@ -479,6 +479,21 @@ function arrived(entry) {
   if (pickerDone && !wcRunning) drawPicker();
 }
 
+/// NOTHING THE GRACE CAN CHANGE: the load's choice is already what it will be.
+/// The pages wait on `ready` before their first drawing (app.js, launch.js,
+/// sharing-page.js), so a wait that cannot help is one every visitor pays: none
+/// is chosen after a Disconnect; none with WalletConnect offered, or with two
+/// wallets already here - the person picks then, whatever else announces; none
+/// with no wallet at all, a phone opening a shared link - and one injected
+/// later is taken up as it arrives (ethereum#initialized, see the startup).
+/// Only a remembered wallet not yet announced, or a lone one a second may still
+/// join, is worth the wait.
+function nothingToWaitFor() {
+  if (hidden) return true;
+  if (remembered.startsWith("6963:")) return false;
+  return WC_ON || choices().length !== 1;
+}
+
 /// The wallet chosen at load, prompting nothing (see above).
 function autoChoice() {
   clash = "";
@@ -611,12 +626,18 @@ document.addEventListener("curb:page-account", (e) => {
 function ownConnect() { return document.querySelector("main #connect"); }
 
 /// A line under the Connect button. It fades after 7 s unless `keep`; `link`
-/// ({ href, text }) is a link after it - only ever one of this site's own
-/// constants (walletconnect.js's wallets), never anything a wallet said.
+/// ({ href, text }) is a link after it - only ever built on one of this site's
+/// own constants (walletconnect.js's wallets), never on anything a wallet said.
 function showNote(text, opts) {
   note.textContent = text;
   if (opts && opts.link) {
-    note.append(" ", el("a", { href: opts.link.href, text: opts.link.text, rel: "noreferrer noopener" }));
+    // A NEW TAB, NEVER THIS ONE. The link is said while a page waits on the
+    // wallet ("Confirm in <wallet>"), and a phone that does not hand it to the
+    // app - an in-app browser, a universal link that does not cover the path -
+    // would load the wallet's website here: the page waiting on the send is
+    // gone, and with it the hash of a transaction the wallet can still sign.
+    // The SDK's own opener does the same for an https link.
+    note.append(" ", el("a", { href: opts.link.href, text: opts.link.text, target: "_blank", rel: "noreferrer noopener" }));
   }
   note.hidden = false;
   clearTimeout(showNote.t);
@@ -657,21 +678,38 @@ async function connect() {
     return null;
   }
   await settled;
-  const fresh = !chosen;
   const eth = await pick();
   if (!eth) return null;
   try {
     const a = await eth.request({ method: "eth_requestAccounts" });
+    // STILL THE WALLET CHOSEN: one chosen since - another wallet connected in
+    // another tab - is not the one that answered, and the account it gave is
+    // neither shown nor remembered as that wallet's.
+    if (!chosen || chosen.provider !== eth) return null;
     if (a && a[0]) connected();
     setAccount(a && a[0]);
     return account;
   } catch (e) {
-    // A DECLINED PICK IS NOT KEPT, nor remembered: the next Connect asks which
-    // wallet again.
-    if (fresh && chosen && chosen.provider === eth) choose(null, false);
+    declined(eth);
     if (!(e && e.code === 4001)) showNote("The wallet did not connect: " + ((e && e.message) || e));
     return null;
   }
+}
+
+/// A WALLET THAT DID NOT CONNECT IS LET GO OF where there is another to pick -
+/// a second wallet, or WalletConnect - and is not remembered: the next Connect
+/// opens the picker. Kept, it was where every later Connect went, and a
+/// remembered wallet that is locked, or no longer allows this site, stood
+/// between the person and every other one: the picker opens only while none is
+/// chosen, and Disconnect only while one is connected. The only wallet there is
+/// stays chosen - it is the one the next Connect would ask anyway.
+/// app.html and launch.html call this too (CurbBar.declined), from their own Connect.
+/// @param eth  the provider pick() gave, which did not connect
+function declined(eth) {
+  if (!chosen || chosen.provider !== eth) return;
+  if (choices().length < 2 && !WC_ON) return;
+  if (chosen.key === remembered) { remembered = ""; writeSite({ wallet: undefined }); }
+  choose(null, false);
 }
 
 // DISCONNECT, AS FAR AS A WEBSITE CAN. There is no standard call that makes a
@@ -869,6 +907,10 @@ function drawPicker() {
 async function picked(w) {
   if (!pickerDone) return;
   await choose(w, true);
+  // A LATER PICK WON: another row was pressed while this wallet was still
+  // answering (an extension waking can take a second), and the picker closes
+  // with that one - the wallet the bar now names - not with this.
+  if (chosen !== w) return;
   closePicker(w.provider);
 }
 
@@ -1263,6 +1305,10 @@ paint();
 // injected answers at once, and one that injects later announces itself.
 window.addEventListener("eip6963:announceProvider", onAnnounce);
 requestWallets();
+// SETTLED AT ONCE where waiting cannot change the choice (nothingToWaitFor);
+// else as soon as the remembered wallet announces, or a moment after the page
+// is parsed, and never later than a second in.
+if (nothingToWaitFor()) settleNow();
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", () => { requestWallets(); setTimeout(settleNow, 150); }, { once: true });
 } else {
@@ -1323,6 +1369,9 @@ window.CurbBar = {
   /// The wallet to connect with: the chosen one, else the person's pick in the
   /// picker - null when they close it, or when there is none (see pick).
   pick,
+  /// The wallet pick() gave did not connect: let go of it where another could
+  /// be picked (see declined).
+  declined,
   /// The chosen wallet's events (accountsChanged, chainChanged), on whichever
   /// wallet is chosen now - and "accountsChanged" when the choice changes.
   walletOn,

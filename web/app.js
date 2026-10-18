@@ -9723,7 +9723,9 @@ const barHidden = () => !!(window.CurbBar && window.CurbBar.isHidden());
 async function connect() {
   const eth = window.CurbBar && window.CurbBar.pick ? await window.CurbBar.pick() : wallet();
   if (!eth) return;
-  const accounts = await eth.request({ method: "eth_requestAccounts" });
+  // NOT CONNECTED: the bar lets go of a wallet another can be picked over (topbar.js declined).
+  const accounts = await eth.request({ method: "eth_requestAccounts" })
+    .catch((e) => { if (window.CurbBar && window.CurbBar.declined) window.CurbBar.declined(eth); throw e; });
   account = accounts[0];
   $("wallet").textContent = "Connected: " + account;
   tellBar(account);

@@ -394,6 +394,14 @@ B. WALLETCONNECT - only once config.js names walletConnectProjectId, Reown's
       to fix in walletconnect.js APPS before going on). Connect with one, come
       back to Safari, send a tiny transaction; "Confirm in <wallet>" under the
       button opens the wallet.
+      "OPEN <wallet>", FOR EACH OF THE FOUR (MetaMask, Trust, Rainbow, Coinbase
+      Wallet): pair through that wallet's own link, start a tiny send, and tap
+      "Open <wallet>" under the button while the page waits. It must open that
+      wallet's app on the request. Come back to Safari: the page that sent is
+      still there, still waiting, and it reports the transaction once you
+      confirm. A tap that loads the wallet's website, in a new tab or (worse)
+      in place of the page, is a bug to fix before going on - write down which
+      wallet and what it showed.
    4. Android Chrome: "Other wallet" offers the wallets installed on the phone.
    5. Two tabs: the second says WalletConnect is open in another tab, and takes
       over once the first is closed.

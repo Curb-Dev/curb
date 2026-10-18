@@ -242,6 +242,113 @@ test("Disconnect forgets the wallet chosen, and a pick the wallet declines is no
   expect(await logs(page)).toEqual({});
 });
 
+test("a remembered wallet that does not connect is let go: the next Connect opens the picker, in the bar, on app.html and on launch.html", async ({ page }) => {
+  // A WAS CONNECTED LAST WEEK; TODAY IT IS LOCKED, OR NO LONGER ALLOWS THE SITE, AND THE PERSON WANTS B.
+  const list = [{ ...A, connected: false, decline: true }, { ...B, connected: false }];
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list, store: { wallet: "6963:com.alpha.wallet" } }) });
+  const declinedThenPicker = async (connect, where) => {
+    await settle(page);
+    // THE REMEMBERED WALLET IS ASKED STRAIGHT AWAY, with no picker, and declines.
+    await page.click(connect);
+    await expect.poll(async () => (await logs(page)).A || [], { message: where }).toContain("eth_requestAccounts");
+    await expect(picker(page)).toBeHidden();
+    await expect.poll(async () => (await stored(page)).wallet, { message: where + ": the wallet that declined is still remembered" })
+      .toBeUndefined();
+    // THE NEXT CONNECT ASKS WHICH.
+    await page.click(connect);
+    await expect(picker(page), where + ": the remembered wallet still stands in the way").toBeVisible();
+    await expect(rows(page)).toHaveCount(2);
+  };
+
+  await page.goto("/curb.html");
+  await barReady(page);
+  await declinedThenPicker("#barConnect", "curb.html");
+  await rows(page).nth(1).click();
+  await expect(page.locator("#barConnect")).toContainText(short(OTHER));
+  expect((await stored(page)).wallet).toBe("6963:com.beta.wallet");
+  expect((await logs(page)).A.filter((m) => m === "eth_requestAccounts"), "A was asked again").toHaveLength(1);
+
+  for (const [url, where] of [[appUrl, "app.html"], ["/launch.html", "launch.html"]]) {
+    await page.evaluate(() => {
+      localStorage.setItem("curb.site.v1", JSON.stringify({ wallet: "6963:com.alpha.wallet" }));
+      sessionStorage.setItem("wallets.log", "{}");
+    });
+    await page.goto(url);
+    await barReady(page);
+    await declinedThenPicker("main #connect", where);
+    await page.keyboard.press("Escape");
+  }
+});
+
+test("a row pressed while the first wallet is still answering is the one that connects", async ({ page }) => {
+  // A ANSWERS eth_accounts AFTER 600 ms, B AFTER 1.5 s: A's answer lands while B is the choice.
+  const list = [{ ...A, connected: false, slow: { eth_accounts: 600 } }, { ...B, connected: false, slow: { eth_accounts: 1500 } }];
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await settle(page);
+  await page.click("#barConnect");
+  await rows(page).nth(0).click();
+  await rows(page).nth(1).click();
+  await expect(page.locator("#barConnect")).toContainText(short(OTHER), { timeout: 10_000 });
+  await expect(picker(page)).toBeHidden();
+  const asked = await logs(page);
+  expect(asked.A, "the wallet pressed first was asked to connect").not.toContain("eth_requestAccounts");
+  expect(asked.B).toContain("eth_requestAccounts");
+  expect((await stored(page)).wallet).toBe("6963:com.beta.wallet");
+  expect(await page.evaluate(() => window.CurbBar.wallet() === window.__wallets.B)).toBe(true);
+});
+
+test("an account a wallet gives after another tab chose another wallet is not shown as the chosen one's", async ({ context }) => {
+  const page = await context.newPage();
+  // A, REMEMBERED, TAKES 3 s OVER ITS PROMPT.
+  const list = [{ ...A, connected: false, slow: { eth_requestAccounts: 3000 } }, { ...B, connected: false }];
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list, store: { wallet: "6963:com.alpha.wallet" } }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await settle(page);
+  await page.click("#barConnect");
+  await expect.poll(async () => (await logs(page)).A || []).toContain("eth_requestAccounts");
+  // MEANWHILE ANOTHER TAB CONNECTS B.
+  const other = await context.newPage();
+  await other.goto("/terms.html");
+  await other.evaluate(() => localStorage.setItem("curb.site.v1", JSON.stringify({ hidden: false, wallet: "6963:com.beta.wallet" })));
+  await expect.poll(() => page.evaluate(() => window.CurbBar.wallet() === window.__wallets.B)).toBe(true);
+  // A ANSWERS NOW, with its account.
+  await page.waitForTimeout(3200);
+  await expect(page.locator("#barConnect")).toHaveText("Connect wallet");
+  expect(await page.evaluate(() => window.CurbBar.account()), "A's account was shown as B's").toBeNull();
+  expect((await stored(page)).wallet).toBe("6963:com.beta.wallet");
+});
+
+test("the pages do not wait for wallet discovery that cannot change the choice: no wallet, two, or a Disconnect", async ({ context }) => {
+  // WHEN CurbBar.ready SETTLED, against DOMContentLoaded, in the page's own clock.
+  const timing = function () {
+    var bar;
+    window.__t = {};
+    document.addEventListener("DOMContentLoaded", function () { window.__t.dcl = performance.now(); }, { once: true });
+    Object.defineProperty(window, "CurbBar", { configurable: true, get: function () { return bar; },
+      set: function (v) { bar = v; v.ready.then(function () { window.__t.ready = performance.now(); }); } });
+  };
+  const after = async (url, spec) => {
+    const page = await context.newPage();
+    await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, ...spec }, timing) });
+    await page.goto(url);
+    await page.waitForFunction(() => window.__t.ready !== undefined && window.__t.dcl !== undefined, null, { timeout: 10_000 });
+    const t = await page.evaluate(() => window.__t);
+    await page.close();
+    return t.ready - t.dcl;
+  };
+  // NO WALLET AT ALL - a phone opening a shared link - on app.html.
+  expect(await after(appUrl, { list: [] }), "app.html with no wallet waited for discovery").toBeLessThan(100);
+  // TWO WALLETS, NONE REMEMBERED: the person picks, whatever else announces.
+  expect(await after("/curb.html", { list: [A, B] }), "two wallets waited for discovery").toBeLessThan(100);
+  // A LONE WALLET STILL WAITS A MOMENT, for a second that may join it.
+  expect(await after("/curb.html", { list: [A] }), "a lone wallet was chosen before a second could announce").toBeGreaterThanOrEqual(140);
+  // AFTER A DISCONNECT nothing is chosen, so nothing is waited for.
+  expect(await after("/launch.html", { list: [A], store: { hidden: true } }), "launch.html after a Disconnect waited").toBeLessThan(100);
+});
+
 test("on app.html only the wallet picked sends, and the picker is not opened while an action waits on the wallet", async ({ page }) => {
   // B signs as anvil's second account through the node; window.ethereum is the
   // same account, so a send that went to the wrong wallet would still succeed -
@@ -464,6 +571,87 @@ test("a WalletConnect session is restored at load, app.html follows it, a declin
   await page.click("#barConnect");
   await expect(page.locator("#siteBar canvas.cbWcQr")).toHaveCount(1, { timeout: 15_000 });
   await expect(page.locator("#barConnect")).toHaveText("Connect wallet");
+});
+
+test("a WalletConnect session left with no account on the site's chain is let go: no page says \"Connected: undefined\", and Connect pairs again", async ({ page }) => {
+  await useSite(page);
+  await useFakeWalletConnect(page);
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [], store: { wallet: "walletconnect" } },
+    new Function("window.__wc = { restore: " + JSON.stringify(wcSession(TRADER)) + " };")) });
+  await page.goto("/app.html");
+  await barReady(page);
+  await expect(page.locator("#wallet")).toContainText(TRADER, { ignoreCase: true, timeout: 15_000 });
+  await page.evaluate(() => { window.__adapter = window.CurbBar.wallet(); });
+
+  // THE PHONE MOVES THE SESSION OFF BASE: an update whose only account is on chain 1.
+  const offBase = { eip155: { ...wcSession(TRADER).namespaces.eip155, accounts: ["eip155:1:" + TRADER] } };
+  await page.evaluate((ns) => window.__wc.up.emit("session_update", { topic: "topic-1", params: { namespaces: ns } }), offBase);
+  await expect(page.locator("#barConnect")).toHaveText("Connect wallet");
+  expect(await page.evaluate(() => window.CurbBar.wallet()), "the bar kept a session with no account").toBeNull();
+  expect((await stored(page)).wallet).toBeUndefined();
+  expect(await page.evaluate(() => window.__wc.disconnects), "the session was not ended on the phone").toBe(1);
+  // ASKED FOR AN ACCOUNT IT HAS NOT GOT, THE ADAPTER SAYS SO (EIP-1193 4100), not [].
+  expect(await page.evaluate(() => window.__adapter.request({ method: "eth_requestAccounts" }).then((a) => a, (e) => e.code))).toBe(4100);
+
+  // CONNECT PAIRS AGAIN - the bar's, which runs app.html's own.
+  await page.click("#barConnect");
+  await expect(page.locator("#siteBar canvas.cbWcQr")).toHaveCount(1, { timeout: 15_000 });
+  await page.evaluate((s) => window.__wc.approve(s), wcSession(TRADER, "topic-2"));
+  await expect(page.locator("#wallet")).toContainText("Connected: " + TRADER, { ignoreCase: true, timeout: 15_000 });
+  await expect(page.locator("#barConnect")).toContainText(short(TRADER));
+
+  // AN accountsChanged ABOUT ANOTHER CHAIN changes nothing here; one with no account on this chain ends the session.
+  await page.evaluate((other) => window.__wc.up.emit("session_event", { topic: "topic-2",
+    params: { chainId: "eip155:1", event: { name: "accountsChanged", data: ["eip155:1:" + other] } } }), OTHER);
+  await page.waitForTimeout(300);
+  await expect(page.locator("#barConnect")).toContainText(short(TRADER));
+  await page.evaluate(() => window.__wc.up.emit("session_event", { topic: "topic-2",
+    params: { chainId: "eip155:8453", event: { name: "accountsChanged", data: [] } } }));
+  await expect(page.locator("#barConnect")).toHaveText("Connect wallet");
+  expect(await page.evaluate(() => window.CurbBar.wallet())).toBeNull();
+  expect(await page.evaluate(() => window.__wc.disconnects)).toBe(2);
+  await expect(page.locator("#wallet")).not.toContainText("undefined");
+});
+
+test("on a phone, \"Open <wallet>\" under the bar names the request and opens in a new tab, never in the page waiting on the send", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 375, height: 800 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await useSite(page);
+  await useFakeWalletConnect(page);
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [] }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await page.click("#barConnect");
+  const rainbow = page.locator("#siteBar .cbWcApps a", { hasText: "Rainbow" });
+  await expect(rainbow).toBeVisible({ timeout: 15_000 });
+  // THE TAP, WITHOUT WHERE IT GOES: there is no wallet app here to open.
+  await page.evaluate(() => document.addEventListener("click", (e) => {
+    if (e.target.closest && e.target.closest("#siteBar a")) e.preventDefault();
+  }, true));
+  await rainbow.click();
+  await page.evaluate((s) => window.__wc.approve(s), wcSession(TRADER));
+  await expect(page.locator("#barConnect")).toContainText(short(TRADER));
+  const url = page.url();
+
+  // A SEND, LEFT WAITING ON THE PHONE.
+  await page.evaluate((me) => {
+    window.__wc.answer = () => new Promise((resolve) => { window.__wc.release = resolve; });
+    window.__sending = window.CurbBar.wallet().request({ method: "eth_sendTransaction", params: [{ from: me, to: me, value: "0x1" }] });
+  }, TRADER);
+  const note = page.locator("#siteBar .cbNote");
+  await expect(note).toContainText("Confirm in Fake Phone Wallet.");
+  const link = note.locator("a");
+  await expect(link).toHaveText("Open Rainbow");
+  await expect(link, "the link would take the page waiting on the send away").toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("href", "https://rnbwapp.com/wc?requestId=1001&sessionTopic=topic-1");
+  expect(await link.getAttribute("rel")).toContain("noopener");
+  expect(page.url()).toBe(url);
+
+  // ANSWERED: the page has the hash, and the line goes.
+  await page.evaluate(() => window.__wc.release("0x" + "22".repeat(32)));
+  expect(await page.evaluate(() => window.__sending)).toBe("0x" + "22".repeat(32));
+  await expect(note).toBeHidden();
+  await context.close();
 });
 
 test("WalletConnect runs in one tab at a time: a second tab waits, says so, and starts nothing", async ({ context }) => {

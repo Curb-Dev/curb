@@ -43,8 +43,14 @@ function installWallets(spec) {
     var x = window.makeWallet(spec.rpc, Object.assign({ forward: true, chainId: "0x2105" }, w.cfg || {},
       { account: w.account, connected: localStorage.getItem("grant." + w.id) === "1" }));
     var inner = x.request.bind(x);
+    // w.slow: { method: ms } - a wallet slow to answer that method (an
+    // extension waking its service worker, a person reading the prompt).
     x.request = function (a) {
       log(w.id, a.method);
+      var ms = w.slow && w.slow[a.method];
+      return ms ? new Promise(function (r) { setTimeout(r, ms); }).then(function () { return answer(a); }) : answer(a);
+    };
+    function answer(a) {
       if (a.method === "eth_requestAccounts") {
         if (w.decline) return Promise.reject(Object.assign(new Error("User rejected the request."), { code: 4001 }));
         localStorage.setItem("grant." + w.id, "1");
@@ -55,7 +61,7 @@ function installWallets(spec) {
         return Promise.resolve(null);
       }
       return inner(a);
-    };
+    }
     return x;
   }
   window.__wallets = {};
@@ -132,8 +138,16 @@ const FAKE_UP = `(function () {
     });
   };
   Fake.prototype.request = function (args, chain) {
+    var self = this;
     W.requests.push({ method: args.method, chain: chain });
     if (args.method === "eth_chainId") return Promise.resolve(8453);
+    // SENT OVER THE RELAY: the client says so with the request's id, as the SDK does.
+    if (args.method === "eth_sendTransaction") {
+      var id = W.nextId = (W.nextId || 1000) + 1;
+      setTimeout(function () {
+        self.emit("client:session_request_sent", { topic: self.session && self.session.topic, request: args, chainId: chain, id: id });
+      }, 0);
+    }
     if (W.answer) return W.answer(args);
     return Promise.reject({ code: -32000, message: "nothing answers this in the test" });
   };

@@ -772,7 +772,8 @@ fixed.
 
 **Connect wallet** lists the wallets your browser announces, each with the id it announces under its name, so two
 wallets with the same name can be told apart. The one you pick is the only one the site asks from then on, and it
-is remembered for your next visit until you press Disconnect.
+is remembered for your next visit until you press Disconnect. If it does not connect - you decline, or it is
+locked - while another wallet is there to pick, it is forgotten, and the next Connect asks which wallet again.
 
 Where the site offers it, **Phone wallet** connects a wallet on your phone through WalletConnect: scan the code with
 the wallet, or, on the phone itself, open the wallet from the list.

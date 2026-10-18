@@ -17,8 +17,8 @@
 //   - EVERY READ TO config.js's rpc, never over the relay (the pages read
 //     receipts, nonces and calls "through the wallet");
 //   - NOTHING THE WALLET SAYS ABOUT ITSELF IS USED but its name, as text: not
-//     its url, its icons or its redirect. The only links built are this file's
-//     own constants (APPS).
+//     its url, its icons or its redirect. Every link built starts with one of
+//     this file's own constants (APPS).
 //
 // ONE TAB AT A TIME, by a Web Lock held for the tab's life: tabs share the
 // SDK's keys and its client id, so an answer meant for one tab could be taken
@@ -69,6 +69,7 @@ let topic = null;          // the session this tab adopted
 let account = null;        // its account on config.js's chain, lowercased
 let peer = "";             // the wallet's name, as text
 let viaApp = null;         // the APPS entry the person opened their wallet with
+let onSent = null;         // a send waiting: told the request's id once it is out
 let abortNow = null;       // ends the wait in the panel
 const listeners = new Map();
 /// Sessions that ended in this tab: the SDK can keep an expired one as its
@@ -133,6 +134,11 @@ function ended() {
   emit("disconnect", rpcError(4900, "The WalletConnect session ended."));
   if (hooks) hooks.ended(adapter);
 }
+/// NO ACCOUNT ON config.js's CHAIN LEFT IN THE SESSION (an update, or an
+/// accountsChanged, without one): nothing can be sent through it, and a bar
+/// that kept it chosen answered every Connect with no account and never paired
+/// again. It is ended, on the phone too, as Disconnect ends one.
+function noAccount() { disconnect().catch(() => {}); }
 
 // ---------------------------------------------------------------- the lock and the SDK
 /// THIS TAB HOLDS THE LOCK for as long as it is open. Waiting for it, `onWait` says why.
@@ -203,20 +209,30 @@ function provider(onWait) {
       p.on("session_event", (e) => {
         const ev = e && e.params && e.params.event;
         if (!e || e.topic !== topic || !ev || ev.name !== "accountsChanged" || !Array.isArray(ev.data)) return;
+        // AN EVENT ABOUT ANOTHER CHAIN says nothing of this one's account.
+        const on = /^eip155:(\d+)$/.exec(String(e.params.chainId || ""));
+        if (on && !sameChain(on[1])) return;
         // A CAIP-10 ACCOUNT ON THIS CHAIN, or a plain address; any other chain's is not this session's.
         const next = ev.data.map((a) => {
           const m = /^eip155:(\d+):(0x[0-9a-fA-F]{40})$/.exec(String(a));
           return m ? (sameChain(m[1]) ? m[2] : null) : (isAddr(a) ? String(a) : null);
         }).find(Boolean);
-        setAccount(next || null);
+        if (next) setAccount(next); else noAccount();
       });
       p.on("session_update", (e) => {
         if (!e || e.topic !== topic) return;
-        setAccount(sessionAccount(e.params && e.params.namespaces));
+        const next = sessionAccount(e.params && e.params.namespaces);
+        if (next) setAccount(next); else noAccount();
       });
       p.on("session_delete", (e) => { if (!e || !e.topic || e.topic === topic) ended(); });
       if (p.client && typeof p.client.on === "function") {
         p.client.on("session_expire", (e) => { if (e && e.topic === topic) ended(); });
+        // THE REQUEST'S OWN ID, once it has gone out: the "Open <wallet>" link
+        // under the bar then names it (see send).
+        p.client.on("session_request_sent", (e) => {
+          if (!e || e.topic !== topic || !e.request || e.request.method !== "eth_sendTransaction") return;
+          if (onSent && /^\d{1,20}$/.test(String(e.id))) onSent(String(e.id));
+        });
       }
       up = p;
       return p;
@@ -248,11 +264,18 @@ async function send(tx) {
   }
   // ON A PHONE THE WALLET IS ANOTHER APP: the bar says where to confirm, with
   // the wallet's own link when the person opened it from here - a tap is what
-  // iOS needs to switch apps.
-  const phone = matchMedia("(pointer: coarse)").matches;
-  if (phone && hooks) {
-    hooks.say("Confirm in " + (peer || "your wallet") + ".", viaApp ? { href: viaApp[1], text: "Open " + viaApp[0] } : null);
-  }
+  // iOS needs to switch apps. Once the request is out the link names it, as
+  // the SDK's own opener does (root/wc?requestId=…&sessionTopic=…), so the
+  // wallet opens on it; the bar opens it in a new tab, never in this page,
+  // which is waiting on the answer (topbar.js showNote).
+  const phone = matchMedia("(pointer: coarse)").matches && !!hooks;
+  const app = viaApp;
+  const say = (href) => hooks.say("Confirm in " + (peer || "your wallet") + ".", app ? { href, text: "Open " + app[0] } : null);
+  const mine = phone && app
+    ? (id) => say(app[1] + "/wc?requestId=" + id + "&sessionTopic=" + encodeURIComponent(topic || ""))
+    : null;
+  if (phone) say(app && app[1]);
+  onSent = mine;
   try {
     return await up.request({ method: "eth_sendTransaction", params: [tx] }, caip());
   } catch (e) {
@@ -264,7 +287,8 @@ async function send(tx) {
     if (e && e.code === 5000) throw rpcError(4001, (e && e.message) || "Declined in the wallet.");
     throw e;
   } finally {
-    if (phone && hooks) hooks.unsay();
+    if (onSent === mine) onSent = null;
+    if (phone) hooks.unsay();
   }
 }
 
@@ -277,7 +301,13 @@ async function request(args) {
   const method = args && args.method;
   const params = args && Array.isArray(args.params) ? args.params : [];
   if (method === "eth_chainId") return chainHex();
-  if (method === "eth_accounts" || method === "eth_requestAccounts") return account ? [account] : [];
+  if (method === "eth_accounts") return account ? [account] : [];
+  // NO ACCOUNT IS AN ERROR HERE, as EIP-1193 has it, not [] - which a page
+  // wrote as "Connected: undefined".
+  if (method === "eth_requestAccounts") {
+    if (!account) throw rpcError(4100, "No WalletConnect session is connected: connect again to pair your phone's wallet.");
+    return [account];
+  }
   if (method === "eth_sendTransaction") return send(params[0]);
   if (method === "wallet_switchEthereumChain") {
     if (sameChain(params[0] && params[0].chainId)) return null;
