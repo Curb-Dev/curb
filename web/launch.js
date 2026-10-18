@@ -345,11 +345,13 @@ function render(s) {
 /// WHICH RECORDS FOR A LAUNCH STAND IN THE WAY OF MOVING IT. This page's own,
 /// and app.html's trades and graduations - two pages must not both pay for one
 /// move. Not app's creates and claims: they carry whatever token was in app's
-/// form, not a claim on this launch. One predicate, because complete() refuses
+/// form, not a claim on this launch. Nor app's two-step swaps ("eth-swap"): the
+/// record outlives the swap to say what it left held, and settled here it would
+/// be cleared and that lost. One predicate, because complete() refuses
 /// on it and resumePending() settles by it: a record that can block this page
 /// is a record this page can clear.
 const countsAgainstMove = (t) =>
-  t.page !== "app" || (t.kind !== "create" && t.kind !== "create-approve" && t.kind !== "claim");
+  t.page !== "app" || (t.kind !== "create" && t.kind !== "create-approve" && t.kind !== "claim" && t.kind !== "eth-swap");
 
 async function complete() {
   const lens = $("lens").value.trim();

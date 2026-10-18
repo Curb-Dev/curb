@@ -449,6 +449,9 @@
   .tvAct:hover:not(:disabled) { background: var(--paint-hi); }
   .tvAct:disabled { background: var(--panel2); color: var(--dim); cursor: not-allowed; border: 1px solid var(--line); }
   .tvActNote { margin: 8px 0 0; font-size: 11.5px; color: var(--dimmer); line-height: 1.5; }
+  .tvHeld { margin: 10px 0 0; font-size: 12px; line-height: 1.6; color: var(--dim); }
+  .tvHeld button, .heldRow button { margin: 4px 6px 0 0; padding: 4px 10px; font-size: 12px; }
+  .tvHeld[hidden], .heldRow[hidden] { display: none; }
   /* WETH HELD ON A WETH PAIR, offered as ether (app.js unwrapWeth). */
   .unwrapBox { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
     margin: 10px 0 0; font-size: 12.5px; color: var(--dim); }
@@ -611,6 +614,7 @@
         <div class="tvQuote" id="tvQuote"></div>
         <button class="tvAct" id="tvAct" type="button" disabled>Enter an amount</button>
         <p class="tvActNote" id="tvActNote"></p>
+        <div class="tvHeld" id="tvHeld" hidden></div>
         <div id="tvUnwrapSlot"></div>
       </div>
 
@@ -982,6 +986,7 @@
         </div>
       </div>
       <div id="curveQuote" style="margin-top:12px"></div>
+      <div id="heldRow" class="note heldRow" hidden></div>
       <div style="margin-top:28px"><button id="curveAct">Buy on the curve</button></div>
       </div>
 

@@ -46,6 +46,12 @@
 // endpointRefusal), and every page says which endpoint it reads under the site
 // bar (topbar.js endpointNotice). rpc must be set for anything to be sent.
 //
+// THE SWAP ROUTERS A BUY PAID IN ETH MAY GO THROUGH ARE app.js CONSTANTS, NOT
+// SETTINGS HERE: CURB_ROUTER and AERODROME.router, each pinned by address AND
+// runtime code hash and read again from rpc right before every send to it
+// (app.js routerStillThere, aeroStillThere). Nothing is sent to either when the
+// code at the address hashes to anything else.
+//
 // THE HALT (PRE_MAINNET.txt D4): nothing on chain can stop a launch or a factory,
 // so the site stops showing it. Each is applied by the site bar's helpers
 // (window.CurbBar.incident) and takes effect on the next page load:

@@ -109,8 +109,10 @@ move.
 
 A launch is only as easy to trade as its paired asset: if the asset is hard to buy or sell, so is the launch, and
 a launch on a thin asset may never reach its threshold. Paying ETH on a pair that is not ETH buys the asset
-through Uniswap v3, where it can be much thinner than in its main market: when you pick an asset, the launch form
-checks whether that route can buy one threshold. Paying in the asset itself does not go through it.
+through Uniswap v3 or, for the seven tokenized stocks, cbXRP and cbZEC, on Aerodrome when that gives clearly more
+(see [Aerodrome route](#aerodrome-route)). Uniswap can be much thinner than an asset's main market: when you pick
+an asset, the launch form checks whether those routes can buy one threshold. Paying in the asset itself does not
+go through them.
 
 Every tokenized stock here sits under the same issuer policy and the same admin: picking a different stock
 changes your price exposure, not who can restrict trading in it.
@@ -140,7 +142,7 @@ The tax is charged in the paired asset, on the curve and in the pool: it comes o
 off what you receive when you sell. On the curve it is the whole trading fee. In the pool, the 0.05% LP fee and
 price impact come on top; and a holder who trades through liquidity of their own in a narrow range of the pool (a
 range order) pays no tax on that side, a Uniswap v4 limitation CURB accepts. Paying or receiving ETH on a pair
-that is not ETH also passes through Uniswap pools
+that is not ETH also passes through Uniswap or Aerodrome pools
 between ETH and the paired asset, which charge their own fees and move their own prices. Some of those pools are
 shallow: the site compares what that swap pays with the market price from Chainlink, warns above 5% and strongly
 above 15%, and sends nothing when it would pay more than half below it, or when the price cannot be read to
@@ -340,6 +342,8 @@ The message at the top of the screen says why. The usual reasons:
 - the launch is Waiting (see [How a launch works](#how-a-launch-works));
 - the curve is full, so selling to it is closed until the move into the pool;
 - a pool buy could only have been partly filled;
+- a Uniswap pool on the route cannot take the whole amount;
+- the price or route changed between the quote and the press;
 - the issuer of a tokenized stock has restricted your address;
 - your balance is too small.
 
@@ -348,7 +352,10 @@ The message at the top of the screen says why. The usual reasons:
 Most trades are one confirmation. These are two:
 
 - the first time you sell a token for ETH: once to let the CURB router move that token, then the sale;
-- a trade that spends a token when your current allowance is short: an approval for the exact amount first.
+- a trade that spends a token when your current allowance is short: an approval for the exact amount first;
+- paying ETH on a tokenized stock, cbXRP or cbZEC when the swap on Aerodrome gives clearly more: up to three - the
+  swap, an approval for exactly what it delivered, and the buy. If the buy does not happen you keep what the swap
+  delivered, and the launch's page offers **Buy with it** and **Sell it back**.
 
 Where the site cannot use the CURB router, the trade says so and takes the longer way: paying ETH on a pair that
 is not ETH is a swap and then the buy; on an ETH pair a buy wraps your ETH first, then approves and buys, and the
@@ -518,6 +525,46 @@ approve, sell and unwrap.
 - Anything sent to it outside a call stays there for good. Never use it as a launch's creator wallet or refund
   address; the site refuses it there, as it refuses WETH and SwapRouter02.
 
+### Aerodrome route
+
+Paying ETH for a curve buy on the seven tokenized stocks, cbXRP or cbZEC can take a second route: the ETH is
+swapped into the paired asset on Aerodrome Slipstream (its "Gauges V3" deployment, where those assets' deepest
+pools are), and the curve is then bought with exactly what arrived. Nothing of CURB's is involved; the site pins
+Aerodrome's contracts the way it pins the CURB router:
+
+| Contract | Address on Base | Runtime code hash |
+|---|---|---|
+| SwapRouter | `0x698Cb2b6dd822994581fEa6eA4Fc755d1363A92F` | `0xfedc4e21e1097b0ec1b4f1aa901cf645c22f9e5d297727b0f37275ee1d083df4` |
+| Quoter | `0x514c8B5f54112481E28028F1166Bd78501089259` | `0x4c4c43e0024343e65597f0f0a1b829aaf69e5a6c0a0148fb63d28ff5730be551` |
+| CL PoolFactory | `0xf8f2eB4940CFE7d13603DDDD87f123820Fc061Ef` | (fixed by the router's code) |
+
+- The site sends nothing to the router and takes no quote from the quoter unless `eth_getCode` at each address
+  hashes to its value, asked again right before every transaction to the router. The router's code embeds the
+  factory and WETH, and the factory cannot be upgraded: its code has no function that changes its pool
+  implementation and no upgrade function, and it is not a proxy. Aerodrome can still change pool fees; every
+  swap is bounded by its minimum.
+- A buy sends the router only ETH, as the transaction's value; it approves nothing. Selling back gives the router
+  an approval for exactly the amount sold, and the router pulls only from you, inside your own swap. Only fixed
+  paths are used, each from WETH to the asset, and the swap always pays you.
+- **When it is used.** With the CURB router usable, only when Aerodrome delivers at least 0.5% more of the asset
+  than the CURB router's route and the difference is worth at least 0.0005 ETH, or when Uniswap cannot fill the
+  amount. Without the CURB router, whenever Aerodrome is usable and delivers at least what the other two-step route
+  would. Decided on every quote; the press quotes again, and if the route or price it would send is worse than the
+  one shown, it sends nothing and asks you to press again.
+- **The issuer, before the first step.** The route is offered only when the issuer has positively allowed you to
+  send and receive the asset, the curve to receive and pull it, and Aerodrome's router to pull it (for a sale
+  back), or, for cbXRP, has not blacklisted the router.
+- **Up to 3 confirmations:** the swap, an approval for exactly what it delivered, and the buy. The buy never
+  accepts a worse price than the quote showed, and is simulated before your wallet is asked. ETH is kept back
+  for the gas of the later steps.
+- **When the buy does not happen** - you decline it, the price moved, the curve filled, or it refunds part past
+  the threshold - you keep what the swap delivered. The launch's page remembers it across reloads and offers
+  **Buy with it** (pay with the asset, at most two confirmations) and **Sell it back** (back to ETH on
+  Aerodrome). While you hold it, a new ETH buy of that launch is refused, so a second swap is not bought by
+  mistake.
+- A pool that keeps liquidity at extreme prices can take any amount and pay almost nothing for the excess; the
+  Chainlink check is what stops that: it warns at 5% and 15% below the market and sends nothing past 50%.
+
 ### Holder sharing contracts
 
 **The switch.** `Graduator.enableHolderSharing(token, factory)` is the beneficiary's alone, once, one way;
@@ -676,6 +723,15 @@ contract is CURB's, whatever it claims.
 
 Each paired asset's factory is listed by the registry (`launcherCount()`, `launcherAt(i)`). Each factory names
 its own `quoteToken()`, `feeEscrow()`, `feePolicy()` and `buybackVault()`.
+
+### Other contracts the site sends to
+
+These are not CURB's. The site sends trades to them where a route needs them.
+
+| Contract | Address on Base | Used for |
+|---|---|---|
+| Aerodrome SwapRouter | `0x698Cb2b6dd822994581fEa6eA4Fc755d1363A92F` | The [Aerodrome route](#aerodrome-route) and selling back |
+| Uniswap UniversalRouter | `0x6ff5693b99212da76ad316178a184ab56d299b43` | Pool trades paid in ETH, and ETH buys where the CURB router cannot be used |
 
 ### Paired-asset addresses
 

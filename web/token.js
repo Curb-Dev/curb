@@ -728,6 +728,9 @@ async function requote() {
     r = { error: (e && e.message) || String(e) };
   }
   if (seq !== T.quoteSeq) return;
+  // THE CURVE QUOTE ON SCREEN, as the press will compare it (App.noteDrawn):
+  // the route, its minimum and its confirmations - or none, after an error.
+  if (v.status !== 3 && App.noteDrawn) App.noteDrawn(r && !r.error ? r : null);
   q.replaceChildren();
   if (!r || r.error) {
     $("tvGet").textContent = "0";
@@ -817,6 +820,12 @@ async function requote() {
       : "1 confirmation: the CURB router swaps your ETH into about " + App.fmt(r.mid, quoteDec(), 6) + " " +
         quoteSym() + " (at least " + App.fmt(r.midMin, quoteDec(), 6) + ") and buys on the curve in one transaction.");
   }
+  // THE AERODROME ROUTE, in one line - in place of the router's and the
+  // two-step's: the confirmations, the swap with its floor, then the buy.
+  if (v.status !== 3 && r.via === "aero") {
+    lines.push("Up to 3 confirmations: Aerodrome swaps your ETH into about " + App.fmt(r.mid, quoteDec(), 6) + " " +
+      quoteSym() + " (at least " + App.fmt(r.midMin, quoteDec(), 6) + "), then the curve buy.");
+  }
   if (ethSale) {
     lines.push(App.confirmationsWords(r) + ": the CURB router sells to the curve and pays you ETH in one transaction" +
       (r.steps === 1 ? "." : " - before the first sale of this token, your wallet asks once to let the router move it, with no limit."));
@@ -866,9 +875,31 @@ function drawAction(v, unpriced, r) {
 }
 
 function wireSwap() {
+  // PRICED 200 ms AFTER THE LAST KEYSTROKE, not on each: an ETH buy asks both
+  // venues and the issuer every time. The % buttons, the flip and the slippage
+  // still price at once.
+  let typed = null;
   $("tvPay").addEventListener("input", () => {
     // A NUMBER OR NOTHING: the same filter the create form's amounts use.
     try { App.numericOnly($("tvPay"), payDec()); } catch { /* filter unavailable: app.js still refuses */ }
+    keepTyped();
+    // AND THE BUTTON WAITS WITH IT: a press in those 200 ms would trade an
+    // amount whose quote was never drawn.
+    $("tvAct").disabled = true;
+    clearTimeout(typed);
+    typed = setTimeout(requote, 200);
+  });
+  // BUY WITH IT (app.js, the held row): the card set to pay with the asset, for
+  // what a swap left held - nothing is sent until the press.
+  document.addEventListener("curb:buyWithHeld", (e) => {
+    const text = e && e.detail && e.detail.text;
+    if (!text) return;
+    T.mode = "buy";
+    T.payWith = "asset";
+    closeChoice();
+    drawSwapLabels(view());
+    clearTimeout(typed);
+    $("tvPay").value = text;
     keepTyped();
     requote();
   });

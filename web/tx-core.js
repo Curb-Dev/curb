@@ -441,7 +441,9 @@ async function judgePending(tx, request) {
 ///         {none: true} when the logs over that whole range show none;
 ///         {cannot: why} when the range or the logs could not be read. The
 ///         caller keeps the record then: a launch may exist.
-async function findReplacement(tx, verdict, request, address, topic0) {
+/// @param topics  a narrower filter than `topic0` alone, when given - a swap
+///                 replaced looks only at the asset's transfers to its sender.
+async function findReplacement(tx, verdict, request, address, topic0, topics) {
   const sender = tx.from || tx.account;
   if (!isQuantity(tx.sentAfterBlock)) {
     return { cannot: "the record does not say which block it was sent after, so there is no range to search" };
@@ -451,7 +453,7 @@ async function findReplacement(tx, verdict, request, address, topic0) {
   }
   let logs;
   try {
-    logs = await request("eth_getLogs", [{ address, topics: [topic0], fromBlock: tx.sentAfterBlock, toBlock: verdict.head }]);
+    logs = await request("eth_getLogs", [{ address, topics: topics || [topic0], fromBlock: tx.sentAfterBlock, toBlock: verdict.head }]);
   } catch (e) {
     return { cannot: "the node would not return the logs since the send (" + (e && e.message ? e.message : String(e)) + ")" };
   }
