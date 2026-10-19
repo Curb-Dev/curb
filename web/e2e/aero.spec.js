@@ -54,7 +54,14 @@ const HOST = "http://aero-quotes.test:8702";
 test.describe.configure({ mode: "serial" });
 
 let browserRef;
-test.beforeAll(async ({ browser }) => { browserRef = browser; });
+// THE FILE LEAVES THE CHAIN AS IT FOUND IT: its launches and swaps are reverted
+// once it is done, so the suites after it (browse.spec.js counts launches on its
+// first page) see the stack global-setup made, not this file's extra launches.
+let fileSnap = null;
+test.beforeAll(async ({ browser }) => { browserRef = browser; fileSnap = await rpc("evm_snapshot", []); });
+test.afterAll(async () => {
+  if (fileSnap !== null) expect(await rpc("evm_revert", [fileSnap]), "aero.spec.js's snapshot was not reverted").toBe(true);
+});
 
 // ------------------------------------------------------------------ the chain, from node
 async function rpc(method, params) {
