@@ -23,6 +23,7 @@
     "test:ops": "node --test --test-reporter=spec test/ops-*.test.ts",
     "mutate:ops": "node scripts/mutate-ops.ts",
     "config-from-run": "node scripts/config-from-run.ts",
+    "announce": "node scripts/announce.ts",
     "start": "node src/cli.ts"
   },
   "dependencies": {

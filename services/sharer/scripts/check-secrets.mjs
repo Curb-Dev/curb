@@ -181,6 +181,25 @@ async function checkAlerts(name) {
   }
 }
 
+// Shape only: this check must never post a public announcement. The runtime
+// separately enforces the same exact destination before it can call Telegram.
+function checkAnnouncer(name) {
+  const v = env(name);
+  if (v === null) return;
+  let j;
+  try { j = JSON.parse(v); } catch (e) { return fail(name, `not valid JSON (${errText(e)}): expected {"token":"...","chatId":"@CurbAnnouncements"}`); }
+  if (typeof j !== 'object' || j === null || Array.isArray(j)) return fail(name, 'not a JSON object');
+  const extra = Object.keys(j).filter((k) => !['token', 'chatId'].includes(k));
+  if (extra.length) return fail(name, `unexpected key(s): ${extra.join(', ')}`);
+  if (typeof j.token !== 'string' || !/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(j.token)) {
+    return fail(`${name}.token`, 'not <bot number>:<code> - paste the whole token, number and colon included');
+  }
+  if (j.chatId !== '@CurbAnnouncements') {
+    return fail(`${name}.chatId`, 'must be exactly @CurbAnnouncements (never the community or private alert chat)');
+  }
+  pass(name, 'valid shape; destination is @CurbAnnouncements');
+}
+
 console.log(`secrets check: ${which}`);
 if (which === 'mainnet') {
   checkKey('SHARING_PUBLISHER_KEY');
@@ -189,6 +208,7 @@ if (which === 'mainnet') {
   await checkDataToken('SHARING_DATA_REPO_TOKEN');
   checkPins('SHARING_PIN_TOKENS');
   await checkAlerts('SHARING_ALERT_WEBHOOKS');
+  checkAnnouncer('ANNOUNCER_TELEGRAM');
 } else {
   await checkRpcs('SHARING_VERIFY_RPC_URLS');
   await checkAlerts('SHARING_ALERT_WEBHOOKS');

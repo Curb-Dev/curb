@@ -58,3 +58,14 @@ jobs:
           CURB_SHARER_RPC_URLS: ${{ secrets.SHARING_RPC_URLS }}
           CURB_SHARER_DATA_REPO_TOKEN: ${{ secrets.SHARING_DATA_REPO_TOKEN }}
         run: node scripts/index-history.ts
+
+      # Public product announcements have their own bot and destination.
+      # A Telegram/RPC/state failure is reported on this step but must never
+      # turn a successful history index red.
+      - name: Announce public product events
+        continue-on-error: true
+        env:
+          CURB_SHARER_RPC_URLS: ${{ secrets.SHARING_RPC_URLS }}
+          CURB_SHARER_DATA_REPO_TOKEN: ${{ secrets.SHARING_DATA_REPO_TOKEN }}
+          ANNOUNCER_TELEGRAM: ${{ secrets.ANNOUNCER_TELEGRAM }}
+        run: node scripts/announce.ts
