@@ -86,7 +86,14 @@ test("every page carries the same bar, and no page throws", async ({ page }) => 
     expect(nav, url + ": the nav differs").toEqual(["$CURB", "Launches", "Holder fees", "Docs"]);
     expect(await page.locator("#barConnect").count(), url + ": not one Connect button").toBe(1);
     expect(await page.locator("#siteBar .cbCta").count(), url + ": no call to action").toBe(1);
-    const cur = await page.locator('#siteBar .cbNav a[aria-current="page"]').allTextContents();
+    // THE PROJECT'S SOCIALS, X THEN TELEGRAM, each in a new tab with no opener.
+    const socials = await page.locator("#siteBar a.cbIcon").evaluateAll((as) =>
+      as.map((a) => [a.getAttribute("href"), a.getAttribute("target"), a.getAttribute("rel"), a.getAttribute("aria-label")]));
+    expect(socials, url + ": the socials differ").toEqual([
+      ["https://x.com/curbfun", "_blank", "noreferrer noopener", "Curb on X"],
+      ["https://t.me/CurbCommunity", "_blank", "noreferrer noopener", "Curb on Telegram"],
+    ]);
+    const cur =await page.locator('#siteBar .cbNav a[aria-current="page"]').allTextContents();
     expect(cur, url + ": the wrong page is marked current").toEqual(current ? [current] : []);
     if (url.startsWith("/app.html") || url.startsWith("/launch.html")) {
       expect(await page.locator("#connect").count(), url + ": #connect is not unique").toBe(1);

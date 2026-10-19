@@ -201,6 +201,7 @@ const MARK = '<svg viewBox="0 0 400 400" width="36" height="36" aria-hidden="tru
   '<path d="M 90 260 H 200 V 148 H 300" stroke="currentColor"/>' +
   '<path d="M 174 148 H 300" stroke="#F5A524"/></g></svg>';
 const X_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 2H22l-7.1 8.1L23.2 22h-6.6l-5.2-6.8L5.5 22H2.4l7.6-8.7L1.2 2h6.8l4.7 6.2L18.9 2Zm-1.1 18h1.7L7.3 3.8H5.5L17.8 20Z"/></svg>';
+const TG_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.9 4.3 18.6 19.8c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.2-8.3c.4-.4-.1-.6-.6-.2L5.9 13.3 1 11.8c-1.1-.3-1.1-1.1.2-1.6l19.2-7.4c.9-.3 1.7.2 1.5 1.5Z"/></svg>';
 const SEARCH_ICON = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
 
 const PAGE = host.dataset.page || "";
@@ -238,6 +239,9 @@ const searchBtn = el("button", { class: "cbSearch", id: "barSearch", type: "butt
 searchBtn.append(el("span", { class: "what", text: "Search" }), el("kbd", { text: "Ctrl K" }));
 actions.append(searchBtn);
 actions.append(el("a", { class: "cbIcon", href: "https://x.com/curbfun", target: "_blank", rel: "noreferrer noopener", "aria-label": "Curb on X", html: X_ICON }));
+// THE COMMUNITY CHAT, beside X: listing sites check a project's socials from
+// its own site, and $CURB's metadata was the only place it was named.
+actions.append(el("a", { class: "cbIcon", href: "https://t.me/CurbCommunity", target: "_blank", rel: "noreferrer noopener", "aria-label": "Curb on Telegram", html: TG_ICON }));
 // ON app.html THE FORM IS ON THIS PAGE: an in-page jump, not a reload that
 // would drop the link's factory and token. NOT ON A TOKEN'S PAGE (/token/0x…,
 // the same file in its token view): the form is not shown there, and the
