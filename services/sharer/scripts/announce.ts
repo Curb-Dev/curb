@@ -104,7 +104,7 @@ function factoryLaunch(l: RawLog): FactoryLaunch {
   };
 }
 
-async function readRecord(
+export async function readRecord(
   rpc: Rpc,
   cfg: OpsConfig,
   hides: HideConfig,
@@ -118,10 +118,14 @@ async function readRecord(
   let threshold = baseline?.threshold;
   let totalTaxBps = known?.totalTaxBps ?? baseline?.totalTaxBps;
   if (!curve || !quote || threshold === undefined || totalTaxBps === undefined) {
-    const rec = await call(rpc, cfg.registry!, REGISTRY_ABI, 'launchOf', [token]) as readonly [string, string, string, string, bigint, number, number, string, number, number, string, bigint];
-    curve ||= String(rec[0]).toLowerCase();
-    quote ||= String(rec[1]).toLowerCase();
-    totalTaxBps ??= Number(rec[8]);
+    const rec = await call(rpc, cfg.registry!, REGISTRY_ABI, 'launchOf', [token]) as {
+      curve: string;
+      quoteToken: string;
+      totalTaxBps: number;
+    };
+    curve ||= String(rec.curve).toLowerCase();
+    quote ||= String(rec.quoteToken).toLowerCase();
+    totalTaxBps ??= Number(rec.totalTaxBps);
   }
   if (threshold === undefined) threshold = BigInt(await call(rpc, curve, CURVE_ABI, 'graduationThreshold'));
   if (!quote) quote = String(await call(rpc, curve, CURVE_ABI, 'pairToken')).toLowerCase();
@@ -206,7 +210,7 @@ async function scanEvents(rpc: Rpc, cfg: OpsConfig, hides: HideConfig, state: An
     const cached = records.get(token);
     if (cached) return cached;
     const old = state.launches[token];
-    const known = found.get(token) ?? (old ? { token, curve: old.curve, factory: old.factory, totalTaxBps: old.totalTaxBps } : curve ? { token, curve, factory: '', totalTaxBps: 0 } : undefined);
+    const known = found.get(token) ?? (old ? { token, curve: old.curve, factory: old.factory, totalTaxBps: old.totalTaxBps } : curve ? { token, curve, factory: '' } : undefined);
     const value = await readRecord(rpc, cfg, hides, token, known);
     records.set(token, value);
     return value;

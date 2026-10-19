@@ -64,6 +64,7 @@ jobs:
       # turn a successful history index red.
       - name: Announce public product events
         continue-on-error: true
+        timeout-minutes: 5
         env:
           CURB_SHARER_RPC_URLS: ${{ secrets.SHARING_RPC_URLS }}
           CURB_SHARER_DATA_REPO_TOKEN: ${{ secrets.SHARING_DATA_REPO_TOKEN }}

@@ -1,10 +1,11 @@
 // Public CURB product-event announcements.
 //
 // The state machine is deliberately separate from the chain reader and from
-// Telegram.  Before a public message is attempted, the event and its complete
-// message list are saved as `pending`.  The cursor advances only after every
-// message for that event was accepted by Telegram.  A retry therefore resumes
-// the unsent message instead of re-applying the chain event.
+// Telegram. Before a public message is attempted, the event and its semantic
+// delivery items are saved as `pending`. The cursor advances only after every
+// item for that event was accepted by Telegram. A retry therefore re-renders
+// the unsent item from current launch state instead of trusting stored HTML or
+// re-applying the chain event.
 
 export const ANNOUNCER_SCHEMA = 'curb.announcer/1';
 export const END_OF_BLOCK = Number.MAX_SAFE_INTEGER;
@@ -39,9 +40,14 @@ export type ChainEvent =
 
 export interface PendingDelivery {
   position: Position;
-  messages: string[];
+  items: PendingItem[];
   next: number;
 }
+
+export type PendingItem =
+  | { token: string; kind: 'launch' }
+  | { token: string; kind: 'progress'; mark: 50 | 90 }
+  | { token: string; kind: 'graduated' };
 
 export interface AnnouncerState {
   schema: typeof ANNOUNCER_SCHEMA;
@@ -59,10 +65,22 @@ export interface ProcessDeps {
   persist(state: AnnouncerState): Promise<void>;
 }
 
+export const MAX_MESSAGES_PER_RUN = 20;
+
 const ADDRESS = /^0x[0-9a-f]{40}$/;
 const amount = (x: unknown): x is string => typeof x === 'string' && /^(0|[1-9][0-9]*)$/.test(x);
 const pos = (x: unknown): x is Position => !!x && typeof x === 'object' && Number.isSafeInteger((x as Position).block) &&
   (x as Position).block >= 0 && Number.isSafeInteger((x as Position).logIndex) && (x as Position).logIndex >= 0;
+
+function pendingItem(x: unknown, launches: Record<string, LaunchRecord>): x is PendingItem {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return false;
+  const item = x as Record<string, unknown>;
+  if (typeof item.token !== 'string' || !ADDRESS.test(item.token) || item.token !== item.token.toLowerCase() || !launches[item.token]) return false;
+  if (item.kind === 'progress') {
+    return (item.mark === 50 || item.mark === 90) && Object.keys(item).length === 3;
+  }
+  return (item.kind === 'launch' || item.kind === 'graduated') && item.mark === undefined && Object.keys(item).length === 2;
+}
 
 export function parseAnnouncerState(bytes: Uint8Array | null, chainId: number): AnnouncerState | null {
   if (!bytes) return null;
@@ -80,10 +98,10 @@ export function parseAnnouncerState(bytes: Uint8Array | null, chainId: number): 
     }
     let pending: PendingDelivery | undefined;
     if (j.pending !== undefined) {
-      if (!j.pending || !pos(j.pending.position) || !Array.isArray(j.pending.messages) ||
-        j.pending.messages.some((m) => typeof m !== 'string') || !Number.isSafeInteger(j.pending.next) ||
-        j.pending.next < 0 || j.pending.next > j.pending.messages.length) return null;
-      pending = { position: { ...j.pending.position }, messages: [...j.pending.messages], next: j.pending.next };
+      if (!j.pending || !pos(j.pending.position) || !Array.isArray(j.pending.items) ||
+        j.pending.items.some((item) => !pendingItem(item, launches)) || !Number.isSafeInteger(j.pending.next) ||
+        j.pending.next < 0 || j.pending.next > j.pending.items.length) return null;
+      pending = { position: { ...j.pending.position }, items: j.pending.items.map((item) => ({ ...item })), next: j.pending.next };
     }
     return { schema: ANNOUNCER_SCHEMA, chainId, cursor: { ...j.cursor }, launches, ...(pending ? { pending } : {}) };
   } catch {
@@ -100,10 +118,12 @@ export function clip(value: string, length: number): string {
 }
 
 function publicField(value: string, length: number): string {
-  // Creator metadata is display text, never a source of navigation. Remove
-  // URL-shaped runs before clipping so Telegram cannot auto-link them.
-  const withoutLinks = value.replace(/(?:https?:\/\/|www\.)[^\s<>&]+/gi, '[link removed]');
-  return escapeHtml(clip(withoutLinks, length));
+  const clean = value
+    .replace(/\r\n?|\n/g, ' ')
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  return escapeHtml(clip(clean, length));
 }
 
 const pct = (reserve: bigint, threshold: bigint): string => {
@@ -123,20 +143,26 @@ export function launchMessage(siteBase: string, l: LaunchRecord): string {
   const name = publicField(l.name, 40);
   const symbol = publicField(l.symbol, 20);
   const quote = publicField(l.quoteSymbol, 20);
-  return `🚀 <b>New CURB launch</b>\n\n<b>${name}</b> (<code>${symbol}</code>)\nTax: <b>${tax(l.totalTaxBps)}</b>\nPaired asset: <b>${quote}</b>\n\n${links(siteBase, l.token)}`;
+  return `🚀 <b>New CURB launch</b>\n\n<code>${name}</code> (<code>${symbol}</code>)\nTax: <b>${tax(l.totalTaxBps)}</b>\nPaired asset: <code>${quote}</code>\n\n${links(siteBase, l.token)}`;
 }
 
 export function progressMessage(siteBase: string, l: LaunchRecord, mark: 50 | 90): string {
   const name = publicField(l.name, 40);
   const symbol = publicField(l.symbol, 20);
   const reserve = BigInt(l.reserve), threshold = BigInt(l.threshold);
-  return `📈 <b>${name}</b> (<code>${symbol}</code>) crossed <b>${mark}%</b> of its graduation threshold.\nProgress: <b>${pct(reserve, threshold)}%</b>\n\n${links(siteBase, l.token)}`;
+  return `📈 <code>${name}</code> (<code>${symbol}</code>) crossed <b>${mark}%</b> of its graduation threshold.\nProgress: <b>${pct(reserve, threshold)}%</b>\n\n${links(siteBase, l.token)}`;
 }
 
 export function graduationMessage(siteBase: string, l: LaunchRecord): string {
   const name = publicField(l.name, 40);
   const symbol = publicField(l.symbol, 20);
-  return `🎓 <b>${name}</b> (<code>${symbol}</code>) graduated.\nLiquidity is locked.\n\n${links(siteBase, l.token)}`;
+  return `🎓 <code>${name}</code> (<code>${symbol}</code>) graduated.\nLiquidity is locked.\n\n${links(siteBase, l.token)}`;
+}
+
+function renderPending(siteBase: string, item: PendingItem, l: LaunchRecord): string {
+  if (item.kind === 'launch') return launchMessage(siteBase, l);
+  if (item.kind === 'progress') return progressMessage(siteBase, l, item.mark);
+  return graduationMessage(siteBase, l);
 }
 
 export function comparePosition(a: Position, b: Position): number {
@@ -157,29 +183,41 @@ export async function processEvents(
 ): Promise<AnnouncerState> {
   const state = cloneState(initial);
   const save = async (): Promise<void> => { if (!d.dryRun) await d.persist(state); };
+  let messagesSent = 0;
 
-  const finishPending = async (): Promise<void> => {
+  const finishPending = async (): Promise<boolean> => {
     const p = state.pending;
-    if (!p) return;
-    while (p.next < p.messages.length) {
-      const message = p.messages[p.next];
+    if (!p) return true;
+    while (p.next < p.items.length) {
+      const item = p.items[p.next];
+      const l = state.launches[item.token];
+      if (!l) throw new Error(`pending delivery for unknown launch ${item.token}`);
+      if (l.hidden) {
+        p.next++;
+        await save();
+        continue;
+      }
+      if (!d.dryRun && messagesSent >= MAX_MESSAGES_PER_RUN) return false;
+      const message = renderPending(d.siteBase, item, l);
       if (d.dryRun) d.log(`DRY RUN Telegram @CurbAnnouncements:\n${message}`);
       else await d.send(message);
+      if (!d.dryRun) messagesSent++;
       p.next++;
       await save();
     }
     state.cursor = { ...p.position };
     delete state.pending;
     await save();
+    return true;
   };
 
   // A previous process stopped after recording the event, or between two
   // messages produced by one event. Resume it before reading beyond it.
-  await finishPending();
+  if (!await finishPending()) return state;
 
   for (const e of [...events].sort((a, b) => comparePosition(a.position, b.position))) {
     if (comparePosition(e.position, state.cursor) <= 0) continue;
-    const messages: string[] = [];
+    const items: PendingItem[] = [];
     const token = (e.kind === 'registered' || e.kind === 'launch' ? e.launch.token : e.token).toLowerCase();
 
     if (e.kind === 'registered') {
@@ -189,7 +227,7 @@ export async function processEvents(
         // same-transaction 50%/90% crossing and graduation in human order.
         // Factory metadata has already been joined by the scanner from that
         // transaction's later LaunchCreated log.
-        if (!state.launches[token].hidden) messages.push(launchMessage(d.siteBase, state.launches[token]));
+        if (!state.launches[token].hidden) items.push({ token, kind: 'launch' });
       }
     } else if (e.kind === 'launch') {
       const before = state.launches[token];
@@ -219,11 +257,11 @@ export async function processEvents(
         const threshold = BigInt(l.threshold), reserve = BigInt(l.reserve);
         if (threshold > 0n && !l.crossed50 && reserve * 100n >= threshold * 50n) {
           l.crossed50 = true;
-          if (!l.hidden) messages.push(progressMessage(d.siteBase, l, 50));
+          if (!l.hidden) items.push({ token, kind: 'progress', mark: 50 });
         }
         if (threshold > 0n && !l.crossed90 && reserve * 100n >= threshold * 90n) {
           l.crossed90 = true;
-          if (!l.hidden) messages.push(progressMessage(d.siteBase, l, 90));
+          if (!l.hidden) items.push({ token, kind: 'progress', mark: 90 });
         }
       } else if (e.kind === 'sell') {
         const delta = BigInt(e.quoteOut) + BigInt(e.fee) + BigInt(e.tax);
@@ -233,15 +271,15 @@ export async function processEvents(
       } else {
         if (!l.graduated) {
           l.graduated = true;
-          if (!l.hidden) messages.push(graduationMessage(d.siteBase, l));
+          if (!l.hidden) items.push({ token, kind: 'graduated' });
         }
       }
     }
 
-    if (messages.length) {
-      state.pending = { position: { ...e.position }, messages, next: 0 };
+    if (items.length) {
+      state.pending = { position: { ...e.position }, items, next: 0 };
       await save();
-      await finishPending();
+      if (!await finishPending()) return state;
     } else {
       state.cursor = { ...e.position };
     }
@@ -321,6 +359,7 @@ export class TelegramSender {
       if (res.status === 429) {
         const seconds = Number(body?.parameters?.retry_after);
         if (!Number.isFinite(seconds) || seconds < 0) throw new Error('Telegram rate limit response has no retry_after');
+        if (seconds > 60) throw new Error('Telegram retry_after exceeds 60 seconds');
         await this.sleep(Math.ceil(seconds * 1000));
         continue;
       }
