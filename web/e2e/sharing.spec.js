@@ -756,33 +756,38 @@ test("Push pending payouts pays every holder still owed by the payout in force, 
 /// web/config.js AS DEPLOY DAY WRITES IT, naming this run's full-flow stack
 /// (prod.spec.js standIn): a page whose link names no endpoint reads the site's
 /// own - the only one on which it reads stats.json (token.js statsFile,
-/// browse.js readStats).
+/// browse.js readStats) - with any of its fields as `over` says.
 let SITE_CONFIG = null;
-async function asTheSite(p) {
+async function asTheSite(p, over = {}) {
   if (!SITE_CONFIG) {
     const registry = addrOf(await ethCall(APP.lens, sel("registry()")));
     const n = Number(await big(registry, sel("launcherCount()")));
     const factories = [];
     for (let i = 0; i < n; i++) factories.push(addrOf(await ethCall(registry, sel("launcherAt(uint256)") + word(i))));
-    SITE_CONFIG = "window.CURB_SITE = " + JSON.stringify({ chainId: CHAIN, rpc: STATE.rpc, lens: APP.lens, registry, factories,
-      explorer: "https://basescan.org", featured: [], banner: "", hiddenFactories: [], hiddenLaunches: [] }) + ";";
+    SITE_CONFIG = { chainId: CHAIN, rpc: STATE.rpc, lens: APP.lens, registry, factories,
+      explorer: "https://basescan.org", featured: [], banner: "", hiddenFactories: [], hiddenLaunches: [] };
   }
+  const body = "window.CURB_SITE = " + JSON.stringify({ ...SITE_CONFIG, ...over }) + ";";
   await p.route(/\/config\.js(\?.*)?$/, (route) =>
-    route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body: SITE_CONFIG }));
+    route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body }));
 }
 /// stats.json AS THE HISTORY INDEX WRITES IT (services/sharer/scripts/
 /// index-history.ts), its `launches` given - null serves none at all - at the
-/// site's path. What comes back counts the fetches.
-async function serveStats(p, launches) {
+/// site's path, naming the chain that path names, and any of the file's own
+/// fields as `file` says (a schema or a chain it is not). What comes back
+/// counts the fetches.
+async function serveStats(p, launches, file = {}) {
   const asked = { n: 0 };
   await p.route(/\/sharing\/\d+\/stats\.json$/, (route) => {
     asked.n++;
     if (launches === null) return route.fulfill({ status: 404, body: "not found" });
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ schema: "curb.stats/1", chainId: CHAIN,
-      generatedAt: { block: 1, timestamp: 1 }, launches, totals: {} }) });
+    const chainId = Number(/\/sharing\/(\d+)\/stats\.json$/.exec(route.request().url())[1]);
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ schema: "curb.stats/1", chainId,
+      generatedAt: { block: 1, timestamp: 1 }, launches, totals: {}, ...file }) });
   });
   return asked;
 }
+const ZERO_ADDR = "0x" + "0".repeat(40);
 /// ONE LAUNCH'S ENTRY, read from this chain as the index reads it: its curve,
 /// asset and decimals from the lens and the asset, and - given - holderSharing.
 async function entryFor(token, holderSharing) {
@@ -808,24 +813,46 @@ async function routeEndpoint(p, url) {
     return route.fulfill({ status: res.status, headers: cors, contentType: "application/json", body: await res.text() });
   });
 }
-/// The launch's page as the site serves it, with `stats` as its stats.json.
-async function openAsSite(token, stats) {
+/// The launch's page as the site serves it, with `stats` (and `file`) as its
+/// stats.json, and `site` as asTheSite takes it.
+async function openAsSite(token, stats, file = {}, site = {}) {
   const p = await newPage(TRADER);
-  await asTheSite(p);
+  await asTheSite(p, site);
   await serveFiles(p, { site: L.files });
-  const asked = await serveStats(p, stats);
+  const asked = await serveStats(p, stats, file);
   await p.goto("/token/" + token);
   await expect(p.locator("#tokenView")).toBeVisible({ timeout: 15_000 });
   await expect(p.locator("#tvStatus")).not.toHaveText("—", { timeout: 30_000 });
   return { p, asked };
 }
-/// The Launches page as the site serves it, and the card of `token` on it.
-async function browseAsSite(stats) {
+/// The Launches page as the site serves it, and the card of `token` on it -
+/// with `file` as serveStats takes it, `site` as asTheSite does, and through a
+/// link's endpoint `rpc` where one is given.
+async function browseAsSite(stats, { file = {}, rpc = "", site = {} } = {}) {
   const p = await newPage(TRADER);
-  await asTheSite(p);
-  const asked = await serveStats(p, stats);
-  await p.goto("/");
+  await asTheSite(p, site);
+  if (rpc) await routeEndpoint(p, rpc);
+  const asked = await serveStats(p, stats, file);
+  await p.goto(rpc ? "/?" + new URLSearchParams({ rpc, lens: APP.lens }).toString() : "/");
   return { p, asked, card: (token) => p.locator(".launch", { has: p.locator(`button.addr[title="${token}" i]`) }) };
+}
+/// WHAT OF A CARD'S LINE IS CUT OFF: wider or taller than its box, or any piece
+/// of its text laid out past the box's sides or the card's.
+const cutOff = (line) => line.evaluate((el) => {
+  const box = el.getBoundingClientRect();
+  const card = el.closest(".launch").getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const past = (r, o) => r.left < o.left - 0.5 || r.right > o.right + 0.5;
+  return { wide: el.scrollWidth > el.clientWidth, tall: el.scrollHeight > el.clientHeight,
+    outside: [...range.getClientRects()].filter((r) => r.width > 0 && (past(r, box) || past(r, card))).length };
+});
+/// A PHONE'S WIDTH, and until the Launches page lays its cards two across
+/// (browse.html's 560px rule): a card's line is then about 136px wide.
+async function asAPhone(p, line) {
+  await p.setViewportSize({ width: 375, height: 812 });
+  await expect.poll(() => line.evaluate((el) => el.getBoundingClientRect().width),
+    { timeout: 10_000, message: "the card is not a phone's two-across card" }).toBeLessThan(160);
 }
 /// Until the page has decided this launch's line with what it read (token.js
 /// drawPaid's data-drawn).
@@ -860,7 +887,7 @@ test("a launch that shares says what it paid its holders, first on its card and 
   const { p, asked } = await openAsSite(L.token, { [L.token.toLowerCase()]: entry });
   await expect(p.locator("#tvPaid")).toBeVisible({ timeout: 30_000 });
   await expect(p.locator(".tvSwap > .tvHead + #tvPaid"), "not at the top of the launch's card").toHaveCount(1);
-  const amount = await p.evaluate(([x, d]) => window.CurbApp.fmt(BigInt(x), d, 6), [String(paid), qd]);
+  const amount = await p.evaluate(([x, d]) => window.CurbApp.fmtSmall(BigInt(x), d, 6), [String(paid), qd]);
   await expect(p.locator("#tvPaidAmount")).toHaveText(amount + " NVDAc");
   await expect(p.locator("#tvPaid")).toHaveAttribute("data-paid", String(paid));
   // IN DOLLARS by the NVDA feed, once its rate has come.
@@ -883,6 +910,12 @@ test("a launch that shares says what it paid its holders, first on its card and 
   await expect(line).toHaveText(new RegExp("^Paid to holders: " + cardFigure(paid, qd).replace(/[.]/g, "\\.") + " NVDAc \\(~\\$[\\d.,]+[KMBT]?\\)$"));
   await expect(line.locator("b")).toHaveText(cardFigure(paid, qd) + " NVDAc");
   await shot(b.p, "paid-card");
+  // AT A PHONE'S WIDTH, TWO CARDS ACROSS: the line wraps, and all of it - the
+  // dollars too - is inside the card. Cut to one line it read "Paid to
+  // holders: 0.025 NVD…", and its title cannot be reached by touch.
+  await asAPhone(b.p, line);
+  expect.soft(await cutOff(line), "the line is cut off at a phone's width").toEqual({ wide: false, tall: false, outside: 0 });
+  await expect(line).toContainText("(~$");
   await b.p.close();
 
   // ---- A LINK'S OWN ENDPOINT, NOT THE SITE'S - the same node under another
@@ -897,6 +930,101 @@ test("a launch that shares says what it paid its holders, first on its card and 
   await expect(q.locator("#tvPaid")).toBeHidden();
   expect(notAsked.n, "stats.json was read through a link's endpoint").toBe(0);
   await q.close();
+
+  // ---- NOR ON THE LAUNCHES PAGE through a link's endpoint: a ?rpc= fork of
+  // Base answers the site's chain id, and would be shown mainnet's figures.
+  const r = await browseAsSite({ [L.token.toLowerCase()]: entry }, { rpc: OTHER_ENDPOINT });
+  await expect(r.card(L.token).locator(".holdersEarn"), "the card was not read through the link's endpoint").toBeVisible({ timeout: 30_000 });
+  await expect(r.card(L.token).locator(".paid")).toHaveAttribute("data-stats", "read", { timeout: 30_000 });
+  await expect(r.card(L.token).locator(".paid")).toBeHidden();
+  expect(r.asked.n, "the Launches page read stats.json through a link's endpoint").toBe(0);
+  await r.p.close();
+});
+
+test("a payout past the sixth place is printed as what it is, never as 0, and a large one keeps its digits on a phone's card", async () => {
+  test.setTimeout(120_000);
+  const key = L.token.toLowerCase();
+  // 50 OF NVDAc's SMALLEST UNITS (8 decimals, as cbBTC's) is 0.0000005: past the
+  // six places App.fmt keeps, where it said "0 NVDAc" beside a dollar figure
+  // that was not 0. And 5e13 of the token (18 decimals) is past the tooltip's 4.
+  const base = await entryFor(L.token, null);
+  const qd = base.quoteDecimals;
+  expect(qd, "NVDAc has too few decimals for a figure past the sixth place").toBeGreaterThan(6);
+  const tiny = { ...base, holderSharing: { distributor: L.d.toLowerCase(), paidQuote: String(5n * 10n ** BigInt(qd - 7)), paidToken: "50000000000000" } };
+  const { p } = await openAsSite(L.token, { [key]: tiny });
+  await expect(p.locator("#tvPaid")).toBeVisible({ timeout: 30_000 });
+  const [quote, token] = await p.evaluate(([x, y, d]) => [window.CurbApp.fmtSmall(BigInt(x), d, 6), window.CurbApp.fmtSmall(BigInt(y), 18, 4)],
+    [tiny.holderSharing.paidQuote, tiny.holderSharing.paidToken, qd]);
+  expect([quote, token]).toEqual(["0.0000005", "0.00005"]);
+  await expect.soft(p.locator("#tvPaidAmount"), "the amount").toHaveText(quote + " NVDAc");
+  await expect.soft(p.locator("#tvPaidAmount"), "the amount").not.toHaveText(/^0 /);
+  await expect.soft(p.locator("#tvPaid"), "the tooltip").toHaveAttribute("title", new RegExp("; and " + token.replace(".", "\\.") + " \\S+ of the token itself"));
+  await expect.soft(p.locator("#tvPaid"), "the tooltip").not.toHaveAttribute("title", /; and 0 /);
+  await p.close();
+
+  // ---- A LARGE ONE, ON A PHONE'S CARD: 1,234,567.89 NVDAc and its dollars,
+  // whole - cut to one line, the figure itself lost its digits.
+  const large = { ...tiny, holderSharing: { ...tiny.holderSharing, paidQuote: String(123456789n * 10n ** BigInt(qd - 2)) } };
+  const b = await browseAsSite({ [key]: large });
+  const line = b.card(L.token).locator(".paid");
+  await expect(line).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => line.getAttribute("data-usd"), { timeout: 30_000, message: "no dollars came on the card" }).not.toBeNull();
+  await asAPhone(b.p, line);
+  await expect(line.locator("b")).toHaveText("1,234,567.89 NVDAc");
+  expect.soft(await cutOff(line), "the line is cut off at a phone's width").toEqual({ wide: false, tall: false, outside: 0 });
+  await expect(line).toHaveText(/^Paid to holders: 1,234,567\.89 NVDAc \(~\$[\d.,]+[KMBT]?\)$/);
+  await b.p.close();
+});
+
+test("an entry or a file that does not match what the page read itself draws nothing: another distributor, curve, asset or decimals; another schema or chain, in the file or at the endpoint", async () => {
+  test.setTimeout(300_000);
+  const withPaid = await entryFor(L.token, await paidBy(L.d));
+  expect(BigInt(withPaid.holderSharing.paidQuote), "the distributor has paid nothing, so this proves nothing").toBeGreaterThan(0n);
+  const key = L.token.toLowerCase();
+  const elsewhere = "0x" + "5a".repeat(20);
+  // EACH BREAKS ONE CHECK ALONE, on a launch that shares and an amount above 0
+  // (the first test draws this very entry, unbroken).
+  const entry = (over, sharing = {}) => ({ [key]: { ...withPaid, ...over, holderSharing: { ...withPaid.holderSharing, ...sharing } } });
+  const cases = [
+    ["naming another distributor", entry({}, { distributor: elsewhere }), {}],
+    ["of another curve", entry({ curve: elsewhere }), {}],
+    ["of another asset", entry({ quote: elsewhere }), {}],
+    ["with its decimals off by one", entry({ quoteDecimals: withPaid.quoteDecimals + 1 }), {}],
+    ["of another schema", entry({}), { schema: "curb.stats/2" }],
+    ["of another chain", entry({}), { chainId: 1 }],
+  ];
+  // EVERY CASE ON BOTH PAGES, EACH FAILURE NAMED: one drawn line does not hide
+  // the others.
+  for (const [what, stats, file] of cases) {
+    const { p, asked } = await openAsSite(L.token, stats, file);
+    await decided(p, L.token);
+    expect(asked.n, what + ": stats.json was not read").toBe(1);
+    await expect.soft(p.locator("#tvPaid"), "the launch's page, " + what).toBeHidden();
+    await expect.soft(p.locator("#tvPaid"), "the launch's page, " + what).toBeEmpty();
+    await p.close();
+    const b = await browseAsSite(stats, { file });
+    const line = b.card(L.token).locator(".paid");
+    await expect(line, what).toHaveAttribute("data-stats", "read", { timeout: 30_000 });
+    expect(b.asked.n, what + ": the Launches page did not read stats.json").toBe(1);
+    await expect.soft(line, "its card, " + what).toBeHidden();
+    await b.p.close();
+  }
+
+  // ---- A SITE WHOSE OWN ENDPOINT ANSWERS ANOTHER CHAIN THAN ITS config.js
+  // NAMES (chain 1 named; this node is Base): neither page asks for a file -
+  // which, at that chain's path, says it is that chain's.
+  const site = { chainId: 1 };
+  const t = await openAsSite(L.token, { [key]: withPaid }, {}, site);
+  await decided(t.p, L.token);
+  await expect.soft(t.p.locator("#tvPaid"), "the launch's page, on another chain than config.js names").toBeHidden();
+  expect.soft(t.asked.n, "the launch's page asked for stats.json on another chain than config.js names").toBe(0);
+  await t.p.close();
+  const c = await browseAsSite({ [key]: withPaid }, { site });
+  const line = c.card(L.token).locator(".paid");
+  await expect(line).toHaveAttribute("data-stats", "read", { timeout: 30_000 });
+  await expect.soft(line, "its card, on another chain than config.js names").toBeHidden();
+  expect.soft(c.asked.n, "the Launches page asked for stats.json on another chain than config.js names").toBe(0);
+  await c.p.close();
 });
 
 test("nothing is drawn at 0, from a stats.json without the field or the launch, nor for a launch that does not share; and no dollars where none can be read", async () => {
@@ -934,10 +1062,15 @@ test("nothing is drawn at 0, from a stats.json without the field or the launch, 
     const other = await launchFor(creator, "Keeps Fees", "KEEP");
     const lie = { ...(await entryFor(other, null)), holderSharing: { ...withPaid.holderSharing, paidQuote: "5000000" } };
     const both = { [key]: withPaid, [other.toLowerCase()]: lie };
-    const o = await openAsSite(other, both);
-    await decided(o.p, other);
-    await expect(o.p.locator("#tvPaid")).toBeHidden();
-    await o.p.close();
+    // AND ONE NAMING THE ZERO ADDRESS - the distributor this launch's view
+    // names - so that only the page's own sharingOn() stands in its way.
+    const zero = { ...lie, holderSharing: { ...lie.holderSharing, distributor: ZERO_ADDR } };
+    for (const [what, stats] of [["naming the sharing launch's distributor", both], ["naming the zero address", { [other.toLowerCase()]: zero }]]) {
+      const o = await openAsSite(other, stats);
+      await decided(o.p, other);
+      await expect(o.p.locator("#tvPaid"), what).toBeHidden();
+      await o.p.close();
+    }
     const b = await browseAsSite(both);
     await expect(b.card(L.token).locator(".paid"), "the control: the sharing launch's line").toBeVisible({ timeout: 30_000 });
     await expect(b.card(other)).toBeVisible();
@@ -955,7 +1088,7 @@ test("nothing is drawn at 0, from a stats.json without the field or the launch, 
     await t.p.waitForTimeout(3000);
     await expect(t.p.locator("#tvPaidUsd")).toHaveCount(0);
     expect(await t.p.locator("#tvPaid").getAttribute("data-usd"), "a dollar figure with no price").toBeNull();
-    const fig = await t.p.evaluate(([x, d]) => window.CurbApp.fmt(BigInt(x), d, 6), [amount, withPaid.quoteDecimals]);
+    const fig = await t.p.evaluate(([x, d]) => window.CurbApp.fmtSmall(BigInt(x), d, 6), [amount, withPaid.quoteDecimals]);
     await expect(t.p.locator("#tvPaid")).toHaveText("Paid to holders: " + fig + " NVDAc");
     await expect(t.p.locator("#tvPaid")).toHaveAttribute("title", /No dollar price of NVDAc could be read/);
     await shot(t.p, "paid-token-no-usd");

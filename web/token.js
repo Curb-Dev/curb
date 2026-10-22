@@ -1112,9 +1112,12 @@ async function drawPaid(v) {
   const sym = quoteSym();
   const per = usdPer();
   const dollars = per !== null ? toFloat(e.quote, qd) * per : NaN;
+  // NEVER "0" FOR A FIGURE THAT IS NOT, as the fee line (App.fmtSmall): 50 sats
+  // of cbBTC are past the sixth place, and so is any WETH payout under 1e12 wei.
+  const small = App.fmtSmall || App.fmt;
   const amount = document.createElement("b");
   amount.id = "tvPaidAmount";
-  amount.textContent = App.fmt(e.quote, qd, 6) + " " + sym;
+  amount.textContent = small(e.quote, qd, 6) + " " + sym;
   const parts = ["Paid to holders: ", amount];
   if (isFinite(dollars)) {
     const u = document.createElement("span");
@@ -1130,7 +1133,7 @@ async function drawPaid(v) {
   // locked position's LP fees, after graduation), on the tooltip.
   box.title = e.quote + " of " + (sym || "the asset") + "'s smallest units, paid to this launch's holders by its distributor " +
     e.distributor + ", as the site's index last read it from the chain" +
-    (e.token > 0n ? "; and " + App.fmt(e.token, 18, 4) + " " + tokenSym() + " of the token itself" : "") +
+    (e.token > 0n ? "; and " + small(e.token, 18, 4) + " " + tokenSym() + " of the token itself" : "") +
     (isFinite(dollars) ? ". " + usdSource() : ". No dollar price of " + (sym || "this asset") + " could be read, so it is in its own units") + ".";
 }
 

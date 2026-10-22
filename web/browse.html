@@ -239,9 +239,12 @@
     background: rgba(255,196,0,.08); margin-top: 2px; }
   .holdersEarn::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   /* AND WHAT THEY HAVE BEEN PAID (browse.js drawPaidLine), above the cover too
-     so its title - the exact figure - can be reached. */
+     so its title - the exact figure - can be reached. WRAPPED, NEVER CUT: on a
+     phone's two-across card (about 136px) one line held "Paid to holders:
+     0.025 NVD…" - the dollars never showed, a larger figure lost its own
+     digits, and the title that has it cannot be reached by touch. */
   .paid { position: relative; z-index: 3; cursor: pointer; font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    white-space: normal; overflow-wrap: anywhere; min-width: 0; }
   .paid[hidden] { display: none; }
   .paid b { color: #ffc400; font-weight: 700; }
   .tag { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 750;
