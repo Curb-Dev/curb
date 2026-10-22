@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { encodeFunctionResult, parseAbi } from 'viem';
+import { decodeFunctionResult, encodeFunctionResult, parseAbi } from 'viem';
 import {
   ANNOUNCER_SCHEMA,
   END_OF_BLOCK,
@@ -15,7 +15,7 @@ import {
   type ChainEvent,
   type LaunchRecord,
 } from '../src/announcer.ts';
-import { readRecord } from '../scripts/announce.ts';
+import { lensView, readRecord } from '../scripts/announce.ts';
 
 const TOKEN = '0x1111111111111111111111111111111111111111';
 const CURVE = '0x2222222222222222222222222222222222222222';
@@ -399,6 +399,31 @@ test('the workflow gives the non-fatal announcer step its own five-minute timeou
     workflow,
     /- name: Announce public product events\r?\n\s+if: \$\{\{ !cancelled\(\) \}\}\r?\n\s+continue-on-error: true\r?\n\s+timeout-minutes: 5\r?\n/,
   );
+});
+
+test("the first run reads the lens's launchState struct by field name, as viem decodes it", () => {
+  // The first mainnet run stopped here: the struct was read as an array, every
+  // index was undefined, and BigInt(undefined) threw. This decodes the same ABI
+  // the script uses, from bytes encoded the way the chain answers.
+  const lensAbi = parseAbi([
+    'function launchState(address) view returns ((uint8 status,address curve,address quoteToken,address beneficiary,uint256 quoteReserve,uint256 tokenReserve,uint256 realQuoteReserve,uint256 graduationThreshold,uint256 totalSupply,(address currency0,address currency1,uint24 fee,int24 tickSpacing,address hooks) poolKey,uint64 launchedAt,address holderDistributor))',
+  ]);
+  const zero = '0x0000000000000000000000000000000000000000';
+  const value = (status: number) => ({
+    status, curve: '0x65CfF633dA0F81924242467D0C1404c6e0FEA7e4', quoteToken: '0x4200000000000000000000000000000000000006',
+    beneficiary: zero, quoteReserve: 5n, tokenReserve: 6n, realQuoteReserve: 1386000000000008n, graduationThreshold: 4470000000000000000n,
+    totalSupply: 7n, poolKey: { currency0: zero, currency1: zero, fee: 0, tickSpacing: 0, hooks: zero }, launchedAt: 1n, holderDistributor: zero,
+  });
+  const decoded = (status: number) => decodeFunctionResult({
+    abi: lensAbi, functionName: 'launchState',
+    data: encodeFunctionResult({ abi: lensAbi, functionName: 'launchState', result: value(status) as never }),
+  });
+  assert.deepEqual(lensView(decoded(1)), {
+    curve: '0x65cff633da0f81924242467d0c1404c6e0fea7e4', quote: '0x4200000000000000000000000000000000000006',
+    reserve: 1386000000000008n, threshold: 4470000000000000000n, graduated: false,
+  });
+  assert.equal(lensView(decoded(3)).graduated, true);
+  assert.throws(() => lensView([1, 'a', 'b']), /unexpected shape/);
 });
 
 test('a registry-only launch reads tax from launchOf instead of announcing 0%', async () => {

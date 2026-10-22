@@ -163,7 +163,22 @@ async function factoryHistory(rpc: Rpc, cfg: OpsConfig, to: bigint): Promise<Map
   return out;
 }
 
-async function baselineState(rpc: Rpc, cfg: OpsConfig, hides: HideConfig, safe: number): Promise<AnnouncerState> {
+// launchState returns one named struct, which viem decodes to an object keyed
+// by field name - not an array (index access read undefined, and the first
+// mainnet run stopped at "Cannot convert undefined to a BigInt").
+export function lensView(v: unknown): { curve: string; quote: string; reserve: bigint; threshold: bigint; graduated: boolean } {
+  const s = v as { status?: number; curve?: string; quoteToken?: string; realQuoteReserve?: bigint; graduationThreshold?: bigint };
+  if (!s || typeof s !== 'object' || typeof s.curve !== 'string' || typeof s.quoteToken !== 'string' ||
+    typeof s.realQuoteReserve !== 'bigint' || typeof s.graduationThreshold !== 'bigint' || typeof s.status !== 'number') {
+    throw new Error('launchState answered an unexpected shape');
+  }
+  return {
+    curve: s.curve.toLowerCase(), quote: s.quoteToken.toLowerCase(), reserve: s.realQuoteReserve,
+    threshold: s.graduationThreshold, graduated: s.status === 3,
+  };
+}
+
+export async function baselineState(rpc: Rpc, cfg: OpsConfig, hides: HideConfig, safe: number): Promise<AnnouncerState> {
   const factories = await factoryHistory(rpc, cfg, BigInt(safe));
   const block = `0x${safe.toString(16)}`;
   const count = Number(await call(rpc, cfg.registry!, REGISTRY_ABI, 'launchCount', [], block));
@@ -171,17 +186,15 @@ async function baselineState(rpc: Rpc, cfg: OpsConfig, hides: HideConfig, safe: 
   const launches: Record<string, LaunchRecord> = {};
   for (let i = 0; i < count; i++) {
     const token = String(await call(rpc, cfg.registry!, REGISTRY_ABI, 'launchAt', [BigInt(i)], block)).toLowerCase();
-    const v = await call(rpc, cfg.lens!, LENS_ABI, 'launchState', [token], block) as readonly [number, string, string, string, bigint, bigint, bigint, bigint];
-    launches[token] = await readRecord(rpc, cfg, hides, token, factories.get(token), {
-      curve: String(v[1]), quote: String(v[2]), reserve: BigInt(v[6]), threshold: BigInt(v[7]), graduated: Number(v[0]) === 3,
-    });
+    const v = lensView(await call(rpc, cfg.lens!, LENS_ABI, 'launchState', [token], block));
+    launches[token] = await readRecord(rpc, cfg, hides, token, factories.get(token), v);
   }
   return { schema: ANNOUNCER_SCHEMA, chainId: Number(cfg.sharing.chainId), cursor: { block: safe, logIndex: END_OF_BLOCK }, launches };
 }
 
 function unique<T>(xs: T[]): T[] { return [...new Set(xs)]; }
 
-async function scanEvents(rpc: Rpc, cfg: OpsConfig, hides: HideConfig, state: AnnouncerState, safe: number): Promise<ChainEvent[]> {
+export async function scanEvents(rpc: Rpc, cfg: OpsConfig, hides: HideConfig, state: AnnouncerState, safe: number): Promise<ChainEvent[]> {
   const from = state.cursor.logIndex === END_OF_BLOCK ? BigInt(state.cursor.block + 1) : BigInt(state.cursor.block);
   const to = BigInt(safe);
   if (from > to) return [];
