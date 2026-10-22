@@ -15,7 +15,8 @@ import {
   type ChainEvent,
   type LaunchRecord,
 } from '../src/announcer.ts';
-import { lensView, readRecord } from '../scripts/announce.ts';
+import { lensView, readRecord, resilientRpc } from '../scripts/announce.ts';
+import { RpcError } from '../src/chain/rpc.ts';
 
 const TOKEN = '0x1111111111111111111111111111111111111111';
 const CURVE = '0x2222222222222222222222222222222222222222';
@@ -399,6 +400,39 @@ test('the workflow gives the non-fatal announcer step its own five-minute timeou
     workflow,
     /- name: Announce public product events\r?\n\s+if: \$\{\{ !cancelled\(\) \}\}\r?\n\s+continue-on-error: true\r?\n\s+timeout-minutes: 5\r?\n/,
   );
+});
+
+test('a busy endpoint is asked again on the next one, and a revert is not asked again', async () => {
+  const sleeps: number[] = [];
+  const asked: string[] = [];
+  const endpoint = (label: string, answers: Array<Error | string>) => ({
+    label,
+    async request() {
+      asked.push(label);
+      const a = answers.shift();
+      if (a instanceof Error) throw a;
+      return a;
+    },
+  });
+  // The gateway's own words, then a 429: both transient; the second endpoint answers.
+  const rpc = resilientRpc([
+    endpoint('a', [new RpcError('rate limit exceeded'), new RpcError('busy', { status: 429 })]),
+    endpoint('b', [new RpcError('rate limit exceeded'), '0x1']),
+  ], { sleep: async (ms) => { sleeps.push(ms); } });
+  assert.equal(await rpc.request({ method: 'eth_blockNumber' }), '0x1');
+  assert.deepEqual(asked, ['a', 'b', 'a', 'b']);
+  assert.deepEqual(sleeps, [500, 1000, 2000]);
+
+  // A revert is the chain's answer, not a busy endpoint: it is never asked again.
+  asked.length = 0;
+  const reverting = resilientRpc([endpoint('a', [new RpcError('execution reverted')]), endpoint('b', ['0x2'])], { sleep: async () => {} });
+  await assert.rejects(reverting.request({ method: 'eth_call' }), /execution reverted/);
+  assert.deepEqual(asked, ['a']);
+
+  // And it gives up after its tries, with the endpoint's error.
+  const busy = Array.from({ length: 10 }, () => new RpcError('rate limit exceeded'));
+  const tired = resilientRpc([endpoint('a', busy)], { tries: 3, sleep: async () => {} });
+  await assert.rejects(tired.request({ method: 'eth_call' }), /rate limit exceeded/);
 });
 
 test("the first run reads the lens's launchState struct by field name, as viem decodes it", () => {

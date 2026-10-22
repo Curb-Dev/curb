@@ -19,6 +19,7 @@ import {
   type Position,
 } from '../src/announcer.ts';
 import { getLogsAdaptive, LogWindow, type RawLog } from '../src/chain/logs.ts';
+import { isTransient } from '../src/chain/reader.ts';
 import { httpRpc, type Rpc } from '../src/chain/rpc.ts';
 import { loadOpsConfig, type OpsConfig } from '../src/ops/config.ts';
 import { DataRepo } from '../src/ops/github.ts';
@@ -163,6 +164,39 @@ async function factoryHistory(rpc: Rpc, cfg: OpsConfig, to: bigint): Promise<Map
   return out;
 }
 
+// EVERY ENDPOINT, AND ASKED AGAIN WHEN ONLY BUSY. The first mainnet runs met
+// the public gateway's rate limit (the baseline reads every factory's history
+// at once) and stopped. A request that failed for a transient reason - a 429 or
+// 5xx, a timeout, "rate limit exceeded" (reader.ts isTransient) - is asked of
+// the next configured endpoint after a growing pause; a revert or a refused
+// range is not transient and reaches the caller at once (logs.ts decides
+// what a refused range means).
+export function resilientRpc(
+  rpcs: Rpc[],
+  opts: { tries?: number; backoffMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Rpc {
+  if (!rpcs.length) throw new Error('no RPC endpoint');
+  const tries = opts.tries ?? 6;
+  const backoffMs = opts.backoffMs ?? 500;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let at = 0;
+  return {
+    label: rpcs.map((r) => r.label ?? 'rpc').join('+'),
+    async request(args) {
+      for (let attempt = 0; ; attempt++) {
+        const rpc = rpcs[at % rpcs.length];
+        try {
+          return await rpc.request(args);
+        } catch (e) {
+          if (!isTransient(e) || attempt >= tries) throw e;
+          at++;
+          await sleep(backoffMs * 2 ** Math.min(attempt, 5));
+        }
+      }
+    },
+  };
+}
+
 // launchState returns one named struct, which viem decodes to an object keyed
 // by field name - not an array (index access read undefined, and the first
 // mainnet run stopped at "Cannot convert undefined to a BigInt").
@@ -261,7 +295,7 @@ async function main(): Promise<void> {
   const telegram = parseTelegramConfig(process.env.ANNOUNCER_TELEGRAM);
   if (telegram) registerSecret(telegram.token);
   const dryRun = telegram === null;
-  const rpc = httpRpc(urls[0].reveal(), { label: 'a' });
+  const rpc = resilientRpc(urls.map((u, i) => httpRpc(u.reveal(), { label: String.fromCharCode(97 + i) })));
   const repo = new DataRepo({
     owner: cfg.dataRepo.owner,
     repo: cfg.dataRepo.repo,
