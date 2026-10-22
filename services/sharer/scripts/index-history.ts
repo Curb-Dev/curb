@@ -34,6 +34,12 @@
 // own units, never in dollars. Written after the files it counts, and only
 // when its numbers change.
 //
+// AND, FOR A LAUNCH THAT SHARES ITS FEES WITH ITS HOLDERS, WHAT IT HAS PAID
+// THEM (LaunchStats.holderSharing): its distributor's own totals, read from
+// the chain once a run - not added up from logs - so a launch's page and its
+// card on the Launches page can show it without asking the visitor's endpoint
+// (web/token.js and web/browse.js paidEntry).
+//
 //   node scripts/index-history.ts            read and write
 //   node scripts/index-history.ts --dry DIR  read, and write the files under DIR
 //                                            instead of the data repo
@@ -78,6 +84,9 @@ const SEL = {
   launchOf: toFunctionSelector('launchOf(address)'),
   launchState: toFunctionSelector('launchState(address)'),
   decimals: toFunctionSelector('decimals()'),
+  // THE HOLDER DISTRIBUTOR'S PAYOUTS SO FAR (src/curb/sharing/HolderFeeDistributor.sol).
+  totalPaid0: toFunctionSelector('totalPaid0()'),
+  totalPaid1: toFunctionSelector('totalPaid1()'),
 };
 
 /** One log as the site reads it: the fields web/token.js uses, nothing else. */
@@ -215,6 +224,19 @@ export interface LaunchStats {
   /** Addresses the transfers leave a balance above zero, but the zero address
    *  and 0x...dEaD: burned is not held (the site's holder list). */
   holders: number;
+  /** ONLY ONCE THE LAUNCH SHARES ITS FEES WITH ITS HOLDERS (the lens's word
+   *  15 names a distributor): that distributor, and what it has paid the
+   *  holders so far - totalPaid0() in the quote asset's raw units, placed by
+   *  quoteDecimals, and totalPaid1() in the launch token's (18 decimals; the
+   *  locked position's LP fees, after graduation). Read from the chain each
+   *  run, as the distributor books it. Absent while the launch does not
+   *  share, from a lens with no word 15, and in files written before it. */
+  holderSharing?: HolderSharing;
+}
+export interface HolderSharing {
+  distributor: string;
+  paidQuote: string;
+  paidToken: string;
 }
 /** The launches of one quote asset, added up. */
 export interface AssetTotals {
@@ -238,12 +260,14 @@ export interface StatsFile {
 }
 
 const words = (hex: string): number => Math.floor(hex.replace(/^0x/, '').length / 64);
+/** The three fields, in the one order they are written in. */
+const sharingOf = (s: HolderSharing): HolderSharing => ({ distributor: s.distributor, paidQuote: s.paidQuote, paidToken: s.paidToken });
 const topicAddr = (t: string): string => ('0x' + t.slice(-40)).toLowerCase();
 const blockOf = (l: IndexLog): number => Number(BigInt(l.blockNumber));
 
-/** One launch's numbers, from the file this run holds for it and what the lens
- *  said of it this run. */
-export function launchStats(f: HistoryFile, lens: { status: number; quote: string; quoteDecimals: number; currency0: string }): LaunchStats {
+/** One launch's numbers, from the file this run holds for it, what the lens
+ *  said of it this run, and - once it shares - what its distributor said. */
+export function launchStats(f: HistoryFile, lens: { status: number; quote: string; quoteDecimals: number; currency0: string; holderSharing?: HolderSharing }): LaunchStats {
   let first: number | null = null, last: number | null = null;
   const traded = (b: number) => {
     if (first === null || b < first) first = b;
@@ -313,6 +337,9 @@ export function launchStats(f: HistoryFile, lens: { status: number; quote: strin
     poolSwaps,
     poolVolume: poolVolume.toString(),
     holders,
+    // LAST, AND ONLY WHERE THERE IS ONE: parseStats rebuilds an entry in this
+    // order, and a run compares the two as text.
+    ...(lens.holderSharing ? { holderSharing: sharingOf(lens.holderSharing) } : {}),
   };
 }
 
@@ -341,17 +368,23 @@ export function parseStats(bytes: Uint8Array | null, chainId: number): StatsFile
   const count = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0;
   const amount = (s: unknown): s is string => typeof s === 'string' && /^(0|[1-9][0-9]*)$/.test(s);
   const block = (n: unknown): n is number | null => n === null || count(n);
+  // OPTIONAL, AND WHOLE WHERE IT IS THERE: a launch that shares names a
+  // distributor that is not the zero address and both amounts.
+  const sharing = (s: unknown): s is HolderSharing | undefined => s === undefined ||
+    (!!s && typeof s === 'object' && addr((s as HolderSharing).distributor) && (s as HolderSharing).distributor !== ZERO &&
+      amount((s as HolderSharing).paidQuote) && amount((s as HolderSharing).paidToken));
   try {
     const j = JSON.parse(Buffer.from(bytes).toString('utf8')) as StatsFile;
     if (!j || j.schema !== STATS_SCHEMA || j.chainId !== chainId || !j.launches || typeof j.launches !== 'object') return out;
     for (const [token, e] of Object.entries(j.launches)) {
       if (!addr(token) || !e || !addr(e.curve) || !addr(e.quote) || !count(e.quoteDecimals) || e.quoteDecimals > 255 || typeof e.status !== 'string' ||
         !block(e.firstTradeBlock) || !block(e.lastTradeBlock) || !count(e.curveBuys) || !count(e.curveSells) || !count(e.buyers) || !count(e.traders) ||
-        !amount(e.curveVolume) || !count(e.poolSwaps) || !amount(e.poolVolume) || !count(e.holders)) continue;
+        !amount(e.curveVolume) || !count(e.poolSwaps) || !amount(e.poolVolume) || !count(e.holders) || !sharing(e.holderSharing)) continue;
       out[token] = {
         curve: e.curve, quote: e.quote, quoteDecimals: e.quoteDecimals, status: e.status, firstTradeBlock: e.firstTradeBlock, lastTradeBlock: e.lastTradeBlock,
         curveBuys: e.curveBuys, curveSells: e.curveSells, buyers: e.buyers, traders: e.traders, curveVolume: e.curveVolume,
         poolSwaps: e.poolSwaps, poolVolume: e.poolVolume, holders: e.holders,
+        ...(e.holderSharing ? { holderSharing: sharingOf(e.holderSharing) } : {}),
       };
     }
   } catch { /* none */ }
@@ -360,6 +393,20 @@ export function parseStats(bytes: Uint8Array | null, chainId: number): StatsFile
 
 async function call(rpc: Rpc, to: string, data: string): Promise<string> {
   return String(await rpc.request({ method: 'eth_call', params: [{ to, data }, 'latest'] }));
+}
+
+/** WHAT A HOLDER DISTRIBUTOR HAS PAID SO FAR, as it books it: totalPaid0()
+ *  and totalPaid1(), at the block the lens was read at ('latest', as every
+ *  read here but the logs). An answer that is not a word - no code there, or
+ *  not a distributor - is no answer. */
+export async function paidBy(rpc: Rpc, distributor: string): Promise<HolderSharing> {
+  const one = async (sel: string, name: string): Promise<string> => {
+    const r = await call(rpc, distributor, sel);
+    if (!/^0x[0-9a-fA-F]{64,}$/.test(r)) throw new Error(`the holder distributor ${distributor} answers no ${name}`);
+    return numAt(r, 0).toString();
+  };
+  const [paidQuote, paidToken] = await Promise.all([one(SEL.totalPaid0, 'totalPaid0()'), one(SEL.totalPaid1, 'totalPaid1()')]);
+  return { distributor: distributor.toLowerCase(), paidQuote, paidToken };
 }
 
 export interface IndexDeps {
@@ -471,7 +518,14 @@ export async function indexAll(d: IndexDeps): Promise<{ launches: number; writte
       // ITS NUMBERS, LAST: a quote asset that answers no decimals() fails the
       // launch's numbers - its entry stays as it was - and not its file.
       const quote = addrAt(st, 2);
-      stats[token.toLowerCase()] = launchStats(held, { status, quote, quoteDecimals: await decimalsOf(quote), currency0: addrAt(st, 9) });
+      const quoteDecimals = await decimalsOf(quote);
+      // AND, ONCE IT SHARES, WHAT ITS DISTRIBUTOR HAS PAID THE HOLDERS: the
+      // lens's word 15 names it (zero while sharing is off; a lens that
+      // returns fewer words says nothing either way). A distributor that does
+      // not answer fails the numbers the same way.
+      const distributor = words(st) >= 16 ? addrAt(st, 15).toLowerCase() : ZERO;
+      const holderSharing = distributor === ZERO ? undefined : await paidBy(d.rpc, distributor);
+      stats[token.toLowerCase()] = launchStats(held, { status, quote, quoteDecimals, currency0: addrAt(st, 9), holderSharing });
     } catch (e) {
       failed++;
       d.log(`launch ${i} ${token}: ${(e as Error).message}`);

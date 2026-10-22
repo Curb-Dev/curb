@@ -752,6 +752,225 @@ test("Push pending payouts pays every holder still owed by the payout in force, 
   await p.close();
 });
 
+// ================================================================== paid to holders
+/// web/config.js AS DEPLOY DAY WRITES IT, naming this run's full-flow stack
+/// (prod.spec.js standIn): a page whose link names no endpoint reads the site's
+/// own - the only one on which it reads stats.json (token.js statsFile,
+/// browse.js readStats).
+let SITE_CONFIG = null;
+async function asTheSite(p) {
+  if (!SITE_CONFIG) {
+    const registry = addrOf(await ethCall(APP.lens, sel("registry()")));
+    const n = Number(await big(registry, sel("launcherCount()")));
+    const factories = [];
+    for (let i = 0; i < n; i++) factories.push(addrOf(await ethCall(registry, sel("launcherAt(uint256)") + word(i))));
+    SITE_CONFIG = "window.CURB_SITE = " + JSON.stringify({ chainId: CHAIN, rpc: STATE.rpc, lens: APP.lens, registry, factories,
+      explorer: "https://basescan.org", featured: [], banner: "", hiddenFactories: [], hiddenLaunches: [] }) + ";";
+  }
+  await p.route(/\/config\.js(\?.*)?$/, (route) =>
+    route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body: SITE_CONFIG }));
+}
+/// stats.json AS THE HISTORY INDEX WRITES IT (services/sharer/scripts/
+/// index-history.ts), its `launches` given - null serves none at all - at the
+/// site's path. What comes back counts the fetches.
+async function serveStats(p, launches) {
+  const asked = { n: 0 };
+  await p.route(/\/sharing\/\d+\/stats\.json$/, (route) => {
+    asked.n++;
+    if (launches === null) return route.fulfill({ status: 404, body: "not found" });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ schema: "curb.stats/1", chainId: CHAIN,
+      generatedAt: { block: 1, timestamp: 1 }, launches, totals: {} }) });
+  });
+  return asked;
+}
+/// ONE LAUNCH'S ENTRY, read from this chain as the index reads it: its curve,
+/// asset and decimals from the lens and the asset, and - given - holderSharing.
+async function entryFor(token, holderSharing) {
+  const view = await ethCall(APP.lens, sel("launchState(address)") + pad(token));
+  const quote = addrOf("0x" + view.slice(2 + 128, 2 + 192));
+  return { curve: addrOf("0x" + view.slice(2 + 64, 2 + 128)), quote, quoteDecimals: Number(await big(quote, sel("decimals()"))),
+    status: "selling", firstTradeBlock: null, lastTradeBlock: null, curveBuys: 0, curveSells: 0, buyers: 0, traders: 0,
+    curveVolume: "0", poolSwaps: 0, poolVolume: "0", holders: 0, ...(holderSharing ? { holderSharing } : {}) };
+}
+/// WHAT THE DISTRIBUTOR HAS PAID, as the index reads it each run (paidBy).
+const paidBy = async (d) => ({ distributor: d.toLowerCase(), paidQuote: String(await big(d, sel("totalPaid0()"))),
+  paidToken: String(await big(d, sel("totalPaid1()"))) });
+/// AN ENDPOINT OF ANOTHER NAME FOR THE RUN'S NODE, served through Playwright
+/// (prod.spec.js routeEndpoint): what a link to some other endpoint reads.
+const OTHER_ENDPOINT = "http://another-endpoint.test";
+async function routeEndpoint(p, url) {
+  const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type",
+    "access-control-allow-methods": "POST, OPTIONS" };
+  await p.route(new RegExp("^" + url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(/.*)?$"), async (route) => {
+    const req = route.request();
+    if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+    const res = await fetch(STATE.rpc, { method: "POST", headers: { "content-type": "application/json" }, body: req.postData() });
+    return route.fulfill({ status: res.status, headers: cors, contentType: "application/json", body: await res.text() });
+  });
+}
+/// The launch's page as the site serves it, with `stats` as its stats.json.
+async function openAsSite(token, stats) {
+  const p = await newPage(TRADER);
+  await asTheSite(p);
+  await serveFiles(p, { site: L.files });
+  const asked = await serveStats(p, stats);
+  await p.goto("/token/" + token);
+  await expect(p.locator("#tokenView")).toBeVisible({ timeout: 15_000 });
+  await expect(p.locator("#tvStatus")).not.toHaveText("—", { timeout: 30_000 });
+  return { p, asked };
+}
+/// The Launches page as the site serves it, and the card of `token` on it.
+async function browseAsSite(stats) {
+  const p = await newPage(TRADER);
+  await asTheSite(p);
+  const asked = await serveStats(p, stats);
+  await p.goto("/");
+  return { p, asked, card: (token) => p.locator(".launch", { has: p.locator(`button.addr[title="${token}" i]`) }) };
+}
+/// Until the page has decided this launch's line with what it read (token.js
+/// drawPaid's data-drawn).
+const decided = (p, token) => expect(p.locator("#tvPaid")).toHaveAttribute("data-drawn", token.toLowerCase(), { timeout: 30_000 });
+/// browse.js fmtQuote, for the figure a card prints.
+const cardFigure = (x, d) => {
+  const n = Number(x) / 10 ** d;
+  if (n === 0) return "0";
+  return n >= 1 ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : n.toLocaleString("en-US", { maximumSignificantDigits: 3 });
+};
+const NVDA_FEED = "0x04689a41629776563e6822f76f2e57d148d28513";
+const ETH_FEED = "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70";
+/// Dollars per whole NVDAc, by the feed the site reads (prices.js USD_FEEDS).
+async function nvdaUsd() {
+  const dec = Number(await big(NVDA_FEED, sel("decimals()")));
+  const round = await ethCall(NVDA_FEED, sel("latestRoundData()"));
+  return Number(wordAt(round, 1)) / 10 ** dec;
+}
+
+test("a launch that shares says what it paid its holders, first on its card and on its Launches card: from stats.json, in its asset and in dollars", async () => {
+  test.setTimeout(180_000);
+  // REAL PAYOUTS: the claim and the push before this paid epoch 1 in full.
+  const paid = await big(L.d, sel("totalPaid0()"));
+  expect(paid, "the distributor has paid nothing, so this proves nothing").toBeGreaterThan(0n);
+  const entry = await entryFor(L.token, await paidBy(L.d));
+  expect(entry.holderSharing.paidQuote).toBe(String(paid));
+  const qd = entry.quoteDecimals;
+  const usd = (Number(paid) / 10 ** qd) * (await nvdaUsd());
+  const near = (x) => Math.abs(Number(x) - usd) <= usd * 1e-9;
+
+  // ---- ITS OWN PAGE: at the top of its card, under its name.
+  const { p, asked } = await openAsSite(L.token, { [L.token.toLowerCase()]: entry });
+  await expect(p.locator("#tvPaid")).toBeVisible({ timeout: 30_000 });
+  await expect(p.locator(".tvSwap > .tvHead + #tvPaid"), "not at the top of the launch's card").toHaveCount(1);
+  const amount = await p.evaluate(([x, d]) => window.CurbApp.fmt(BigInt(x), d, 6), [String(paid), qd]);
+  await expect(p.locator("#tvPaidAmount")).toHaveText(amount + " NVDAc");
+  await expect(p.locator("#tvPaid")).toHaveAttribute("data-paid", String(paid));
+  // IN DOLLARS by the NVDA feed, once its rate has come.
+  await expect.poll(() => p.locator("#tvPaid").getAttribute("data-usd"), { timeout: 30_000, message: "no dollars came" }).not.toBeNull();
+  expect(near(await p.locator("#tvPaid").getAttribute("data-usd")), "the dollars are not the amount at the feed's price").toBe(true);
+  await expect(p.locator("#tvPaidUsd")).toHaveText(/^\(~\$[\d.,]+[KMB]?\)$/);
+  await expect(p.locator("#tvPaid")).toHaveText("Paid to holders: " + amount + " NVDAc " + (await p.locator("#tvPaidUsd").textContent()));
+  await expect(p.locator("#tvPaid")).toHaveAttribute("title", new RegExp(String(paid) + " of NVDAc's smallest units.*" + L.d, "i"));
+  expect(asked.n, "stats.json was not read once").toBe(1);
+  await shot(p, "paid-token");
+  await p.close();
+
+  // ---- ITS CARD ON THE LAUNCHES PAGE: a small line under "Holders earn".
+  const b = await browseAsSite({ [L.token.toLowerCase()]: entry });
+  const line = b.card(L.token).locator(".holdersEarn + .paid");
+  await expect(line).toBeVisible({ timeout: 30_000 });
+  await expect(line).toHaveAttribute("data-paid", String(paid));
+  await expect.poll(() => line.getAttribute("data-usd"), { timeout: 30_000, message: "no dollars came on the card" }).not.toBeNull();
+  expect(near(await line.getAttribute("data-usd")), "the card's dollars are not the amount at the feed's price").toBe(true);
+  await expect(line).toHaveText(new RegExp("^Paid to holders: " + cardFigure(paid, qd).replace(/[.]/g, "\\.") + " NVDAc \\(~\\$[\\d.,]+[KMBT]?\\)$"));
+  await expect(line.locator("b")).toHaveText(cardFigure(paid, qd) + " NVDAc");
+  await shot(b.p, "paid-card");
+  await b.p.close();
+
+  // ---- A LINK'S OWN ENDPOINT, NOT THE SITE'S - the same node under another
+  // name: stats.json is not asked, and nothing is drawn from it.
+  const q = await newPage(TRADER);
+  await asTheSite(q);
+  await routeEndpoint(q, OTHER_ENDPOINT);
+  const notAsked = await serveStats(q, { [L.token.toLowerCase()]: entry });
+  await q.goto("/token/" + L.token + "?" + new URLSearchParams({ rpc: OTHER_ENDPOINT, lens: APP.lens }).toString());
+  await expect(q.locator("#tvStatus")).not.toHaveText("—", { timeout: 30_000 });
+  await decided(q, L.token);
+  await expect(q.locator("#tvPaid")).toBeHidden();
+  expect(notAsked.n, "stats.json was read through a link's endpoint").toBe(0);
+  await q.close();
+});
+
+test("nothing is drawn at 0, from a stats.json without the field or the launch, nor for a launch that does not share; and no dollars where none can be read", async () => {
+  test.setTimeout(300_000);
+  const withPaid = await entryFor(L.token, await paidBy(L.d));
+  const key = L.token.toLowerCase();
+  // ---- AT 0, AS THE INDEX WRITES IT BEFORE THE FIRST PAYOUT; WITHOUT THE FIELD,
+  // AS A FILE FROM BEFORE IT; WITHOUT THE LAUNCH; AND NO FILE AT ALL.
+  const cases = [
+    ["at 0", { [key]: { ...withPaid, holderSharing: { ...withPaid.holderSharing, paidQuote: "0" } } }],
+    ["without the field", { [key]: await entryFor(L.token, null) }],
+    ["without the launch", {}],
+    ["with no file", null],
+  ];
+  for (const [what, stats] of cases) {
+    const { p, asked } = await openAsSite(L.token, stats);
+    await decided(p, L.token);
+    expect(asked.n, what + ": stats.json was not read").toBe(1);
+    await expect(p.locator("#tvPaid"), what).toBeHidden();
+    await expect(p.locator("#tvPaid"), what).toBeEmpty();
+    await p.close();
+  }
+  for (const [what, stats] of cases.slice(0, 2)) {
+    const b = await browseAsSite(stats);
+    const line = b.card(L.token).locator(".paid");
+    await expect(line, what).toHaveAttribute("data-stats", "read", { timeout: 30_000 });
+    await expect(line, what).toBeHidden();
+    await b.p.close();
+  }
+
+  await inSnapshot(async () => {
+    // ---- A LAUNCH THAT DOES NOT SHARE, which a stats.json says paid its
+    // holders: the lens is the page's, and it says the launch does not share.
+    const creator = await freshAccount("paid-to-holders creator");
+    const other = await launchFor(creator, "Keeps Fees", "KEEP");
+    const lie = { ...(await entryFor(other, null)), holderSharing: { ...withPaid.holderSharing, paidQuote: "5000000" } };
+    const both = { [key]: withPaid, [other.toLowerCase()]: lie };
+    const o = await openAsSite(other, both);
+    await decided(o.p, other);
+    await expect(o.p.locator("#tvPaid")).toBeHidden();
+    await o.p.close();
+    const b = await browseAsSite(both);
+    await expect(b.card(L.token).locator(".paid"), "the control: the sharing launch's line").toBeVisible({ timeout: 30_000 });
+    await expect(b.card(other)).toBeVisible();
+    await expect(b.card(other).locator(".paid, .holdersEarn")).toHaveCount(0);
+    await b.p.close();
+
+    // ---- NO DOLLAR PRICE: neither NVDAc's feed nor ETH's answers (an empty
+    // account where each was). The amount alone, never a guessed figure.
+    for (const f of [NVDA_FEED, ETH_FEED]) await rpc("anvil_setCode", [f, "0x"]);
+    const amount = withPaid.holderSharing.paidQuote;
+    const t = await openAsSite(L.token, { [key]: withPaid });
+    await expect(t.p.locator("#tvPaid")).toBeVisible({ timeout: 30_000 });
+    // THE RATE WAS ASKED AND NONE CAME: the market cap is drawn in the asset's units.
+    await expect(t.p.locator("#tvMcap")).toContainText("NVDAc", { timeout: 30_000 });
+    await t.p.waitForTimeout(3000);
+    await expect(t.p.locator("#tvPaidUsd")).toHaveCount(0);
+    expect(await t.p.locator("#tvPaid").getAttribute("data-usd"), "a dollar figure with no price").toBeNull();
+    const fig = await t.p.evaluate(([x, d]) => window.CurbApp.fmt(BigInt(x), d, 6), [amount, withPaid.quoteDecimals]);
+    await expect(t.p.locator("#tvPaid")).toHaveText("Paid to holders: " + fig + " NVDAc");
+    await expect(t.p.locator("#tvPaid")).toHaveAttribute("title", /No dollar price of NVDAc could be read/);
+    await shot(t.p, "paid-token-no-usd");
+    await t.p.close();
+    const c = await browseAsSite({ [key]: withPaid });
+    const line = c.card(L.token).locator(".paid");
+    await expect(line).toBeVisible({ timeout: 30_000 });
+    await expect(c.card(L.token).locator(".mcVal")).toContainText("NVDAc", { timeout: 30_000 });
+    await c.p.waitForTimeout(3000);
+    await expect(line).toHaveText("Paid to holders: " + cardFigure(BigInt(amount), withPaid.quoteDecimals) + " NVDAc");
+    expect(await line.getAttribute("data-usd"), "a dollar figure on the card with no price").toBeNull();
+    await c.p.close();
+  });
+});
+
 // ================================================================== history
 test("a second payout: each holder's share is listed payout by payout, from the files chained back to the one in force", async () => {
   test.setTimeout(240_000);

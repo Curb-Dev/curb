@@ -409,6 +409,12 @@
   .tvStatus.selling { border-color: rgba(0,82,255,.55); color: var(--paint-hi); background: rgba(0,82,255,.10); }
   .tvStatus.waiting { border-color: rgba(255,196,0,.5); color: #ffc400; background: rgba(255,196,0,.08); }
   .tvStatus.graduated { border-color: rgba(61,220,151,.45); color: var(--good); background: rgba(61,220,151,.08); }
+  /* PAID TO HOLDERS, in the warm colour of the Launches page's "Holders earn". */
+  .tvPaid { margin: -4px 0 14px; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(255,196,0,.45);
+    background: rgba(255,196,0,.08); color: #ffc400; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+  .tvPaid[hidden] { display: none; }
+  .tvPaid b { color: var(--ink); font-weight: 750; font-variant-numeric: tabular-nums; }
+  .tvPaid span { color: var(--dim); font-variant-numeric: tabular-nums; }
 
   .tvBox { background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
   .tvBoxTop { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); }
@@ -590,6 +596,10 @@
           </div>
           <span class="tvStatus" id="tvStatus">—</span>
         </div>
+        <!-- WHAT A LAUNCH THAT SHARES HAS PAID ITS HOLDERS, first on its card
+             (token.js drawPaid): from the history index's stats.json, shown
+             only above 0. -->
+        <p class="tvPaid" id="tvPaid" hidden></p>
 
         <div class="tvBox">
           <div class="tvBoxTop"><span id="tvPayLabel">Sell</span><span class="tvAvail" id="tvPayAvail"></span></div>

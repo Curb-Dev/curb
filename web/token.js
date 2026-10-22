@@ -1055,6 +1055,85 @@ function drawEarned() {
     (h.partial ? " since " + (h.fromDate || "the oldest block read") : "");
 }
 
+// ---------------------------------------------------------------- paid to holders
+/// WHAT A LAUNCH THAT SHARES HAS PAID ITS HOLDERS, at the top of its card:
+/// "Paid to holders: 1.25 NVDAc (~$231)" - the figure flywheel.cash puts first
+/// on a token's page. FROM stats.json (services/sharer/scripts/index-history.ts,
+/// holderSharing): its distributor's own totalPaid0(), read from the chain by
+/// the index's every run - never asked of this page's endpoint. Once a visit,
+/// and like the history index only on the site's own chain and endpoint (a fork
+/// or a link's endpoint draws nothing here). Only for a launch that shares by
+/// this page's own read of the lens (sharingOn), only from an entry naming this
+/// launch's curve, asset and decimals and that same distributor, and only above
+/// 0. Its dollars are the market cap's (usdPer); with no dollar price, the
+/// asset's amount alone, never a guessed figure. Display only: nothing sent
+/// from this page reads it.
+const STATS_SCHEMA = "curb.stats/1";
+function statsFile() {
+  const site = window.CURB_SITE || {};
+  if (!site.rpc || endpoint() !== String(site.rpc).trim() || T.chainId !== site.chainId) return Promise.resolve(null);
+  if (!T.statsFile || T.statsFile.chainId !== T.chainId) {
+    T.statsFile = { chainId: T.chainId, read: fetch("/sharing/" + T.chainId + "/stats.json",
+      { signal: AbortSignal.timeout(10000) }).then((res) => (res.ok ? res.json() : null)).catch(() => null) };
+  }
+  return T.statsFile.read;
+}
+/// THIS LAUNCH'S ENTRY IN IT, held to what this page read itself: { quote,
+/// token, distributor } in raw units, or null.
+function paidEntry(j, v, ctx) {
+  if (!j || j.schema !== STATS_SCHEMA || j.chainId !== T.chainId || !j.launches || typeof j.launches !== "object") return null;
+  const e = j.launches[String(T.token).toLowerCase()];
+  const s = e && e.holderSharing;
+  const whole = (x) => typeof x === "string" && /^(0|[1-9][0-9]*)$/.test(x);
+  if (!s || typeof s !== "object" || !same(e.curve, v.curve) || !same(e.quote, ctx.quote) || e.quoteDecimals !== ctx.quoteDecimals) return null;
+  if (!isAddr(s.distributor) || !same(s.distributor, v.holderDistributor) || !whole(s.paidQuote) || !whole(s.paidToken)) return null;
+  return { quote: BigInt(s.paidQuote), token: BigInt(s.paidToken), distributor: s.distributor };
+}
+async function drawPaid(v) {
+  const box = $("tvPaid");
+  if (!box) return;
+  const token = T.token;
+  const ctx = S().ctx;
+  const none = () => {
+    box.hidden = true;
+    box.replaceChildren();
+    box.removeAttribute("title");
+    delete box.dataset.paid;
+    delete box.dataset.usd;
+  };
+  if (!v || !ctx) { none(); return; }
+  const e = sharingOn() ? paidEntry(await statsFile(), v, ctx) : null;
+  if (!same(token, T.token)) return;
+  // DECIDED, FOR THIS LAUNCH, WITH ITS VIEW AND WHAT stats.json SAID: a browser
+  // test cannot otherwise tell a line left out from one not drawn yet.
+  box.dataset.drawn = String(token).toLowerCase();
+  if (!e || e.quote <= 0n) { none(); return; }
+  const qd = quoteDec();
+  const sym = quoteSym();
+  const per = usdPer();
+  const dollars = per !== null ? toFloat(e.quote, qd) * per : NaN;
+  const amount = document.createElement("b");
+  amount.id = "tvPaidAmount";
+  amount.textContent = App.fmt(e.quote, qd, 6) + " " + sym;
+  const parts = ["Paid to holders: ", amount];
+  if (isFinite(dollars)) {
+    const u = document.createElement("span");
+    u.id = "tvPaidUsd";
+    u.textContent = "(~" + usd(dollars) + ")";
+    parts.push(" ", u);
+  }
+  box.replaceChildren(...parts);
+  box.hidden = false;
+  box.dataset.paid = e.quote.toString();
+  if (isFinite(dollars)) box.dataset.usd = String(dollars); else delete box.dataset.usd;
+  // THE EXACT FIGURE, WHO PAID IT AND ANY PART PAID IN THE TOKEN ITSELF (the
+  // locked position's LP fees, after graduation), on the tooltip.
+  box.title = e.quote + " of " + (sym || "the asset") + "'s smallest units, paid to this launch's holders by its distributor " +
+    e.distributor + ", as the site's index last read it from the chain" +
+    (e.token > 0n ? "; and " + App.fmt(e.token, 18, 4) + " " + tokenSym() + " of the token itself" : "") +
+    (isFinite(dollars) ? ". " + usdSource() : ". No dollar price of " + (sym || "this asset") + " could be read, so it is in its own units") + ".";
+}
+
 // ---------------------------------------------------------------- the history
 /// WHAT KIND OF REFUSAL: "range", "size" or "busy", sorted by web/sharing.js's
 /// logError - the sorting web/browse.js uses too, so the pages read one
@@ -1900,6 +1979,10 @@ async function drawAll() {
   readUsd().then((fresh) => { if (fresh) { redraw(); if (T.hist) drawChart(); } }).catch(() => {});
   drawHead(v);
   drawHidden(v);
+  // WHAT THE HOLDERS WERE PAID, BESIDE THE REST AND HOLDING NOTHING UP: its
+  // file is fetched once a visit, and the line is drawn again with every redraw
+  // - in dollars once the rate has come.
+  drawPaid(v).catch(() => {});
   if (!v) { drawAction(null); return; }
   // THE CHAIN'S CLOCK BEFORE ANYTHING IS DATED WITH IT, and where the
   // creator's earnings end if the launch shares its fees.

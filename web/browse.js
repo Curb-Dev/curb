@@ -456,6 +456,75 @@ function usdPerOf(v) {
 /// (app.js displaySymbol). The badge's picture still comes from the TRUE symbol.
 const displaySymbol = (sym) => (sym === "WETH" ? "ETH" : sym);
 
+// ------------------------------------------------------------- paid to holders
+//
+// WHAT A LAUNCH THAT SHARES HAS PAID ITS HOLDERS, a small line on its card
+// under "Holders earn": "Paid to holders: 1.25 NVDAc (~$231)". From stats.json,
+// as on the launch's own page (token.js drawPaid, which says why): its
+// distributor's totalPaid0(), as the history index's last run read it from the
+// chain - one file for every card, fetched once a visit, and only on the site's
+// own endpoint, whose chain must answer as config.js's chainId. Drawn only
+// from an entry naming the card's curve, asset, decimals and the distributor
+// the lens named, and only above 0; in dollars as the market cap is
+// (usdPerOf), and in the asset's own units where there are none.
+const STATS_SCHEMA = "curb.stats/1";
+const paid = { read: null, file: null, settled: false };
+function readStats() {
+  if (paid.read) return paid.read;
+  const site = window.CURB_SITE || {};
+  const own = typeof site.rpc === "string" ? site.rpc.trim() : "";
+  const rpc = state.rpc;
+  paid.read = (async () => {
+    if (!own || rpc !== own || !Number.isSafeInteger(site.chainId)) return null;
+    // THE CHAIN ASKED ONCE A VISIT (multicall.js chainId), as every page asks it.
+    if (parseInt(await rpcAt(rpc, "eth_chainId", []), 16) !== site.chainId) return null;
+    const res = await fetch("/sharing/" + site.chainId + "/stats.json", { signal: AbortSignal.timeout(10000) });
+    const j = res.ok ? await res.json() : null;
+    return j && j.schema === STATS_SCHEMA && j.chainId === site.chainId && j.launches && typeof j.launches === "object" ? j : null;
+  })().catch(() => null).then((j) => {
+    paid.file = j;
+    paid.settled = true;
+    refreshCards();
+    return j;
+  });
+  return paid.read;
+}
+/// THIS CARD'S ENTRY, held to what the lens said of it: { quote, token,
+/// distributor } in raw units, or null.
+function paidEntry(v) {
+  const j = paid.file;
+  const e = j ? j.launches[String(v.token).toLowerCase()] : null;
+  const s = e && e.holderSharing;
+  const whole = (x) => typeof x === "string" && /^(0|[1-9][0-9]*)$/.test(x);
+  if (!s || typeof s !== "object" || !v.holderDistributor || /^0x0{40}$/.test(v.holderDistributor)) return null;
+  if (String(e.curve).toLowerCase() !== String(v.curve).toLowerCase() ||
+    String(e.quote).toLowerCase() !== String(v.quoteToken).toLowerCase() ||
+    !Number.isInteger(v.quoteDecimals) || e.quoteDecimals !== v.quoteDecimals) return null;
+  if (typeof s.distributor !== "string" || s.distributor.toLowerCase() !== v.holderDistributor.toLowerCase() ||
+    !whole(s.paidQuote) || !whole(s.paidToken)) return null;
+  return { quote: BigInt(s.paidQuote), token: BigInt(s.paidToken), distributor: s.distributor };
+}
+/// THE LINE ITSELF: { amount, dollars, usd, raw, title } to draw, or null to
+/// draw none.
+function paidLine(v) {
+  const e = paidEntry(v);
+  if (!e || e.quote <= 0n) return null;
+  const sym = displaySymbol(v.quoteSym || "");
+  const whole = window.CurbPrices ? window.CurbPrices.toFloat(e.quote, v.quoteDecimals) : Number(e.quote) / 10 ** v.quoteDecimals;
+  const rate = usdPerOf(v);
+  const usd = rate ? whole * rate.per : NaN;
+  const amount = `${fmtQuote(e.quote, v.quoteDecimals)} ${sym}`.trim();
+  return {
+    amount,
+    dollars: isFinite(usd) ? "$" + compact(usd) : "",
+    usd,
+    raw: e.quote,
+    title: `${e.quote} of ${sym || "the asset"}'s smallest units, paid to this launch's holders by its distributor ` +
+      `${e.distributor}, as the site's index last read it from the chain` +
+      (rate ? ` - 1 ${sym} = $${compact(rate.per)} by ${rate.src}` : `. No dollar price of ${sym || "this asset"} could be read, so it is in its own units.`),
+  };
+}
+
 // ------------------------------------------------- a graduated launch's pool
 //
 // A GRADUATED LAUNCH TRADES IN ITS UNISWAP V4 POOL, so its price is the pool's
@@ -1317,12 +1386,18 @@ function cardOf(v) {
 
   // HOLDERS EARN THIS LAUNCH'S FEES: its creator switched its income to its
   // holder distributor (LaunchView w15), once and for good.
+  let paidEl = null;
   if (v.holderDistributor && !/^0x0{40}$/.test(v.holderDistributor)) {
     const share = document.createElement("span");
     share.className = "holdersEarn";
     share.textContent = "Holders earn";
     share.title = "This launch's creator fees go to its holders, through " + v.holderDistributor;
     info.appendChild(share);
+    // AND WHAT THEY HAVE BEEN PAID, once stats.json says (updateCard).
+    paidEl = document.createElement("div");
+    paidEl.className = "paid";
+    paidEl.hidden = true;
+    info.appendChild(paidEl);
   }
 
   if (v.status === 1 || v.status === 2) {
@@ -1405,7 +1480,7 @@ function cardOf(v) {
   // A MIDDLE PRESS OUTSIDE A LINK STARTS THE BROWSER'S AUTOSCROLL on Windows,
   // and then no auxclick follows - so the press is kept for the card.
   el.addEventListener("mousedown", (e) => { if (e.button === 1 && !e.target.closest("a, button")) e.preventDefault(); });
-  v.ui = { el, mc, mcVal, age };
+  v.ui = { el, mc, mcVal, age, paid: paidEl };
   updateCard(v);
   return el;
 }
@@ -1434,13 +1509,15 @@ function copyAddress(btn, address) {
   } catch { said("Copy failed"); }
 }
 
-/// The parts of a card that arrive after it is drawn: its dollars and its age.
+/// The parts of a card that arrive after it is drawn: its dollars, what its
+/// holders were paid, and its age.
 function updateCard(v) {
   if (!v.ui) return;
   const m = marketCap(v);
   if (v.ui.mcVal.textContent !== m.text) v.ui.mcVal.textContent = m.text;
   v.ui.mc.title = m.title;
   v.ui.mc.classList.toggle("unknown", m.text === "—" || m.text === "…");
+  if (v.ui.paid) drawPaidLine(v.ui.paid, paidLine(v));
   const t = timeOf(v);
   const bought = state.sort === "bought" ? lastBuy(v) : null;
   const boughtAge = bought && bought.ts !== undefined ? ageText({ ts: bought.ts }) : "";
@@ -1454,6 +1531,32 @@ function updateCard(v) {
   v.ui.age.title = t.ts !== undefined ? "Launched " + new Date(t.ts * 1000).toLocaleString() + " by the chain's clock"
     : t.older ? `Launched more than ${LOOKBACK_DAYS} days ago`
     : t.unknown ? "The launch time could not be read from this endpoint" : "";
+}
+
+/// "Paid to holders: <b>1.25 NVDAc</b> (~$231)", or nothing. Its raw figure and
+/// its dollars as numbers on data-, and once stats.json has been asked
+/// data-stats="read": a browser test cannot tell a line left out from one not
+/// drawn yet.
+function drawPaidLine(node, line) {
+  if (paid.settled) node.dataset.stats = "read";
+  node.hidden = !line;
+  if (!line) {
+    node.replaceChildren();
+    node.removeAttribute("title");
+    delete node.dataset.paid;
+    delete node.dataset.usd;
+    return;
+  }
+  const after = line.dollars ? " (~" + line.dollars + ")" : "";
+  // REDRAWN ONLY WHEN IT READS DIFFERENTLY: every card is updated on each tick.
+  if (node.textContent !== "Paid to holders: " + line.amount + after) {
+    const b = document.createElement("b");
+    b.textContent = line.amount;
+    node.replaceChildren("Paid to holders: ", b, after);
+  }
+  node.title = line.title;
+  node.dataset.paid = line.raw.toString();
+  if (isFinite(line.usd)) node.dataset.usd = String(line.usd); else delete node.dataset.usd;
 }
 
 /// Updates every card's late parts, and redraws when the order or the filter
@@ -1804,10 +1907,12 @@ async function loadPage(gen) {
   render();
 
   // WHAT ARRIVES AFTER THE CARDS: each asset's dollars, each graduated
-  // launch's pool price, and when each launch was made. None holds up the
-  // list, and each updates the cards it reaches.
+  // launch's pool price, what each launch that shares has paid its holders,
+  // and when each launch was made. None holds up the list, and each updates
+  // the cards it reaches.
   ensureRates();
   readPools();
+  readStats();
   readTimes();
   if (state.sort === "bought") readBuys().then(() => { if (state.sort === "bought") render(); });
 }

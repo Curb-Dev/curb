@@ -5,6 +5,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { toFunctionSelector } from 'viem';
 import { indexAll, merge, parseFile, parseChecked, parseStats, slim, SCHEMA, CHECKED_SCHEMA, STATS_SCHEMA, TOPIC, CURB_ROUTER, POOL_MANAGER, REWRITE_AFTER, type HistoryFile, type IndexLog } from '../scripts/index-history.ts';
 import type { Rpc } from '../src/chain/rpc.ts';
 
@@ -22,14 +23,16 @@ function log(address: string, topic0: string, block: number, index: number, extr
 /** The quote asset every launch here is paired with: 6 decimals. */
 const QUOTE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
 const DECIMALS = '0x313ce567';
-/** The lens's launchState: status, curve, quote asset; words 9-13 the pool key. */
-const state = (status: number, curve = CURVE, pool: string[] = Array(5).fill(w(0n))): string =>
-  '0x' + [w(BigInt(status)), w(curve), w(QUOTE), ...Array(6).fill(w(0n)), ...pool, w(0n), w(0n)].join('');
+/** The lens's launchState: status, curve, quote asset; words 9-13 the pool
+ *  key; word 15 the holder distributor, zero while the launch does not share. */
+const state = (status: number, curve = CURVE, pool: string[] = Array(5).fill(w(0n)), distributor = '0x' + '00'.repeat(20)): string =>
+  '0x' + [w(BigInt(status)), w(curve), w(QUOTE), ...Array(6).fill(w(0n)), ...pool, w(0n), w(distributor)].join('');
+const TOTAL_PAID0 = toFunctionSelector('totalPaid0()'), TOTAL_PAID1 = toFunctionSelector('totalPaid1()');
 
 /** A chain with one launch (or the ones given): launchedAt at block 1,000
  *  (2 s blocks from t=0), the safe head where the test puts it, and the logs
- *  it is given. */
-function chain(o: { safe: number; logs: IndexLog[]; launches?: { token: string; curve: string; state?: string }[] }) {
+ *  it is given. `paid` is each holder distributor's totalPaid0 and totalPaid1. */
+function chain(o: { safe: number; logs: IndexLog[]; launches?: { token: string; curve: string; state?: string }[]; paid?: Record<string, [bigint, bigint]> }) {
   const launches = o.launches ?? [{ token: TOKEN, curve: CURVE }];
   const calls: { method: string; params: any[] }[] = [];
   const rpc: Rpc = {
@@ -41,6 +44,9 @@ function chain(o: { safe: number; logs: IndexLog[]; launches?: { token: string; 
         const { to, data } = (params as any[])[0];
         if (to === REGISTRY && data.startsWith('0x27cca59f')) return '0x' + w(BigInt(launches.length)); // launchCount
         if (to === REGISTRY && data.startsWith('0x7f5780c4')) return '0x' + w(launches[Number(BigInt('0x' + data.slice(10)))].token); // launchAt(i)
+        const paid = o.paid && o.paid[to];
+        if (paid && data === TOTAL_PAID0) return '0x' + w(paid[0]);
+        if (paid && data === TOTAL_PAID1) return '0x' + w(paid[1]);
         const of = launches.find((l) => data.endsWith(w(l.token)));
         if (to === REGISTRY) return '0x' + [w(of!.curve), w('0x01'), w('0x02'), w('0x03'), w(0n), w(0n), w(0n), w('0x04'), w(100n), w(50n), w('0x05'), w(2000n)].join(''); // launchOf: launchedAt t=2000 -> block 1000
         if (to === LENS) return of!.state ?? state(1, of!.curve); // Selling
@@ -416,4 +422,79 @@ test('stats.json is written only when its numbers change: a later block with not
     [TOKEN]: good, [TOKEN2]: { ...good, curveVolume: '1.5' }, [A]: { ...good, holders: -1 }, [B]: { ...good, quote: undefined }, ['0x' + 'AB'.repeat(20)]: good,
   } }), 8453), { [TOKEN]: good }, 'an amount that is not whole units, a count below zero, no quote, a token not lower-case');
   assert.deepEqual(parseStats(new Uint8Array(Buffer.from('not json')), 8453), {});
+});
+
+// ---------------------------------------------------------------- paid to holders
+const DIST = '0x' + 'd1'.repeat(20);
+
+test("a launch that shares carries what its distributor has paid its holders, read from the chain each run; one that does not carries nothing", async () => {
+  const s = store();
+  const c = counting(s);
+  const logs = [buy(CURVE, A, 1001, 0, [1000n, 500n, 0n, 0n]), buy(CURVE2, B, 1050, 0, [400n, 100n, 0n, 0n])];
+  // TOKEN SHARES THROUGH DIST (the lens's word 15); TOKEN2 does not.
+  const launches = launches2(state(1, CURVE, undefined, DIST));
+  const go = (safe: number, paid: [bigint, bigint]) => {
+    const ch = chain({ safe, logs, launches, paid: { [DIST]: paid } });
+    return { ch, run: indexAll({ rpc: ch.rpc, chainId: 8453, registry: REGISTRY, lens: LENS, read: c.read, write: c.write, log: () => {} }) };
+  };
+  // NOTHING PAID YET: said as nothing, not left out.
+  const first = go(2000, [0n, 0n]);
+  assert.deepEqual(await first.run, { launches: 2, written: 2, failed: 0 });
+  assert.deepEqual(statsOf(s).launches[TOKEN].holderSharing, { distributor: DIST, paidQuote: '0', paidToken: '0' });
+  assert.equal('holderSharing' in statsOf(s).launches[TOKEN2], false, 'a launch that does not share has no such field');
+  assert.equal(statsOf(s).totals[QUOTE].curveBuys, 2, 'the totals are as they were');
+  assert.deepEqual(first.ch.calls.filter((x) => x.method === 'eth_call' && x.params[0].to === DIST).map((x) => x.params[0].data).sort(),
+    [TOTAL_PAID0, TOTAL_PAID1].sort(), 'each of its two totals, read once, and from nothing else');
+  // A PAYOUT SINCE, AND NOTHING NEW IN THE LOGS: the files stay, the numbers move.
+  c.writes.length = 0;
+  const second = go(2300, [1_234_567n, 89n]);
+  assert.deepEqual(await second.run, { launches: 2, written: 0, failed: 0 });
+  assert.deepEqual(c.writes, [CHECKED, STATS]);
+  assert.deepEqual(statsOf(s).launches[TOKEN].holderSharing, { distributor: DIST, paidQuote: '1234567', paidToken: '89' },
+    'totalPaid0 in the quote asset, totalPaid1 in the token');
+  assert.equal(statsOf(s).launches[TOKEN].quoteDecimals, 6, 'and the decimals that place the point, beside it');
+  // THE SAME AGAIN: read back as written, so it is no change and no commit.
+  c.writes.length = 0;
+  await go(2600, [1_234_567n, 89n]).run;
+  assert.deepEqual(c.writes, [CHECKED]);
+  const j = statsOf(s);
+  assert.deepEqual(parseStats(s.files.get(STATS)!, 8453), j.launches, 'parseStats keeps it, in the shape it is written');
+});
+
+test("a distributor that does not answer keeps the launch's numbers as they were; a lens with no word 15 says nothing; a malformed entry is not read back", async () => {
+  const s = store();
+  const logs = [buy(CURVE, A, 1001, 0, [1000n, 500n, 0n, 0n])];
+  const sharing = [{ token: TOKEN, curve: CURVE, state: state(1, CURVE, undefined, DIST) }];
+  await run(s, 2000, logs, chain({ safe: 2000, logs, launches: sharing, paid: { [DIST]: [700n, 0n] } }).rpc);
+  const was = statsOf(s).launches[TOKEN];
+  assert.deepEqual(was.holderSharing, { distributor: DIST, paidQuote: '700', paidToken: '0' });
+  // NO CODE AT THE DISTRIBUTOR (an answer of "0x"): the launch's numbers fail,
+  // and stay as the last run that could read them left them; its file moves on.
+  logs.push(buy(CURVE, B, 2100, 0, [10n, 5n, 0n, 0n]));
+  const later = chain({ safe: 2200, logs, launches: sharing });
+  const noCode: Rpc = { label: 'a', request: (a) => (a.method === 'eth_call' && (a.params as any[])[0].to === DIST ? Promise.resolve('0x') : later.rpc.request(a)) };
+  const r = await run(s, 2200, logs, noCode);
+  assert.equal(r.failed, 1);
+  assert.equal(s.file(PATH).curveLogs.length, 2, 'the file is still written');
+  assert.deepEqual(statsOf(s).launches[TOKEN], was, 'not counted with the new buy, and not without its payouts');
+  // A LENS THAT RETURNS FIFTEEN WORDS - one from before word 15 - says nothing
+  // of sharing: the launch is counted, with no such field, and nothing is asked
+  // of any distributor.
+  const old = store();
+  const short = chain({ safe: 2000, logs, launches: [{ token: TOKEN, curve: CURVE, state: state(1).slice(0, -64) }] });
+  assert.equal((await run(old, 2000, logs, short.rpc)).failed, 0);
+  assert.equal('holderSharing' in statsOf(old).launches[TOKEN], false);
+  assert.equal(statsOf(old).launches[TOKEN].curveBuys, 1, 'the buy before its block');
+  // READ BACK: a holderSharing that is not whole is not an entry.
+  const bytes = (x: unknown) => new Uint8Array(Buffer.from(JSON.stringify(x)));
+  const base = statsOf(old).launches[TOKEN];
+  const good = { ...base, holderSharing: { distributor: DIST, paidQuote: '5', paidToken: '0' } };
+  const T3 = '0x' + '33'.repeat(20), T4 = '0x' + '44'.repeat(20), T5 = '0x' + '55'.repeat(20), T6 = '0x' + '66'.repeat(20);
+  assert.deepEqual(parseStats(bytes({ schema: STATS_SCHEMA, chainId: 8453, launches: {
+    [TOKEN]: good, [TOKEN2]: base,
+    [T3]: { ...base, holderSharing: { ...good.holderSharing, distributor: ZERO } },
+    [T4]: { ...base, holderSharing: { ...good.holderSharing, paidQuote: '1.5' } },
+    [T5]: { ...base, holderSharing: { distributor: DIST, paidQuote: '5' } },
+    [T6]: { ...base, holderSharing: null },
+  } }), 8453), { [TOKEN]: good, [TOKEN2]: base }, 'the zero address, an amount not in whole units, an amount missing, null');
 });

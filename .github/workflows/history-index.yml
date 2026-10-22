@@ -10,7 +10,9 @@
 # as it always did. Display only: nothing is sent on what the file says.
 # And sharing/<chain>/stats.json, when its numbers change: each launch's
 # trades, traders, volumes and holders, counted from those files alone, for
-# screeners and the owner's weekly figures (the site does not read it).
+# screeners and the owner's weekly figures; and, for a launch that shares its
+# fees with its holders, what its distributor has paid them, read from the
+# chain each run - the one figure in it the site shows ("Paid to holders").
 #
 # The sharing-mainnet environment's RPC URLs and data repo token, as the
 # keeper uses them; no key is read. Never on a pull request; every action
