@@ -393,11 +393,11 @@ test('Telegram retry_after above 60 seconds is deferred to the next run', async 
   assert.deepEqual(waits, []);
 });
 
-test('the workflow gives the non-fatal announcer step its own five-minute timeout', () => {
+test('the workflow gives the non-fatal announcer step its own five-minute timeout, and runs it after a failed index', () => {
   const workflow = readFileSync('../../.github/workflows/history-index.yml', 'utf8');
   assert.match(
     workflow,
-    /- name: Announce public product events\r?\n\s+continue-on-error: true\r?\n\s+timeout-minutes: 5\r?\n/,
+    /- name: Announce public product events\r?\n\s+if: \$\{\{ !cancelled\(\) \}\}\r?\n\s+continue-on-error: true\r?\n\s+timeout-minutes: 5\r?\n/,
   );
 });
 

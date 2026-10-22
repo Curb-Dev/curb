@@ -61,8 +61,11 @@ jobs:
 
       # Public product announcements have their own bot and destination.
       # A Telegram/RPC/state failure is reported on this step but must never
-      # turn a successful history index red.
+      # turn a successful history index red. It reads the chain itself, so an
+      # index run that failed (an RPC refusing it for a rate limit, say) does
+      # not skip it: it runs unless the job was cancelled.
       - name: Announce public product events
+        if: ${{ !cancelled() }}
         continue-on-error: true
         timeout-minutes: 5
         env:
