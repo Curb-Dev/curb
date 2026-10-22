@@ -959,8 +959,11 @@ const rpcRefuse = (route, id, code, message) => route.fulfill({ status: 200, con
 /// The real launch at index 0 of a registry: its token and every word of its
 /// record - sixteen from the current lens, fourteen from one before launchedAt
 /// and the holder distributor were appended. The length is read off the answer.
-async function realRecord(lens) {
-  const hex = (await rawCall(lens, SEL.launchPage + word(0) + word(1))).replace(/^0x/, "");
+/// `newest`: the registry's last launch, which the newest-first list draws on
+/// its first page however many other suites have launched on this lens.
+async function realRecord(lens, { newest = false } = {}) {
+  const at0 = newest ? (await launchCountOf(lens)) - 1 : 0;
+  const hex = (await rawCall(lens, SEL.launchPage + word(at0) + word(1))).replace(/^0x/, "");
   const at = (i) => hex.slice(i * 64, (i + 1) * 64);
   const tokensAt = Number(big(at(0))) / 32;
   const viewsAt = Number(big(at(1))) / 32;
@@ -1233,7 +1236,8 @@ for (const stride of [16, 14]) test(`24h and 7d keep the launches made inside th
 
   await page.click('.chip[data-range="86400"]');
   await expect(page.locator(".launch"), "a launch two days old was kept by 24h").toHaveCount(0);
-  await expect(page.locator("#msg")).toContainText("0 made in the last 24 hours");
+  // (Once more launches exist than the first page loads, the line says "of the N loaded".)
+  await expect(page.locator("#msg")).toContainText(/^0 (of the \d+ loaded )?made in the last 24 hours/);
   await page.click('.chip[data-range="604800"]');
   await expect(page.locator(".launch"), "7d left out a launch two days old").toHaveCount(shown);
   await page.click('.chip[data-range="0"]');
@@ -1400,7 +1404,7 @@ test("the short address copies the whole address and does not open the launch", 
 /// it and cut "$MOONCAT" to "$MOO…" at 375 px; they take a line of their own.
 test("on a phone a card's symbol is not cut short by the creator's links", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  const { token } = await realRecord(APP.lens);
+  const { token } = await realRecord(APP.lens, { newest: true });
   const meta = { website: "https://example.com/curb", twitter: "https://x.com/curbprobe", telegram: "https://t.me/curbprobe" };
   const uri = "data:application/json;base64," + Buffer.from(JSON.stringify(meta)).toString("base64");
   await page.route("**/*", async (route) => {
@@ -1960,7 +1964,8 @@ test("a launch the registry already counted eight days ago reads 8d+ ago with no
   expect(logs.n, "logs were scanned for launches the registry already placed before the window").toBe(0);
   await page.click('.chip[data-range="86400"]');
   await expect(page.locator(".launch"), "24h kept a launch over eight days old").toHaveCount(0);
-  await expect(page.locator("#msg")).toContainText("0 made in the last 24 hours");
+  // (Once more launches exist than the first page loads, the line says "of the N loaded".)
+  await expect(page.locator("#msg")).toContainText(/^0 (of the \d+ loaded )?made in the last 24 hours/);
   await expect(page.locator("#msg")).not.toContainText("could not be read");
   await page.click('.chip[data-range="604800"]');
   await expect(page.locator(".launch"), "7d kept a launch over eight days old").toHaveCount(0);
