@@ -102,5 +102,6 @@ window.CURB_SITE = {
   banner: "",
   hiddenFactories: [],
   hiddenLaunches: [],
-  walletConnectProjectId: "",
+  // Reown project "Curb", domain allowlist https://curbfun.xyz (22 October 2026).
+  walletConnectProjectId: "787903628162d134681e13e3518a017d",
 };

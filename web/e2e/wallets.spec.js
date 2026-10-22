@@ -192,6 +192,52 @@ test("the remembered wallet announcing late is connected silently once it arrive
   expect(asked.A, "the wallet not remembered was asked").toBeUndefined();
 });
 
+test("with phone wallets on, a lone wallet that already allowed the site is connected silently, one that did not is only asked, and Connect then offers both", async ({ browser }) => {
+  // A RETURNING VISITOR (the wallet allowed the site before): connected at load,
+  // with nothing requested - and the bar's network switch has a wallet to ask.
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await useSite(page);
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [A] }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await expect(page.locator("#barConnect")).toContainText(short(THIRD), { timeout: 10_000 });
+  let asked = await logs(page);
+  expect(asked.A).toContain("eth_accounts");
+  expect(asked.A, "the returning visitor was prompted").not.toContain("eth_requestAccounts");
+  expect(await page.evaluate(() => typeof window.CurbBar.switchChain)).toBe("function");
+  await ctx.close();
+
+  // A NEW VISITOR: the lone wallet is asked silently, says no, and stays unchosen,
+  // so Connect opens the picker with it and the phone wallet - and nothing is requested before.
+  const ctx2 = await browser.newContext();
+  const page2 = await ctx2.newPage();
+  await useSite(page2);
+  await page2.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [{ ...A, connected: false }] }) });
+  await page2.goto("/curb.html");
+  await barReady(page2);
+  await settle(page2);
+  await expect(page2.locator("#barConnect")).toHaveText("Connect wallet");
+  asked = await logs(page2);
+  expect(asked.A || [], "the new visitor's wallet was prompted at load").not.toContain("eth_requestAccounts");
+  await page2.click("#barConnect");
+  await expect(rows(page2)).toHaveCount(2);
+  await ctx2.close();
+});
+
+test("with phone wallets on, a network switch pressed while the lone wallet is still being asked waits for it, and is sent to it", async ({ page }) => {
+  // A WALLET SLOW TO SAY IT ALLOWED THE SITE (an extension waking up): a press
+  // in that second must not find "no wallet" - it waits for the load's choice.
+  await useSite(page);
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc,
+    list: [{ ...A, cfg: { chainId: "0x1" }, slow: { eth_accounts: 2500 } }] }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  const out = await page.evaluate(() => window.CurbBar.switchChain("0x2105").then(() => "switched", (e) => "refused: " + e.message));
+  expect(out).toBe("switched");
+  expect((await logs(page)).A).toContain("wallet_switchEthereumChain");
+});
+
 test("a remembered wallet missing this visit means no wallet is asked anything, and Connect opens the picker", async ({ page }) => {
   await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [A, B], store: { wallet: "6963:com.gone.wallet" } }) });
   await page.goto("/curb.html");

@@ -605,6 +605,26 @@ function connected() {
 // ask at all until the person connects again - and it asks the chosen wallet
 // only, never one the person did not pick.
 async function detect() {
+  // WITH PHONE WALLETS ON, A LONE WALLET IS NOT CHOSEN AT LOAD (autoChoice), so
+  // a Connect offers the phone wallet beside it - but one that already allowed
+  // this site is asked silently here and taken, as it is with phone wallets
+  // off: a returning visitor is not made to pick again, and the bar's network
+  // switch has a wallet to ask. One that was not allowed stays unchosen.
+  // (Nothing remembered, or this very wallet: a remembered one missing this
+  // visit still means no wallet is asked anything.)
+  if (!chosen && WC_ON && !hidden && !clash && remembered !== "walletconnect") {
+    const list = choices();
+    if (list.length === 1 && (!remembered || remembered === list[0].key)) {
+      const lone = list[0];
+      let a = [];
+      try { a = await lone.provider.request({ method: "eth_accounts" }); } catch { a = []; }
+      if (!hidden && !chosen && Array.isArray(a) && isAddr(a[0])) {
+        await choose(lone, false);
+        if (chosen === lone) setAccount(a[0]);
+      }
+      return;
+    }
+  }
   const w = chosen;
   if (!w || hidden) return;
   try {
@@ -1278,6 +1298,9 @@ const chainName = (hex) => (hex === "0x2105" ? "Base" : "CURB fork " + parseInt(
 ///                   while config.js names no deployment (default: the one the
 ///                   bar's links point at)
 async function switchChain(hex, rpcForAdd) {
+  // THE LOAD'S CHOICE FIRST: a press in the page's first second would find no
+  // wallet while a lone one is still being asked whether it allowed the site.
+  await ready;
   const eth = chosen && chosen.provider;
   if (!eth) throw new Error("No wallet is connected.");
   hex = String(hex || "").toLowerCase();
@@ -1326,6 +1349,7 @@ if (!window.ethereum) {
     if (settledYet && !chosen && !hidden) {
       const c = autoChoice();
       if (c) choose(c, true);
+      else detect();
     }
     paint();
   }, { once: true });
