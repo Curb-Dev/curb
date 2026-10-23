@@ -9,9 +9,10 @@ STATUS: DEPLOYED to Base mainnet on 16 October 2026. Filled in at DEPLOY.txt
         was not kept, so the "as printed" lines below are the same getters the
         script prints, read again. Every contract is verified on Sourcify.
         On 19 October 2026 Basescan showed an Exact Match for every contract
-        read there but CurbRouter, which it does not show, and Blockscout
-        the source of every one - CurbRouter and the $CURB curve as partial
-        matches (EXPLORER VERIFICATION).
+        read there but CurbRouter, and Blockscout the source of every one -
+        CurbRouter and the $CURB curve as partial matches. CurbRouter was
+        submitted to Basescan from deploy/verify/ on 23 October 2026 and is
+        an Exact Match there now (EXPLORER VERIFICATION).
 
         Filling this in is step 5 of DEPLOY.txt and is part of A1, not an
         afterthought: an address book written later from recollection is how a
@@ -400,13 +401,14 @@ EXPLORER VERIFICATION
                                                           another submission
                                                           (solc 0.8.35)
   the WETH factory            [x] Exact Match         [x] exact match
-  CurbRouter                  [ ] NOT VERIFIED        [x] partial match
+  CurbRouter                  [x] Exact Match         [x] partial match
+                              (23 October, submitted
+                              from deploy/verify/)
   Not read on 19 October: the HolderFeeDistributor implementation and the
   per-asset contracts other than the WETH factory. The FeeHook, which the
   hook allowlist wants verified on a block explorer [PRE_MAINNET C7], is an
-  Exact Match on both. LEFT: CurbRouter on Basescan, with the inputs in
-  deploy/verify/ (README.txt, THE FORM, CurbRouter); its Blockscout partial
-  match can take the same file.
+  Exact Match on both. CurbRouter's Blockscout partial match can take the
+  same file (deploy/verify/README.txt, THE FORM, BLOCKSCOUT).
 
 
 ================================================================================

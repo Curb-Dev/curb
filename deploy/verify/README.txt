@@ -18,7 +18,9 @@ STATUS: READ OFF THE EXPLORERS' OWN PAGES ON 19 OCTOBER 2026 - Basescan's
                                       Exact Match     partial match (3)
         WETH factory (CurbLaunchFactory)
                                       Exact Match     exact match
-        CurbRouter                    NOT VERIFIED    partial match (4)
+        CurbRouter                    Exact Match     partial match (4)
+                                      (23 October, from
+                                      CurbRouter.standard-json-input.json)
 
         Every Basescan line names the contract, v0.8.30+commit.73712a01,
         "Yes with 200 runs", cancun and LICENSE "-NA-". Every Blockscout
@@ -42,12 +44,13 @@ STATUS: READ OFF THE EXPLORERS' OWN PAGES ON 19 OCTOBER 2026 - Basescan's
             Bytecode Database": CurbRouter, 0.8.30+commit.73712a01, cancun,
             200 runs, src/curb/CurbRouter.sol, "Verified at Oct 18, 2026
             23:54:06".
-        Basescan's CurbRouter page instead says "Are you the contract
-        creator? Verify and Publish your contract source code today!" and
-        "This contract was created by the contract code at
-        0x4e59b44847b379578588920ca78fbf26c0b4956c".
-        LEFT FOR THE OWNER: CurbRouter on Basescan (THE FORM, CurbRouter),
-        and on Blockscout its partial match may be submitted again with the
+        Basescan's CurbRouter page said "Are you the contract creator?
+        Verify and Publish your contract source code today!" until the
+        owner submitted THE FORM, CurbRouter, on 23 October 2026: Basescan
+        answered "Successfully generated matching Bytecode and ABI" and the
+        page shows "Source Code Verified (Exact Match)".
+        LEFT FOR THE OWNER: on Blockscout CurbRouter's partial match may be
+        submitted again with the
         same file (THE FORM, BLOCKSCOUT). PositionLock waits for the first
         graduation (POSITIONLOCK, below). Tick ADDRESSES.txt only from what
         the page shows.
@@ -177,7 +180,7 @@ THE FORM - THE SAME TWO PAGES FOR EACH CONTRACT
     0xfee92de7b93b6c11011060a985ad02821ddaef3332d1c60060374d97146049c3).
     DONE: Exact Match on Basescan and on Blockscout (STATUS).
 
-  CurbRouter  0xEa20C3266229a01cd0f45D9c7921a45d5b359561  OPEN ON BASESCAN
+  CurbRouter  0xEa20C3266229a01cd0f45D9c7921a45d5b359561  DONE ON BASESCAN (23 October 2026)
     Contract Address     0xEa20C3266229a01cd0f45D9c7921a45d5b359561
     Compiler Type        Solidity (Standard-Json-Input)
     Compiler Version     v0.8.30+commit.73712a01
