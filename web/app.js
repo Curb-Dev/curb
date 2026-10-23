@@ -758,6 +758,14 @@ let linkNamedFactory = false;
 const TOKEN_PATH = /\/token\/(0x[0-9a-fA-F]{40})\/?$/.exec(location.pathname);
 const TOKEN_VIEW = !!TOKEN_PATH;
 
+// THE LAUNCH FORM BY NAME: /launchpad is this file opened at the form, the
+// place app.html#create-launch scrolls to (vercel.json, _redirects). An anchor
+// the link names wins.
+if (/^\/launchpad$/.test(location.pathname) && !location.hash) {
+  const form = document.getElementById("create-launch");
+  if (form) form.scrollIntoView({ block: "start" });
+}
+
 function loadCfg() {
   const q = siteQuery();
   if (TOKEN_PATH && !q.get("token")) q.set("token", TOKEN_PATH[1]);

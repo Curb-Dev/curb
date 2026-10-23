@@ -3346,7 +3346,7 @@ test("the permanent terms moved out of the form and are still one click away", a
     "the long paragraphs are still inside the form"
   ).toBe(0);
 
-  const link = page.locator('a[href="terms.html"]');
+  const link = page.locator('a[href="/terms"]');
   await expect(link).toHaveCount(1);
 
   const terms = await browserRef.newPage();

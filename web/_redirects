@@ -4,6 +4,24 @@
 # A token's own address, /token/0x..., is app.html in its token view.
 # Netlify and Cloudflare Pages read this file; web/vercel.json says the same for Vercel.
 /token/*  /app.html  200
+# THE PAGES BY NAME, without .html: the launch form, the launches, $CURB, the
+# docs, moving a community, the terms. The .html addresses keep working.
+# vercel.json says the same, and its trailingSlash: false sends /docs/ to /docs;
+# here each name with a slash is sent on to the name without it, because a page
+# served under /docs/ would look for its own files in /docs/.
+/launchpad  /app.html  200
+/launches  /browse.html  200
+/curb  /curb.html  200
+/docs  /docs.html  200
+/migrate  /migrate.html  200
+/terms  /terms.html  200
+/launchpad/  /launchpad  301
+/launches/  /launches  301
+/curb/  /curb  301
+/docs/  /docs  301
+/migrate/  /migrate  301
+/terms/  /terms  301
+/sharing/  /sharing  301
 # Every distributor, its roles and its changes.
 /sharing  /sharing.html  200
 # The keeper's epoch files, served from the data repository (RUNBOOK 4.3). The

@@ -1,7 +1,14 @@
 {
+  "trailingSlash": false,
   "rewrites": [
     { "source": "/", "destination": "/browse.html" },
     { "source": "/token/:address", "destination": "/app.html" },
+    { "source": "/launchpad", "destination": "/app.html" },
+    { "source": "/launches", "destination": "/browse.html" },
+    { "source": "/curb", "destination": "/curb.html" },
+    { "source": "/docs", "destination": "/docs.html" },
+    { "source": "/migrate", "destination": "/migrate.html" },
+    { "source": "/terms", "destination": "/terms.html" },
     { "source": "/sharing", "destination": "/sharing.html" },
     { "source": "/sharing/:chain(\\d+)/:path*", "destination": "https://raw.githubusercontent.com/Curb-Dev/curb-sharing-data/main/sharing/:chain/:path*" }
   ],

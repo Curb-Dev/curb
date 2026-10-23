@@ -394,19 +394,19 @@ test("the bar carries the link's rpc and lens as a pair, and forgets them after"
   expect(q.get("rpc"), "the Launches link lost the rpc").toBe(STATE.rpc);
   expect(q.get("lens"), "the Launches link lost the lens").toBe(APP.lens);
   const cta = await page.locator("#siteBar .cbCta").getAttribute("href");
-  expect(cta).toContain("app.html?");
-  expect(cta.endsWith("#create-launch")).toBe(true);
+  // THE FORM BY NAME, with the pair.
+  expect(cta.startsWith("/launchpad?"), "the call to action is not /launchpad with the pair").toBe(true);
 
   // AN rpc ALONE IS NOT CARRIED - app.html calls that a half link.
   await page.goto("/browse.html?" + new URLSearchParams({ rpc: STATE.rpc }).toString());
   await barReady(page);
-  expect(await page.locator('#siteBar .cbNav a[data-k="browse"]').getAttribute("href")).toBe("browse.html");
+  expect(await page.locator('#siteBar .cbNav a[data-k="browse"]').getAttribute("href")).toBe("/launches");
 
   // AND A PAGE OPENED WITH NO PAIR DOES NOT INHERIT THE EARLIER LINK'S.
   await page.goto("/docs.html");
   await barReady(page);
   expect(await page.locator('#siteBar .cbNav a[data-k="browse"]').getAttribute("href"),
-    "a link's pair was stored and reused").toBe("browse.html");
+    "a link's pair was stored and reused").toBe("/launches");
   expect(await page.evaluate(() => localStorage.getItem("curb.site.v1") || "")).not.toContain("lens");
 
   // ON app.html THE CALL TO ACTION IS AN IN-PAGE JUMP, not a reload that drops the factory.
@@ -433,11 +433,11 @@ test("a link's pair survives the bar's links and the pages' own, even with anoth
   await page.goto("/browse.html?" + pair);
   await barReady(page);
   await page.click('#siteBar .cbNav a[data-k="docs"]');
-  await page.waitForURL(/docs\.html/);
+  await page.waitForURL(/\/docs(\?|$)/);
   expect(lensOf(page.url()), "the bar's Docs link dropped the pair").toBe(A.toLowerCase());
   await barReady(page);
   await page.click('#siteBar .cbNav a[data-k="browse"]');
-  await page.waitForURL(/browse\.html/);
+  await page.waitForURL(/\/launches(\?|$)/);
   expect(lensOf(page.url()), "browse (A) -> Docs -> Launches did not come back to A").toBe(A.toLowerCase());
   await expect.poll(() => page.evaluate(() => window.CurbBrowse && window.CurbBrowse.lens),
     { message: "browse.html read another registry than its link named" }).toBe(A);
@@ -445,18 +445,18 @@ test("a link's pair survives the bar's links and the pages' own, even with anoth
   // $CURB, AND curb.html's OWN LINK TO THE LAUNCHES.
   await barReady(page);
   await page.click('#siteBar .cbNav a[data-k="curb"]');
-  await page.waitForURL(/curb\.html/);
+  await page.waitForURL(/\/curb(\?|$)/);
   expect(lensOf(page.url()), "the bar's $CURB link dropped the pair").toBe(A.toLowerCase());
-  expect(lensOf(await page.locator('main a[href^="browse.html"]').first().getAttribute("href")),
+  expect(lensOf(await page.locator("main a", { hasText: "See the launches" }).first().getAttribute("href")),
     "curb.html's link to the launches dropped the pair").toBe(A.toLowerCase());
   // browse.html's launch button and terms.html's way back to the form.
   await page.goto("/browse.html?" + pair);
   await barReady(page);
-  expect(lensOf(await page.locator('main a.btn[href^="app.html"]').getAttribute("href")),
+  expect(lensOf(await page.locator('main a.btn[href^="/launchpad"]').getAttribute("href")),
     "browse.html's launch button dropped the pair").toBe(A.toLowerCase());
   await page.goto("/terms.html?" + pair);
   await barReady(page);
-  expect(lensOf(await page.locator('a.back[href^="app.html"]').getAttribute("href")),
+  expect(lensOf(await page.locator('a.back[href^="/launchpad"]').getAttribute("href")),
     "terms.html's way back dropped the pair").toBe(A.toLowerCase());
 
   // AND WITH NO LINK, browse.html reads the pair the bar carries - the saved one.
@@ -491,24 +491,24 @@ test("the bar reads a saved pair only when the person set it, and a half link re
   expect(lensOf(await page.locator('#siteBar .cbNav a[data-k="browse"]').getAttribute("href")),
     "the control: the bar did not read the saved pair").toBe(B.toLowerCase());
   expect(await page.locator("a.back").getAttribute("href"), "terms.html's way back took the saved pair")
-    .toBe("app.html");
+    .toBe("/launchpad");
   await page.goto("/curb.html");
   await barReady(page);
-  expect(await page.locator('main a[href^="browse.html"]').first().getAttribute("href"),
-    "curb.html's link took the saved pair").toBe("browse.html");
+  expect(await page.locator("main a", { hasText: "See the launches" }).first().getAttribute("href"),
+    "curb.html's link took the saved pair").toBe("/");
 
   await save({ rpcFromLink: true });
   await page.goto("/docs.html");
   await barReady(page);
   expect(await page.locator('#siteBar .cbNav a[data-k="browse"]').getAttribute("href"),
-    "the bar carried a saved pair whose endpoint only a link brought").toBe("browse.html");
+    "the bar carried a saved pair whose endpoint only a link brought").toBe("/launches");
 
   await save({ rpcFromLink: false });
   await page.goto("/browse.html?" + new URLSearchParams({ rpc: STATE.rpc }).toString());
   await barReady(page);
   await expect(page.locator("#msg"), "a half link was not said").toContainText("only half of where to read");
   expect(await page.locator('#siteBar .cbNav a[data-k="browse"]').getAttribute("href"),
-    "a half link fell back to the saved pair in the bar").toBe("browse.html");
+    "a half link fell back to the saved pair in the bar").toBe("/launches");
   await page.waitForTimeout(500);
   expect(await page.locator(".launch").count(), "a half link listed the saved registry's launches").toBe(0);
 });
@@ -1003,4 +1003,64 @@ test("every transaction the site sends carries CURB's Base Builder Code, and not
     expect(helper, html + " does not load builder-code.js").toBeGreaterThan(-1);
     expect(helper, html + " loads builder-code.js after " + script).toBeLessThan(at);
   }
+});
+
+
+// ================================================================ addresses
+// EVERY PAGE BY ITS NAME: /launchpad, /launches, /curb, /docs, /migrate,
+// /terms and /sharing answer with their page, the name with a slash after it is
+// sent on to the name (a page under /docs/ would look for its files in /docs/),
+// the .html addresses still work, and the two hosts and the test server agree.
+test("every page answers by its name, a slash after it is sent on, and the hosts say the same", async ({ page, request }) => {
+  const NAMES = { launchpad: "app.html", launches: "browse.html", curb: "curb.html", docs: "docs.html",
+    migrate: "migrate.html", terms: "terms.html", sharing: "sharing.html" };
+  const titleOf = (file) => (fs.readFileSync(path.join(__dirname, "..", file), "utf8").match(/<title>([^<]*)<\/title>/) || [])[1];
+  for (const [name, file] of Object.entries(NAMES)) {
+    const res = await request.get("/" + name);
+    expect(res.status(), "/" + name + " did not answer").toBe(200);
+    expect((await res.text()).includes("<title>" + titleOf(file) + "</title>"), "/" + name + " is not " + file).toBe(true);
+    const slash = await request.get("/" + name + "/?a=1", { maxRedirects: 0 });
+    expect(slash.status(), "/" + name + "/ was not sent on").toBe(308);
+    expect(slash.headers()["location"]).toBe("/" + name + "?a=1");
+    expect((await request.get("/" + file)).status(), file + " stopped answering").toBe(200);
+  }
+
+  // THE HOSTS AND THE TEST SERVER: the same names, to the same files.
+  const vercel = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "vercel.json"), "utf8"));
+  const redirects = fs.readFileSync(path.join(__dirname, "..", "_redirects"), "utf8").split(/\r?\n/).map((l) => l.trim().split(/\s+/).join(" "));
+  const { CLEAN } = require("./serve.js");
+  expect(CLEAN).toEqual(NAMES);
+  expect(vercel.trailingSlash, "vercel.json does not send /docs/ to /docs").toBe(false);
+  for (const [name, file] of Object.entries(NAMES)) {
+    expect(vercel.rewrites).toContainEqual({ source: "/" + name, destination: "/" + file });
+    expect(redirects, "_redirects does not serve /" + name).toContain("/" + name + " /" + file + " 200");
+    expect(redirects, "_redirects does not send /" + name + "/ on").toContain("/" + name + "/ /" + name + " 301");
+  }
+
+  // THE BAR SAYS THE NAMES, and /launchpad opens at the form.
+  await page.goto("/docs");
+  await barReady(page);
+  expect(await page.locator("#siteBar .cbNav a").evaluateAll((as) => as.map((a) => a.getAttribute("href"))))
+    .toEqual(["/curb", "/launches", "/sharing", "/docs"]);
+  expect(await page.locator("#siteBar .cbBrand").getAttribute("href")).toBe("/");
+  expect(await page.locator("#siteBar .cbCta").getAttribute("href")).toBe("/launchpad");
+  await page.locator("#siteBar .cbCta").click();
+  await page.waitForURL(/\/launchpad$/);
+  await barReady(page);
+  await expect(page.locator("#create-launch")).toBeVisible();
+  expect(await page.locator("#siteBar .cbCta").getAttribute("href"), "on the form, the call to action is not the in-page jump")
+    .toBe("#create-launch");
+  // AT THE FORM, exactly where app.html#create-launch puts it.
+  const topOf = () => page.locator("#create-launch").evaluate((e) => Math.round(e.getBoundingClientRect().top));
+  await page.waitForTimeout(500);
+  const named = await topOf();
+  await page.goto("/app.html#create-launch");
+  await barReady(page);
+  await page.waitForTimeout(500);
+  const anchored = await topOf();
+  await page.goto("/app.html");
+  await barReady(page);
+  await page.waitForTimeout(500);
+  expect(await topOf(), "app.html alone already opens at the form, so this proves nothing").toBeGreaterThan(anchored + 20);
+  expect(Math.abs(named - anchored), "/launchpad did not open where app.html#create-launch does").toBeLessThan(4);
 });

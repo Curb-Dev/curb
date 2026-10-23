@@ -2058,7 +2058,7 @@ function start() {
   // THE CARD'S ONE CLAIM PRESSES app.js's #claimAll: sweep, escrow, hook.
   $("tvClaimAct").addEventListener("click", () => { const b = $("claimAll"); if (b) b.click(); });
   const back = $("tvBack");
-  if (back && window.CurbBar) back.href = window.CurbBar.withConfig("browse.html");
+  if (back && window.CurbBar) back.href = window.CurbBar.withConfig("/");
   wireSwap();
   wireTabs();
   document.addEventListener("curb:drawn", redraw);

@@ -26,10 +26,11 @@
   var RE_SEP_CELL = /^:?-+:?$/;
   var RE_TONE = /^\*\*(Note|Warning|Tip):\*\*/;
   // THE ONLY LINKS THAT BECOME LINKS: absolute http(s), a page of this site by
-  // its bare file name, or an anchor on this page. Anchors are the characters
-  // a heading id can hold, so every heading can be linked and nothing else can
-  // be smuggled in through the fragment.
-  var RE_PAGE_LINK = /^([a-z0-9-]+\.html)(#[a-z0-9-]+)?$/;
+  // its bare file name or by its name (/docs, / for the launches: the names
+  // vercel.json and _redirects serve), or an anchor on this page. Anchors are
+  // the characters a heading id can hold, so every heading can be linked and
+  // nothing else can be smuggled in through the fragment.
+  var RE_PAGE_LINK = /^([a-z0-9-]+\.html|\/(?:launchpad|launches|curb|docs|migrate|terms|sharing)?)(#[a-z0-9-]+)?$/;
   var RE_ANCHOR_LINK = /^#[a-z0-9-]+$/;
   var MAX_DEPTH = 8;
   // Longest link target looked at. It bounds the scan for the closing ")", so

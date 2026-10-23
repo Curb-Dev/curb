@@ -417,9 +417,9 @@ test("the domain's root is the launches page, and an address that is no page get
   await page.goto("/no/such/page");
   await expect(page.locator("#siteBar .cbInner")).toBeVisible();
   // FROM THE ROOT, at any depth: the bar's links and the page's own.
-  expect(await page.locator('#siteBar .cbNav a[data-k="browse"]').evaluate((a) => a.href)).toBe(baseURL + "/browse.html");
+  expect(await page.locator('#siteBar .cbNav a[data-k="browse"]').evaluate((a) => a.href)).toBe(baseURL + "/launches");
   await page.locator("main a.main").click();
-  await expect(page).toHaveURL(baseURL + "/browse.html");
+  await expect(page).toHaveURL(baseURL + "/");
 
   // THE HOSTS SAY THE SAME, and so does the test server.
   const vercel = JSON.parse(fs.readFileSync(path.join(WEB, "vercel.json"), "utf8"));

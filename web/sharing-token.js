@@ -736,7 +736,7 @@ async function openEnable(data) {
       el("li", { id: "shEnablePublisher", text: "Payouts need CURB's keeper to keep publishing them; unpaid shares wait in the distributor." }),
       el("li", { text: "Unclaimed shares never expire." }),
       el("li", { id: "shEnableLimits" }, ["CURB can also freeze payouts: ",
-        el("a", { href: "docs.html#what-curb-can-and-cannot-do", target: "_blank", rel: "noopener", text: "what CURB can and cannot do" }), "."]),
+        el("a", { href: "/docs#what-curb-can-and-cannot-do", target: "_blank", rel: "noopener", text: "what CURB can and cannot do" }), "."]),
     ]),
     el("p", { class: "shNote", text: "Paid through distributor version " + (offer.version === null ? "?" : offer.version) + " at " + offer.factory + ", the one the CURB catalog recommends." }),
     el("label", { for: "shEnableConfirm", text: "Type SHARE to confirm" }), input,

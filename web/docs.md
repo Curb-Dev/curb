@@ -9,7 +9,7 @@ a trading tax of 1% to 5%; the platform takes a share of it (0.50% at deployment
 or gives it to the launch's holders, for good.
 
 > **Note:** Nothing here is financial advice. A launch token can lose all of its value. Read the
-> [terms](terms.html) before you launch or trade.
+> [terms](/terms) before you launch or trade.
 
 ---
 
@@ -17,11 +17,11 @@ or gives it to the launch's holders, for good.
 
 1. **Connect.** Use a wallet on Base with a little ETH for gas. If it is on another network, the site says so
    and offers to switch - to Base only: nothing is sent on any other network.
-2. **Launch.** Open [Launch a token](app.html#create-launch). Add a name, symbol, image and links, pick a creator
+2. **Launch.** Open [Launch a token](/launchpad). Add a name, symbol, image and links, pick a creator
    tax and who earns it - **You**, or **Holders** under **Who earns your tax** if your creator share should go to
    your holders - add a dev buy if you want one, and pick a paired asset (ETH unless you choose another). Press **Create the launch** and confirm. Launching costs gas only, plus the dev buy if you chose one. When it is
    mined, the site takes you to your launch's page, with its swap box ready for a first trade.
-3. **Trade.** Find a launch on [Launches](browse.html) or with the search in the top bar, and buy or sell on its
+3. **Trade.** Find a launch on [Launches](/) or with the search in the top bar, and buy or sell on its
    page. Each card on Launches shows the token, its paired asset, its market cap in dollars, how close it is to
    graduating and how long ago it launched; sort by newest, just bought, oldest, market cap or progress, or keep
    only the last 24 hours or 7 days of what is loaded. **Just bought** lists the launches still on their curve,
@@ -35,7 +35,7 @@ or gives it to the launch's holders, for good.
 4. **Claim.** If you created a launch, connect the creator wallet and press **Claim** on its page; it sweeps
    what the curve still holds for you first, and claims what every launch paying that address in that asset owes
    it. If you hold a launch that shares its fees, your share is sent to you; **Claim** on
-   [Holder fees](sharing.html) takes it sooner. That page lists, for your connected wallet, every token you earned
+   [Holder fees](/sharing) takes it sooner. That page lists, for your connected wallet, every token you earned
    holder fees from - earned, paid and claimable, in the pair's asset and in dollars - with the total.
 
 Each approval the site asks for is for the exact amount of the action in front of you, with one exception: to
@@ -185,7 +185,7 @@ multisig or a vetoer can also freeze publishing, which holds every waiting payou
 than it received.
 
 **Getting paid.** Shares are sent automatically once they are worth the gas (about $0.05 or more); a smaller share
-builds up until it is. You can claim yours on [Holder fees](sharing.html) at any time, and it never expires. If a
+builds up until it is. You can claim yours on [Holder fees](/sharing) at any time, and it never expires. If a
 paired asset's issuer blocks your address, your share waits, and you can claim it to another address of yours on
 the launch's holder details (its page with `#holders` at the end of the address).
 
@@ -211,7 +211,7 @@ under [What CURB can and cannot do](#what-curb-can-and-cannot-do).
 A dev buy is an optional first purchase made inside the launch transaction, so nobody can buy before it. You pay
 it in the paired asset, it pays the same tax as any buy, and the tokens go to the creator wallet. The form takes
 it as an amount or as a percentage of the supply. Moving a community from a token on another launchpad?
-[Move a community](migrate.html) takes a snapshot of its holders and makes the airdrop file for your own Safe.
+[Move a community](/migrate) takes a snapshot of its holders and makes the airdrop file for your own Safe.
 
 - A dev buy can get at most 20% of the 1,000,000,000 minted, 200,000,000 tokens. The limit is on the tokens, so it
   is the same on every pair. In the paired asset it is about 0.42 WETH on an ETH pair, a little more at a higher
@@ -382,7 +382,7 @@ no dev buy. Its tax is 1%, all of it to the platform's treasury, which is its cr
 off. Holding it gives no vote and no claim on the platform's income. The platform's treasury policy, decided on
 22 September 2026, is to spend 80% of its fee income buying $CURB and burning it, and 20% running the platform.
 That is a policy carried out by hand when enough has built up, not something the contracts do, and no burn has
-happened yet. See the [$CURB page](curb.html).
+happened yet. See the [$CURB page](/curb).
 
 ---
 
@@ -798,5 +798,5 @@ the wallet, or, on the phone itself, open the wallet from the list.
 - **Five minutes to confirm.** A request your wallet answers later than that is lost, and the site cannot tell
   whether the transaction went out: check your wallet's activity before you send again.
 - **The code is Reown's**, served from this site unchanged and loaded only when you pick Phone wallet, under the
-  WalletConnect Community License Agreement (linked from the [terms](terms.html)). Portions © 2025 Reown, Inc. All
+  WalletConnect Community License Agreement (linked from the [terms](/terms)). Portions © 2025 Reown, Inc. All
   Rights Reserved.

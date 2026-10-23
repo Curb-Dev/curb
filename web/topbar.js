@@ -213,14 +213,15 @@ const NAV = [
   // [page, href, label] - the token first, then the launches (the owner's
   // order), then where holder sharing is seen - every distributor and what it
   // paid (sharing.html; the owner looked for it and found no way there) - then
-  // the docs.
-  ["curb", "curb.html", "$CURB"],
-  ["browse", "browse.html", "Launches"],
-  ["sharing", "sharing.html", "Holder fees"],
-  ["docs", "docs.html", "Docs"],
+  // the docs. EACH BY ITS NAME, without .html (vercel.json, _redirects): the
+  // address a person sees and shares.
+  ["curb", "/curb", "$CURB"],
+  ["browse", "/launches", "Launches"],
+  ["sharing", "/sharing", "Holder fees"],
+  ["docs", "/docs", "Docs"],
 ];
 
-const brand = el("a", { class: "cbBrand", href: withConfig("browse.html"), "aria-label": "Curb, all launches", html: MARK });
+const brand = el("a", { class: "cbBrand", href: withConfig("/"), "aria-label": "Curb, all launches", html: MARK });
 brand.append(el("span", { text: "Curb" }));
 
 const nav = el("nav", { class: "cbNav", "aria-label": "Site" });
@@ -246,8 +247,9 @@ actions.append(el("a", { class: "cbIcon", href: "https://t.me/CurbCommunity", ta
 // would drop the link's factory and token. NOT ON A TOKEN'S PAGE (/token/0x…,
 // the same file in its token view): the form is not shown there, and the
 // page's base URL is the site's root, so "#create-launch" would leave for "/".
+// Anywhere else it is /launchpad, which opens app.html at the form.
 const TOKEN_VIEW = /\/token\/0x[0-9a-fA-F]{40}\/?$/.test(location.pathname);
-const cta = el("a", { class: "cbCta", href: PAGE === "app" && !TOKEN_VIEW ? "#create-launch" : withConfig("app.html#create-launch") }, [
+const cta = el("a", { class: "cbCta", href: PAGE === "app" && !TOKEN_VIEW ? "#create-launch" : withConfig("/launchpad") }, [
   el("span", { class: "cbLong", text: "+ Launch token" }),
   el("span", { class: "cbShort", text: "+ Launch" }),
 ]);
@@ -331,11 +333,14 @@ endpointNotice(config.rpc);
 // "names a lens but no factory" - app.html then warns about the site's own
 // link and drops the person's chosen factory (round 5, N51 describes it for
 // the bar's + Launch token). So without a link's pair these stay as written.
+/// A PAGE OF THIS SITE: by its file (docs.html), or by its name (/docs, and /
+/// for the launches), with an anchor or not.
+const PAGE_LINK = /^(?:[a-z0-9-]+\.html|\/(?:launchpad|launches|curb|docs|migrate|terms|sharing)?)(#[\w-]*)?$/i;
 function carryLinks() {
   if (!config.fromLink) return;
   for (const a of document.querySelectorAll("a[data-carry]")) {
     const href = a.getAttribute("href") || "";
-    if (/^[a-z0-9-]+\.html(#[\w-]*)?$/i.test(href)) a.setAttribute("href", withConfig(href));
+    if (PAGE_LINK.test(href)) a.setAttribute("href", withConfig(href));
   }
 }
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", carryLinks);

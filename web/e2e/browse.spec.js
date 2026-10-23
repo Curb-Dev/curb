@@ -2518,7 +2518,7 @@ test("the hero: one line and the Launch button, and the registry's first launch 
     const first = picked.eth;
     await expect(p.locator("#heroPairSym")).toHaveText("ETH", { timeout: 30_000 });
     await expect(p.locator("#heroTitle")).toHaveText("Launch coins paired with ETH, stocks & more");
-    await expect(p.locator("#heroLaunch")).toHaveAttribute("href", /app\.html\?.*lens=.*#create-launch$/);
+    await expect(p.locator("#heroLaunch")).toHaveAttribute("href", /^\/launchpad\?.*lens=/);
     const card = p.locator("#heroCard");
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card).toHaveAttribute("href", new RegExp("token/" + first, "i"));

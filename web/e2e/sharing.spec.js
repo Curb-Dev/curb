@@ -370,7 +370,7 @@ test("the launch form's choice: You, the launch's last field is zero; Holders, t
   // AND THAT CURB CAN FREEZE THEM, in one line that links to the whole list,
   // in a new tab so the form is kept. Who the vetoers are is the docs' to say.
   await expect(p.locator("#shareLimits")).toHaveText("CURB can also freeze payouts: what CURB can and cannot do.");
-  await expect(p.locator("#shareLimits a")).toHaveAttribute("href", "docs.html#what-curb-can-and-cannot-do");
+  await expect(p.locator("#shareLimits a")).toHaveAttribute("href", "/docs#what-curb-can-and-cannot-do");
   await expect(p.locator("#shareLimits a")).toHaveAttribute("target", "_blank");
   await expect(p.locator("#shareVersion")).toContainText(recommended, { ignoreCase: true });
   await expect(p.locator("#shareVersion")).toContainText("version 1");
@@ -1322,7 +1322,7 @@ test("the switch after launch is the creator wallet's alone, behind a typed conf
   await expect(p.locator("#shEnablePublisher")).toHaveText("Payouts need CURB's keeper to keep publishing them; unpaid shares wait in the distributor.");
   await expect(dlg).toContainText("Every payout is public and can be stopped by CURB for 1 hour.");
   await expect(p.locator("#shEnableLimits")).toHaveText("CURB can also freeze payouts: what CURB can and cannot do.");
-  await expect(p.locator("#shEnableLimits a")).toHaveAttribute("href", "docs.html#what-curb-can-and-cannot-do");
+  await expect(p.locator("#shEnableLimits a")).toHaveAttribute("href", "/docs#what-curb-can-and-cannot-do");
   await expect(p.locator("#shEnablePending")).toContainText((await fmtOn(p, pendingTax)) + " NVDAc of creator tax not yet swept");
   await expect(p.locator("#shEnableAct")).toBeDisabled();
   await p.fill("#shEnableConfirm", "SHAR");

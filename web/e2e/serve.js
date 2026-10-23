@@ -6,8 +6,10 @@
 // that in the in-page harness.
 //
 // IT ANSWERS AS THE HOSTS DO (web/vercel.json, web/_redirects): / is the
-// launches page, /token/0x... is app.html, /sharing is sharing.html, and an
-// address that is no file gets web/404.html with a 404.
+// launches page, /token/0x... is app.html, each page has its name without
+// .html (CLEAN: /launchpad is app.html, /docs is docs.html...), the name with a
+// slash after it is sent on to the name, and an address that is no file gets
+// web/404.html with a 404.
 //
 // CURB_E2E_HEADERS=1 SENDS THE SITE'S RESPONSE HEADERS (web/_headers, the file
 // Netlify and Cloudflare Pages read; vercel.json carries the same values) on
@@ -77,11 +79,26 @@ function testConfig() {
 }
 
 /// The file a path names, as the hosts' rewrites make it.
+/// THE PAGES BY NAME, as vercel.json and _redirects serve them.
+const CLEAN = {
+  launchpad: "app.html", launches: "browse.html", curb: "curb.html", docs: "docs.html",
+  migrate: "migrate.html", terms: "terms.html", sharing: "sharing.html",
+};
+
 function fileFor(pathname) {
   if (pathname === "/" || pathname === "") return "browse.html";
   if (/^\/token\/0x[0-9a-fA-F]{40}\/?$/.test(pathname)) return "app.html";
-  if (/^\/sharing\/?$/.test(pathname)) return "sharing.html";
+  const name = /^\/([a-z]+)$/.exec(pathname);
+  if (name && Object.hasOwn(CLEAN, name[1])) return CLEAN[name[1]];
   return decodeURIComponent(pathname).replace(/^\/+/, "");
+}
+
+/// A NAME WITH A SLASH AFTER IT, sent on to the name without one (the hosts'
+/// trailingSlash: false): a page served under /docs/ would look for its own
+/// files in /docs/. The query goes with it. null for anything else.
+function slashRedirect(pathname, search) {
+  const name = /^\/([a-z]+)\/$/.exec(pathname);
+  return name && Object.hasOwn(CLEAN, name[1]) ? "/" + name[1] + (search || "") : null;
 }
 
 function start() {
@@ -90,6 +107,12 @@ function start() {
   http
     .createServer((req, res) => {
       const url = new URL(req.url, "http://127.0.0.1");
+      const onward = slashRedirect(url.pathname, url.search);
+      if (onward) {
+        res.writeHead(308, Object.fromEntries([["location", onward], ["cache-control", "no-store"], ...extra]));
+        res.end();
+        return;
+      }
       const rel = fileFor(url.pathname);
       const file = path.resolve(ROOT, rel);
       // Nothing outside web/ is servable, whatever the path says.
@@ -128,4 +151,4 @@ function start() {
 const BUILDER_SUFFIX = fs.readFileSync(path.join(ROOT, "builder-code.js"), "utf8").match(/dataSuffix = "0x([0-9a-f]+)"/)[1];
 
 if (require.main === module) start();
-module.exports = { siteHeaders, testHeaders, fileFor, testConfig, BUILDER_SUFFIX };
+module.exports = { siteHeaders, testHeaders, fileFor, slashRedirect, CLEAN, testConfig, BUILDER_SUFFIX };
