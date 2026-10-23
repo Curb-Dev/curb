@@ -600,7 +600,7 @@ test("the wallet picker and WalletConnect's panel work under the site's policy",
   const icon = "data:image/svg+xml;base64," + Buffer.from(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#0a0"/></svg>').toString("base64");
   await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc,
-    list: [{ id: "A", uuid: uuid("1"), rdns: "com.alpha.wallet", name: "Alpha Wallet", icon, account: TRADER }] }) });
+    list: [{ id: "A", uuid: uuid("1"), rdns: "io.metamask", name: "MetaMask", icon, account: TRADER }] }) });
   await recordViolations(page);
   await page.goto(base + "/curb.html");
   await expect(page.locator("#siteBar .cbInner")).toBeVisible({ timeout: 15_000 });

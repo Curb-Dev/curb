@@ -32,8 +32,8 @@ const short = (a) => a.slice(0, 6) + "…" + a.slice(-4);
 
 // Both already allowed this site, so either would answer eth_accounts with an
 // account if it were asked - which is what makes "asked nothing" mean something.
-const A = { id: "A", uuid: uuid("1"), rdns: "com.alpha.wallet", name: "Alpha Wallet", account: THIRD, connected: true };
-const B = { id: "B", uuid: uuid("2"), rdns: "com.beta.wallet", name: "Beta Wallet", account: OTHER, connected: true };
+const A = { id: "A", uuid: uuid("1"), rdns: "io.metamask", name: "MetaMask", account: THIRD, connected: true };
+const B = { id: "B", uuid: uuid("2"), rdns: "io.rabby", name: "Rabby Wallet", account: OTHER, connected: true };
 const LEGACY = { id: "eth", account: TRADER, connected: true };
 const appUrl = "/app.html?" + new URLSearchParams({ rpc: STATE.rpc, factory: APP.factory, lens: APP.lens }).toString();
 
@@ -77,10 +77,10 @@ test("with several wallets and none remembered nothing is asked until the person
   await expect(picker(page)).toHaveAttribute("aria-label", "Choose a wallet");
   // ONE ROW PER WALLET THAT ANNOUNCED - window.ethereum is one of them, not a third.
   await expect(rows(page)).toHaveCount(2);
-  await expect(rows(page).nth(0).locator(".cbPickName")).toHaveText("Alpha Wallet");
-  await expect(rows(page).nth(0).locator(".cbPickId")).toHaveText("com.alpha.wallet");
-  await expect(rows(page).nth(1).locator(".cbPickName")).toHaveText("Beta Wallet");
-  await expect(rows(page).nth(1).locator(".cbPickId")).toHaveText("com.beta.wallet");
+  await expect(rows(page).nth(0).locator(".cbPickName")).toHaveText("MetaMask");
+  await expect(rows(page).nth(1).locator(".cbPickName")).toHaveText("Rabby Wallet");
+  // A ROW IS ITS PICTURE AND ITS NAME, nothing under it.
+  expect(await rows(page).evaluateAll((rs) => rs.map((r) => r.children.length))).toEqual([2, 2]);
   await expect(rows(page).nth(0)).toBeFocused();
   // ESCAPE AND A PRESS OUTSIDE CLOSE IT, choosing nothing.
   await page.keyboard.press("Escape");
@@ -99,7 +99,7 @@ test("with several wallets and none remembered nothing is asked until the person
   expect(asked.B, "the picked wallet was not asked to connect").toContain("eth_requestAccounts");
   expect(asked.A, "a wallet nobody picked was asked").toBeUndefined();
   expect(asked.eth, "window.ethereum was asked").toBeUndefined();
-  expect((await stored(page)).wallet).toBe("6963:com.beta.wallet");
+  expect((await stored(page)).wallet).toBe("6963:io.rabby");
 
   // THE NEXT PAGE ASKS THE SAME WALLET, SILENTLY, AND NO OTHER.
   await clearLogs(page);
@@ -113,29 +113,29 @@ test("with several wallets and none remembered nothing is asked until the person
   expect(asked.eth).toBeUndefined();
 });
 
-test("an announced name and icon are drawn inertly: the name as text, only a data:image icon, nothing fetched", async ({ page }) => {
+test("an announced name and icon are drawn inertly: the site's own name for the id, only a data:image icon, nothing fetched", async ({ page }) => {
   let evil = 0;
   await page.route(/^https?:\/\/evil\.example\//, (route) => { evil += 1; return route.fulfill({ status: 404, body: "" }); });
   const svg = "data:image/svg+xml;base64," + Buffer.from(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#0a0"/></svg>').toString("base64");
   const list = [
-    { id: "X1", uuid: uuid("3"), rdns: "com.x1.wallet", name: "<img src=x onerror=window.__pwned=1>", icon: "https://evil.example/x.png", account: THIRD },
-    { id: "X2", uuid: uuid("4"), rdns: "com.x2.wallet", name: "Gam\u202ema\u0007  \n wallet", icon: "javascript:alert(1)", account: THIRD },
-    { id: "X3", uuid: uuid("5"), rdns: "com.x3.wallet", name: "Delta", icon: "data:text/html,<script>window.__pwned=1</script>", account: THIRD },
-    { id: "X4", uuid: uuid("6"), rdns: "com.x4.wallet", name: "Svg Wallet", icon: svg, account: THIRD },
+    { id: "X1", uuid: uuid("3"), rdns: "io.metamask", name: "<img src=x onerror=window.__pwned=1>", icon: "https://evil.example/x.png", account: THIRD },
+    { id: "X2", uuid: uuid("4"), rdns: "IO.Rabby", name: "Gam\u202ema\u0007  \n wallet", icon: "javascript:alert(1)", account: THIRD },
+    { id: "X3", uuid: uuid("5"), rdns: "com.coinbase.wallet", name: "MetaMask", icon: "data:text/html,<script>window.__pwned=1</script>", account: THIRD },
+    { id: "X4", uuid: uuid("6"), rdns: "me.rainbow", name: "Svg Wallet", icon: svg, account: THIRD },
     // THE SAME uuid AGAIN: the first one keeps it.
-    { id: "X5", uuid: uuid("6"), rdns: "com.copycat.wallet", name: "Copycat", icon: svg, account: THIRD },
+    { id: "X5", uuid: uuid("6"), rdns: "com.trustwallet.app", name: "Copycat", icon: svg, account: THIRD },
   ];
-  // ANNOUNCEMENTS NO WALLET SHOULD MAKE, each answering every request.
+  // ANNOUNCEMENTS NO WALLET SHOULD MAKE, each answering every request - under
+  // listed ids, so it is the announcement that is refused, not the wallet.
   const malformed = function () {
     var good = { request: function () { return Promise.resolve(null); }, on: function () {}, removeListener: function () {} };
     var all = [
-      { info: { uuid: "77777777-7777-4777-8777-777777777777", name: "No request", rdns: "com.norequest.wallet" }, provider: {} },
+      { info: { uuid: "77777777-7777-4777-8777-777777777777", name: "No request", rdns: "com.okex.wallet" }, provider: {} },
       { info: "not an object", provider: good },
-      { info: { uuid: "not-a-uuid", name: "Bad uuid", rdns: "com.baduuid.wallet" }, provider: good },
+      { info: { uuid: "not-a-uuid", name: "Bad uuid", rdns: "io.zerion.wallet" }, provider: good },
       { info: { uuid: "88888888-8888-4888-8888-888888888888", name: "Bad rdns", rdns: "evil" }, provider: good },
-      { info: { uuid: "99999999-9999-4999-8999-999999999999", name: " \u202e\u0000 ", rdns: "com.noname.wallet" }, provider: good },
-      { info: { uuid: "66666666-6666-4666-8666-666666666666", name: "Node", rdns: "com.node.wallet" }, provider: document },
+      { info: { uuid: "66666666-6666-4666-8666-666666666666", name: "Node", rdns: "com.brave.wallet" }, provider: document },
       null,
       "a string",
     ];
@@ -151,8 +151,10 @@ test("an announced name and icon are drawn inertly: the name as text, only a dat
   await page.click("#barConnect");
   await expect(picker(page)).toBeVisible();
   await expect(rows(page)).toHaveCount(4);
+  // EACH UNDER THE NAME THE SITE GIVES ITS ID, whatever it announced - a
+  // wallet calling itself "MetaMask" is drawn as the wallet its id says.
   expect(await rows(page).locator(".cbPickName").allTextContents()).toEqual(
-    ["<img src=x onerror=window.__pwned=1>", "Gamma wallet", "Delta", "Svg Wallet"]);
+    ["MetaMask", "Rabby Wallet", "Coinbase Wallet", "Rainbow"]);
   // THE NAME IS TEXT: nothing in its line is an element.
   expect(await page.locator("#siteBar .cbPickName").evaluateAll((ns) => ns.reduce((n, x) => n + x.children.length, 0))).toBe(0);
   // ONE PICTURE, THE ONE data:image ICON; the rest drawn as letters.
@@ -166,9 +168,40 @@ test("an announced name and icon are drawn inertly: the name as text, only a dat
   expect(errors).toEqual([]);
 });
 
+test("a wallet the site does not list is not drawn, is asked nothing, and window.ethereum is not offered in its place", async ({ page }) => {
+  // MADE FOR ANOTHER CHAIN FIRST, each already allowing the site.
+  const others = [
+    { id: "P", uuid: uuid("8"), rdns: "app.phantom", name: "Phantom", account: THIRD, connected: true },
+    { id: "K", uuid: uuid("9"), rdns: "app.keplr", name: "MetaMask", account: THIRD, connected: true },
+  ];
+  // REMEMBERED from before the list, too.
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [others[0], A, others[1], B], legacy: LEGACY,
+    store: { wallet: "6963:app.phantom" } }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await settle(page);
+  expect(await logs(page), "a wallet was asked before the person picked one").toEqual({});
+  await page.click("#barConnect");
+  await expect(picker(page)).toBeVisible();
+  expect(await rows(page).locator(".cbPickName").allTextContents()).toEqual(["MetaMask", "Rabby Wallet"]);
+  await page.keyboard.press("Escape");
+
+  // ONLY UNLISTED WALLETS: no picker, no "Browser wallet", and the note says why.
+  const alone = await page.context().newPage();
+  await alone.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: others, legacy: LEGACY }) });
+  await alone.goto("/curb.html");
+  await barReady(alone);
+  await settle(alone);
+  await alone.click("#barConnect");
+  await expect(alone.locator("#siteBar .cbNote")).toContainText("This browser's wallets are not ones the site lists.");
+  await expect(picker(alone)).toBeHidden();
+  expect(await logs(alone), "a wallet the site does not list, or window.ethereum, was asked").toEqual({});
+  await alone.close();
+});
+
 test("a remembered id announced twice is chosen for neither: nothing is asked, and the picker says why", async ({ page }) => {
   const twin = { ...B, id: "B2", uuid: uuid("7"), account: THIRD };
-  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [A, B, twin], store: { wallet: "6963:com.beta.wallet" } }) });
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [A, B, twin], store: { wallet: "6963:io.rabby" } }) });
   await page.goto("/curb.html");
   await barReady(page);
   await settle(page);
@@ -176,13 +209,24 @@ test("a remembered id announced twice is chosen for neither: nothing is asked, a
   expect(await logs(page), "a wallet was asked something with its id announced twice").toEqual({});
   await page.click("#barConnect");
   await expect(picker(page)).toBeVisible();
-  await expect(picker(page).locator(".cbPickWarn")).toContainText("com.beta.wallet");
+  await expect(picker(page).locator(".cbPickWarn")).toContainText("both say they are Rabby Wallet");
   await expect(rows(page)).toHaveCount(3);
+});
+
+test("two wallets with one id are both drawn, and the picker says so, with nothing remembered too", async ({ page }) => {
+  const twin = { ...A, id: "A2", uuid: uuid("7"), account: OTHER };
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [A, twin, B] }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await settle(page);
+  await page.click("#barConnect");
+  await expect(picker(page).locator(".cbPickWarn")).toContainText("both say they are MetaMask");
+  expect(await rows(page).locator(".cbPickName").allTextContents()).toEqual(["MetaMask", "MetaMask", "Rabby Wallet"]);
 });
 
 test("the remembered wallet announcing late is connected silently once it arrives", async ({ page }) => {
   await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [A, { ...B, late: 400 }],
-    store: { wallet: "6963:com.beta.wallet" } }) });
+    store: { wallet: "6963:io.rabby" } }) });
   await page.goto("/curb.html");
   await barReady(page);
   await expect(page.locator("#barConnect")).toContainText(short(OTHER), { timeout: 10_000 });
@@ -239,7 +283,7 @@ test("with phone wallets on, a network switch pressed while the lone wallet is s
 });
 
 test("a remembered wallet missing this visit means no wallet is asked anything, and Connect opens the picker", async ({ page }) => {
-  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [A, B], store: { wallet: "6963:com.gone.wallet" } }) });
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [A, B], store: { wallet: "6963:me.rainbow" } }) });
   await page.goto("/curb.html");
   await barReady(page);
   await settle(page);
@@ -252,7 +296,7 @@ test("a remembered wallet missing this visit means no wallet is asked anything, 
 
 test("Disconnect forgets the wallet chosen, and a pick the wallet declines is not remembered", async ({ page }) => {
   await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [{ ...A, decline: true }, B],
-    store: { wallet: "6963:com.beta.wallet" } }) });
+    store: { wallet: "6963:io.rabby" } }) });
   await page.goto("/curb.html");
   await barReady(page);
   await expect(page.locator("#barConnect")).toContainText(short(OTHER), { timeout: 10_000 });
@@ -291,7 +335,7 @@ test("Disconnect forgets the wallet chosen, and a pick the wallet declines is no
 test("a remembered wallet that does not connect is let go: the next Connect opens the picker, in the bar, on app.html and on launch.html", async ({ page }) => {
   // A WAS CONNECTED LAST WEEK; TODAY IT IS LOCKED, OR NO LONGER ALLOWS THE SITE, AND THE PERSON WANTS B.
   const list = [{ ...A, connected: false, decline: true }, { ...B, connected: false }];
-  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list, store: { wallet: "6963:com.alpha.wallet" } }) });
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list, store: { wallet: "6963:io.metamask" } }) });
   const declinedThenPicker = async (connect, where) => {
     await settle(page);
     // THE REMEMBERED WALLET IS ASKED STRAIGHT AWAY, with no picker, and declines.
@@ -311,12 +355,12 @@ test("a remembered wallet that does not connect is let go: the next Connect open
   await declinedThenPicker("#barConnect", "curb.html");
   await rows(page).nth(1).click();
   await expect(page.locator("#barConnect")).toContainText(short(OTHER));
-  expect((await stored(page)).wallet).toBe("6963:com.beta.wallet");
+  expect((await stored(page)).wallet).toBe("6963:io.rabby");
   expect((await logs(page)).A.filter((m) => m === "eth_requestAccounts"), "A was asked again").toHaveLength(1);
 
   for (const [url, where] of [[appUrl, "app.html"], ["/launch.html", "launch.html"]]) {
     await page.evaluate(() => {
-      localStorage.setItem("curb.site.v1", JSON.stringify({ wallet: "6963:com.alpha.wallet" }));
+      localStorage.setItem("curb.site.v1", JSON.stringify({ wallet: "6963:io.metamask" }));
       sessionStorage.setItem("wallets.log", "{}");
     });
     await page.goto(url);
@@ -341,7 +385,7 @@ test("a row pressed while the first wallet is still answering is the one that co
   const asked = await logs(page);
   expect(asked.A, "the wallet pressed first was asked to connect").not.toContain("eth_requestAccounts");
   expect(asked.B).toContain("eth_requestAccounts");
-  expect((await stored(page)).wallet).toBe("6963:com.beta.wallet");
+  expect((await stored(page)).wallet).toBe("6963:io.rabby");
   expect(await page.evaluate(() => window.CurbBar.wallet() === window.__wallets.B)).toBe(true);
 });
 
@@ -349,7 +393,7 @@ test("an account a wallet gives after another tab chose another wallet is not sh
   const page = await context.newPage();
   // A, REMEMBERED, TAKES 3 s OVER ITS PROMPT.
   const list = [{ ...A, connected: false, slow: { eth_requestAccounts: 3000 } }, { ...B, connected: false }];
-  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list, store: { wallet: "6963:com.alpha.wallet" } }) });
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list, store: { wallet: "6963:io.metamask" } }) });
   await page.goto("/curb.html");
   await barReady(page);
   await settle(page);
@@ -358,13 +402,13 @@ test("an account a wallet gives after another tab chose another wallet is not sh
   // MEANWHILE ANOTHER TAB CONNECTS B.
   const other = await context.newPage();
   await other.goto("/terms.html");
-  await other.evaluate(() => localStorage.setItem("curb.site.v1", JSON.stringify({ hidden: false, wallet: "6963:com.beta.wallet" })));
+  await other.evaluate(() => localStorage.setItem("curb.site.v1", JSON.stringify({ hidden: false, wallet: "6963:io.rabby" })));
   await expect.poll(() => page.evaluate(() => window.CurbBar.wallet() === window.__wallets.B)).toBe(true);
   // A ANSWERS NOW, with its account.
   await page.waitForTimeout(3200);
   await expect(page.locator("#barConnect")).toHaveText("Connect wallet");
   expect(await page.evaluate(() => window.CurbBar.account()), "A's account was shown as B's").toBeNull();
-  expect((await stored(page)).wallet).toBe("6963:com.beta.wallet");
+  expect((await stored(page)).wallet).toBe("6963:io.rabby");
 });
 
 test("the pages do not wait for wallet discovery that cannot change the choice: no wallet, two, or a Disconnect", async ({ context }) => {
@@ -389,6 +433,9 @@ test("the pages do not wait for wallet discovery that cannot change the choice: 
   expect(await after(appUrl, { list: [] }), "app.html with no wallet waited for discovery").toBeLessThan(100);
   // TWO WALLETS, NONE REMEMBERED: the person picks, whatever else announces.
   expect(await after("/curb.html", { list: [A, B] }), "two wallets waited for discovery").toBeLessThan(100);
+  // A REMEMBERED WALLET THE SITE DOES NOT LIST is not waited for: it would never be drawn.
+  expect(await after("/curb.html", { list: [A, B], store: { wallet: "6963:app.phantom" } }),
+    "a remembered wallet the site does not list was waited for").toBeLessThan(100);
   // A LONE WALLET STILL WAITS A MOMENT, for a second that may join it.
   expect(await after("/curb.html", { list: [A] }), "a lone wallet was chosen before a second could announce").toBeGreaterThanOrEqual(140);
   // AFTER A DISCONNECT nothing is chosen, so nothing is waited for.

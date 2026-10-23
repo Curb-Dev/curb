@@ -347,18 +347,20 @@ else carryLinks();
 // window.ethereum is whichever extension wrote it last, so a person with two
 // wallets was connected through one they never chose. Wallets announce
 // themselves now (EIP-6963): each answers "eip6963:requestProvider" with its
-// own provider, a name, an icon and a reverse-DNS id. The bar keeps what they
-// announce, the person picks one, and from then on THAT provider is the only
-// one asked - by the bar, and by every page through CurbBar.wallet() (app.js,
-// launch.js and sharing-page.js send through nothing else). A browser whose
-// wallet announces nothing still has window.ethereum, as the one choice
+// own provider, a name, an icon and a reverse-DNS id. The bar keeps the ones
+// it LISTS (below), the person picks one, and from then on THAT provider is the
+// only one asked - by the bar, and by every page through CurbBar.wallet()
+// (app.js, launch.js and sharing-page.js send through nothing else). A browser
+// whose wallet announces nothing still has window.ethereum, as the one choice
 // "Browser wallet" - which is every browser test that announces nothing.
 //
 // EVERY ANNOUNCEMENT IS A STRANGER'S. Any extension can announce, under any
-// name and with any picture. The name is drawn as text; the icon only as an
-// <img> from a data:image URI, so drawing it fetches nothing; and the id is
-// drawn under the name, so a second "MetaMask" shows an id that is not
-// MetaMask's. A remembered id that two wallets announce is chosen for neither.
+// name, id and picture. Only a LISTED id is drawn, and under the name LISTED
+// gives it - never the name announced - so a stranger passes only for the
+// wallet whose id it copies; two wallets with one id are both drawn, the
+// picker says so, and a remembered id that two announce is chosen for neither.
+// The icon is drawn only as an <img> from a data:image URI, so drawing it
+// fetches nothing.
 //
 // REMEMBERED BY ID, NEVER BY NAME OR uuid (a uuid changes on every load):
 // `wallet` in the bar's store, written when the person connects and erased by
@@ -375,20 +377,27 @@ const ICON_MAX = 128 * 1024;
 const ICON_URI = /^data:image\/(svg\+xml|png|jpeg|gif|webp)[;,]/i;
 const UUID = /^[0-9a-f-]{36}$/i;
 const RDNS = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
-/// Control characters, and the ones that turn the text's direction round.
-const UNSAFE_CHARS = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
+/// THE BROWSER WALLETS LISTED, by the id each announces, with the name drawn for
+/// it: wallets made for Ethereum's chains first, that work on Base (the ids as
+/// WalletConnect's wallet registry gives them). A wallet made for another chain
+/// first - Solana's, Cosmos's, Tron's - is not listed even where it can reach
+/// Base, and window.ethereum is not offered in its place; one on a phone still
+/// connects through WalletConnect.
+const LISTED = new Map([
+  ["io.metamask", "MetaMask"],
+  ["io.rabby", "Rabby Wallet"],
+  ["com.coinbase.wallet", "Coinbase Wallet"],
+  ["com.trustwallet.app", "Trust Wallet"],
+  ["com.okex.wallet", "OKX Wallet"],
+  ["me.rainbow", "Rainbow"],
+  ["io.zerion.wallet", "Zerion"],
+  ["com.brave.wallet", "Brave Wallet"],
+]);
 /// WALLETCONNECT IS OFFERED ONLY WITH A PROJECT ID, A DEPLOYMENT AND THE SITE'S
 /// OWN ENDPOINT: its session's one chain is config.js's, and every read it
 /// answers goes to config.js's rpc (walletconnect.js).
 const WC_ON = !!(SITE.walletConnect && SEND_CHAIN && SITE.rpc);
 
-/// A wallet's name as the bar draws it: one line, no control or direction
-/// characters, at most 40 characters; "" when nothing is left.
-function walletName(s) {
-  if (typeof s !== "string") return "";
-  const one = s.replace(/\s+/g, " ").replace(UNSAFE_CHARS, "").trim();
-  return Array.from(one).slice(0, 40).join("").trim();
-}
 /// A provider worth keeping: an object with a request function, and never a
 /// DOM node - an element with id "ethereum" IS window.ethereum on a browser
 /// with no wallet (docs.js keeps its headings off that id for this reason).
@@ -398,10 +407,11 @@ const isProvider = (p) => !!p && typeof p === "object" && typeof p.request === "
 function walletKey(v) {
   const s = typeof v === "string" ? v.trim().toLowerCase() : "";
   if (s === "legacy" || s === "walletconnect") return s;
-  return s.startsWith("6963:") && s.length <= 105 && RDNS.test(s.slice(5)) ? s : "";
+  return s.startsWith("6963:") && LISTED.has(s.slice(5)) ? s : "";
 }
 
 const announced = [];          // { kind, key, uuid, rdns, name, icon, provider }, in order of arrival
+let unlisted = false;          // a wallet announced that LISTED does not name
 let legacy = null;             // window.ethereum, as the choice "Browser wallet"
 let chosen = null;             // the wallet every page asks, or null
 let clash = "";                // a remembered id that two wallets announced
@@ -431,11 +441,11 @@ function legacyChoice() {
   return legacy;
 }
 /// The wallets there are to pick from: the announced ones, else window.ethereum.
-/// The "Browser wallet" leaves the list once any wallet announces - it is one
-/// of them, and one wallet must not be listed twice - unless it is already
-/// this page's choice.
+/// The "Browser wallet" leaves the list once any wallet announces, listed or
+/// not - it is one of them: listed, it must not be listed twice, and unlisted,
+/// not at all - unless it is already this page's choice.
 function choices() {
-  const list = announced.length ? announced.slice() : [legacyChoice()].filter(Boolean);
+  const list = announced.length || unlisted ? announced.slice() : [legacyChoice()].filter(Boolean);
   if (chosen && chosen.kind === "legacy" && !list.includes(chosen)) list.unshift(chosen);
   return list;
 }
@@ -448,14 +458,16 @@ function onAnnounce(e) {
     const provider = d.provider;
     if (!info || typeof info !== "object" || !isProvider(provider)) return;
     // EACH FIELD READ ONCE: a getter may answer differently the second time.
-    const uuid = info.uuid, rdns = info.rdns, name = walletName(info.name), icon = info.icon;
+    const uuid = info.uuid, rdns = info.rdns, icon = info.icon;
     if (typeof uuid !== "string" || !UUID.test(uuid)) return;
     if (typeof rdns !== "string" || rdns.length > 100 || !RDNS.test(rdns)) return;
-    if (!name || announced.length >= MAX_WALLETS) return;
+    const id = rdns.toLowerCase(), name = LISTED.get(id);
+    if (!name) { unlisted = true; return; }
+    if (announced.length >= MAX_WALLETS) return;
     // THE FIRST WITH A uuid WINS: a repeat is the same wallet answering again, or an impostor.
     if (announced.some((w) => w.uuid === uuid.toLowerCase())) return;
     const entry = {
-      kind: "injected", key: "6963:" + rdns.toLowerCase(), uuid: uuid.toLowerCase(), rdns: rdns.toLowerCase(), name,
+      kind: "injected", key: "6963:" + id, uuid: uuid.toLowerCase(), rdns: id, name,
       icon: typeof icon === "string" && icon.length <= ICON_MAX && ICON_URI.test(icon) ? icon : "",
       provider,
     };
@@ -676,7 +688,8 @@ async function pick() {
   if (chosen) return chosen.provider;
   const list = choices();
   if (!list.length && !WC_ON) {
-    showNote("No browser wallet found. Install one - Coinbase Wallet, MetaMask or Rabby - and reload this page.");
+    showNote((unlisted ? "This browser's wallets are not ones the site lists." : "No browser wallet found.") +
+      " Install one - Coinbase Wallet, MetaMask or Rabby - and reload this page.");
     return null;
   }
   if (list.length === 1 && !WC_ON && !clash) {
@@ -908,24 +921,26 @@ function walletIcon(w) {
   img.src = w.icon;
   return img;
 }
-function pickRow(icon, name, id, onPick) {
-  const b = el("button", { type: "button", class: "cbPickRow" }, [icon, el("span", { class: "cbPickText" }, [
-    el("span", { class: "cbPickName", text: name }), el("span", { class: "cbPickId", text: id })])]);
+function pickRow(icon, name, onPick) {
+  const b = el("button", { type: "button", class: "cbPickRow" }, [icon, el("span", { class: "cbPickName", text: name })]);
   b.addEventListener("click", onPick);
   return b;
 }
 function drawPicker() {
   pickBox.textContent = "";
   pickBox.append(el("div", { class: "cbPickHead", text: "Choose a wallet" }));
-  if (clash) {
-    pickBox.append(el("p", { class: "cbPickWarn", text: "Two wallets in this browser claim the same id, " + clash +
-      ", so neither was chosen for you: one of them is not what it says. Pick the one you mean, or remove the " +
+  const list = choices();
+  // TWO WALLETS WITH ONE ID ARE TWO ROWS WITH ONE NAME (names come from LISTED): said here.
+  const twin = list.find((w, i) => list.findIndex((x) => x.key === w.key) !== i);
+  if (twin) {
+    pickBox.append(el("p", { class: "cbPickWarn", text: "Two wallets in this browser both say they are " + twin.name +
+      ": one of them is not what it says, so neither is chosen for you. Pick the one you mean, or remove the " +
       "extension you do not know." }));
   }
-  for (const w of choices()) pickBox.append(pickRow(walletIcon(w), w.name, w.rdns || "window.ethereum", () => picked(w)));
+  for (const w of list) pickBox.append(pickRow(walletIcon(w), w.name, () => picked(w)));
   if (WC_ON) {
     pickBox.append(pickRow(el("span", { class: "cbPickTile cbPickWc", html: PHONE_ICON }), "Phone wallet - WalletConnect",
-      "A QR code, or a link to your phone's wallet", () => startWalletConnect()));
+      () => startWalletConnect()));
   }
 }
 async function picked(w) {

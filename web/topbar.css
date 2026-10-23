@@ -160,10 +160,7 @@ html { scroll-padding-top: calc(var(--cb-bar-h) + 16px); }
 #siteBar .cbPickTile { display: grid; place-items: center; font-size: 13px; font-weight: 750;
   color: var(--dim, #94a0b0); border: 1px solid var(--line, #1d2633); background: var(--panel2, #131a24); }
 #siteBar .cbPickTile svg { display: block; }
-#siteBar .cbPickText { display: flex; flex-direction: column; min-width: 0; }
-#siteBar .cbPickName { font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
-#siteBar .cbPickId { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
-  color: var(--dimmer, #5f6b7c); overflow-wrap: anywhere; }
+#siteBar .cbPickName { min-width: 0; font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
 
 /* ---- WalletConnect's panel, in the picker (walletconnect.js): the code on a
    white ground with its quiet zone, the phone wallets' links, and the way back. */

@@ -770,9 +770,12 @@ fixed.
 
 ## Phone wallets (WalletConnect)
 
-**Connect wallet** lists the wallets your browser announces, each with the id it announces under its name, so two
-wallets with the same name can be told apart. The one you pick is the only one the site asks from then on, and it
-is remembered for your next visit until you press Disconnect. If it does not connect - you decline, or it is
+**Connect wallet** lists the browser wallets made for Ethereum's chains that work on Base - MetaMask, Rabby Wallet,
+Coinbase Wallet, Trust Wallet, OKX Wallet, Rainbow, Zerion and Brave Wallet - when your browser has them. A wallet
+made for another chain first (Phantom, Keplr, TronLink and the like) is not listed; a wallet on your phone can still
+connect as a phone wallet if it supports WalletConnect. If two wallets in your browser both say they are the same
+one, both are listed, the site says so, and neither is chosen for you. The one you pick is the only one the site
+asks from then on, and it is remembered for your next visit until you press Disconnect. If it does not connect - you decline, or it is
 locked - while another wallet is there to pick, it is forgotten, and the next Connect asks which wallet again.
 
 Where the site offers it, **Phone wallet** connects a wallet on your phone through WalletConnect: scan the code with
