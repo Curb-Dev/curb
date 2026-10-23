@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="32" height="32" role="img" aria-label="CURB">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#161A21"/>
+      <stop offset="1" stop-color="#0A0C0F"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="400" fill="url(#ground)"/>
+  <g fill="none" stroke-linecap="butt" stroke-linejoin="miter" stroke-width="52">
+    <path d="M 90 260 H 200 V 148 H 300" stroke="#E9ECF0"/>
+    <path d="M 174 148 H 300" stroke="#F5A524"/>
+  </g>
+</svg>
