@@ -116,7 +116,8 @@
     <li><strong>Buy what you will give away.</strong> Every launch puts its whole supply on its curve, and nothing is
       set aside for anyone, so you can airdrop only what you buy. A dev buy, made inside the launch transaction, can
       receive up to <span id="mCapLine">20% of the supply (200,000,000 tokens)</span>; anything more you buy on the
-      curve afterwards, like anyone else.</li>
+      curve afterwards, like anyone else. The curve sells about 73% of the supply; past that, you buy from the pool
+      once the launch has graduated. No airdrop can give away more than the whole supply.</li>
     <li><strong>Take a snapshot.</strong> The tool below reads the old token's holders at a block you choose, leaves
       out burn addresses, the contracts you choose and any address you list, and works out each holder's share of the
       new coin at your ratio.</li>
@@ -205,9 +206,17 @@
     </div>
     <div class="panel" id="mContractsBox" hidden>
       <h2 style="margin-top:0">Contracts among the holders</h2>
-      <p class="note">A pool, a locker or a launchpad's curve holds tokens nobody can use, so they are left out. A Safe
-        is a person's or a team's wallet, so it is kept. Change any of them here.</p>
+      <p class="note">Tokens sent to a pool or a launchpad's curve are stuck there, so a contract that answers as a pool
+        does is left out. So is any contract the page does not recognise, such as a locker or a staking contract: a
+        holder left out can still be sent their share later, and tokens sent into a contract cannot be taken back. A
+        Safe or a smart wallet (Coinbase Smart Wallet, the Base app's accounts and other ERC-4337 accounts) is a
+        person's or a team's wallet, so it is kept. Change any of them here.</p>
       <div id="mContracts"></div>
+      <div style="margin-top:14px">
+        <label for="mInclude">Keep these contracts</label>
+        <textarea id="mInclude" rows="2" placeholder="0x… one per line: a smart wallet the page does not recognise, or a contract not listed above" spellcheck="false"></textarea>
+        <p class="hint" id="mIncludeNote">Kept, whatever kind of contract they are; an address under Leave out these addresses stays out.</p>
+      </div>
     </div>
     <div class="panel">
       <h2 style="margin-top:0">Holders</h2>

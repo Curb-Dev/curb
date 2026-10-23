@@ -15,11 +15,14 @@
 // endpoint is asked again after a pause). Each one's balanceOf AT THE SNAPSHOT
 // BLOCK is what counts - not the logs' arithmetic - read through Multicall3 in
 // rounds, and the sum is checked against totalSupply at that block. Contracts
-// are found with eth_getCode.
+// are found with eth_getCode, and told apart by what they answer (kindFrom):
+// a pool is left out, a smart wallet kept.
 //
 // THE SITE'S OWN ENDPOINT ONLY, or the visitor's: config.js rpc (or the pair a
 // link names, as on every page), whose logs go to config.js logsRpc; or the
-// endpoint typed under More, which then takes every read.
+// endpoint typed under More, which then takes every read. A link's endpoint
+// is read, but once config.js names a deployment no file is made from what it
+// answered (finish, drawFiles).
 //
 // A LONG HISTORY IS MANY READS (the site's log endpoint answers 1,000 blocks at
 // a time), so the scan says how far it is, can be stopped, and picks up where
@@ -46,8 +49,17 @@ const SEL = {
   launcherCount: sig("launcherCount()"), launcherAt: sig("launcherAt(uint256)"),
   quoteToken: sig("quoteToken()"), graduationThreshold: sig("graduationThreshold()"), supply: sig("supply()"),
   maxDevBuyBps: sig("MAX_DEV_BUY_BPS()"), phantomQuote: sig("phantomQuote()"),
+  // WHAT A HOLDER THAT IS A CONTRACT IS ASKED (probe): a pool's pair, a curve's
+  // reserves, an ERC-4337 account's EntryPoint (entrypoint() is ZeroDev
+  // Kernel v3's spelling) - and a function no contract has, which only a
+  // contract that answers anything answers.
+  token0: sig("token0()"), token1: sig("token1()"), getReserves: sig("getReserves()"),
+  entryPoint: sig("entryPoint()"), entrypoint: sig("entrypoint()"), noSuchFunction: sig("curbMigrateNoSuchFunction()"),
 };
 const TRANSFER = keccak256("0x" + utf8Hex("Transfer(address,address,uint256)"));
+/// UNISWAP V4'S POOLMANAGER ON BASE (app.js POOL_MANAGER): every v4 pool's
+/// tokens sit in this one contract, which answers none of a pool's questions.
+const POOL_MANAGER = "0x498581ff718922c3f8e6a244956af099b2652b2b";
 
 /// LEFT OUT OF EVERY AIRDROP: what is sent to these is gone. The zero address,
 /// the two dead addresses tokens are burned to by hand, and (added per
@@ -61,6 +73,10 @@ const BURN = new Set([ZERO, "0x000000000000000000000000000000000000dead", "0xdea
 /// this page's deployment when they answer (readCosts).
 let capBps = 2000n;
 let capSupply = 10n ** 27n;
+/// WHAT THE CURVE SELLS: about 73% of the supply on the shipped curves
+/// (CurbLaunchFactory _devBuy, docs.md sellableTokens()); the rest goes into
+/// the pool at graduation, where it can be bought from then on.
+const CURVE_SELLS_BPS = 7300n;
 /// THE TAX THE LARGEST DEV BUY IS PRICED AT in the costs table: the lowest a
 /// launch may choose (LaunchRegistry MIN_TOTAL_TAX_BPS).
 const MIN_TAX_BPS = 100n;
@@ -102,16 +118,17 @@ function logsCeiling(url) {
   const n = (window.CURB_SITE || {}).logsBlocks;
   return logsUrl(url) !== url && Number.isInteger(n) && n > 0 ? n : 0;
 }
-/// THE ENDPOINT A SNAPSHOT READS: the one typed under More, else the pair the
-/// site's links carry (CurbBar.config), as every page reads.
+/// THE ENDPOINT A SNAPSHOT READS: the one typed under More (own: the
+/// visitor's), else the pair the site's links carry (CurbBar.config), as
+/// every page reads.
 function endpoint() {
   const own = $("mRpc").value.trim();
   if (own) {
     if (!isRpc(own)) throw new Error("The endpoint under More is not an http(s) address.");
-    return { url: own, logs: own, ceiling: 0 };
+    return { url: own, logs: own, ceiling: 0, own: true };
   }
   const url = Bar.config().rpc;
-  return { url, logs: logsUrl(url), ceiling: logsCeiling(url) };
+  return { url, logs: logsUrl(url), ceiling: logsCeiling(url), own: false };
 }
 const hostOf = (u) => { try { return new URL(u).host || u; } catch { return String(u); } };
 
@@ -282,9 +299,12 @@ function statedLimit(e) {
 /// "range", "size" or "busy", sorted as every page sorts them (sharing.js logError).
 const logKind = (e) => (typeof Sh.logError === "function" ? Sh.logError(e) : "range");
 
+/// AN ADDRESS A LOG NAMES, and nothing else: a word of 24 zeros and 40 hex
+/// characters. An endpoint answers what it likes, and a topic of commas and
+/// line breaks taken for an address would be rows of its own in the files.
 function addWord(job, w) {
   const h = String(w || "").toLowerCase().replace(/^0x/, "");
-  if (h.length !== 64 || !/^0{24}/.test(h)) return;
+  if (!/^0{24}[0-9a-f]{40}$/.test(h)) return;
   job.seen.add("0x" + h.slice(24));
 }
 /// The addresses a page of Transfer logs names, sender and receiver both.
@@ -356,29 +376,33 @@ function duration(ms) {
   return (s / 3600).toFixed(1) + " h";
 }
 
-/// EACH ADDRESS'S balanceOf AT THE SNAPSHOT BLOCK, through Multicall3 in
-/// rounds of BAL_CALLS; where that is refused (an endpoint, a block before
-/// Multicall3), call by call. A balance the token would not give is unread.
+/// SEVERAL eth_calls AT `tag` (a block, or "latest"), in one aggregate3 of
+/// Multicall3; where that is refused (an endpoint, a block before Multicall3),
+/// call by call - and from then on for that tag. Each answer is the call's
+/// data, or null where it reverted or was not answered.
+async function callAll(job, calls, tag) {
+  const flag = tag === "latest" ? "noMultiNow" : "noMulti";
+  if (!job[flag] && calls.length > 1) {
+    try {
+      const raw = await ask(job, "eth_call", [{ to: M.MULTICALL3, data: M.encode(calls) }, tag]);
+      return M.decode(raw, calls.length).map((r) => (r.ok ? r.data : null));
+    } catch (e) {
+      if (e === STOPPED) throw e;
+      job[flag] = true;
+    }
+  }
+  return batched(job, calls.map((c) => ({ method: "eth_call", params: [{ to: c.to, data: c.data }, tag] })));
+}
+
+/// EACH ADDRESS'S balanceOf AT THE SNAPSHOT BLOCK, in rounds of BAL_CALLS
+/// (callAll). A balance the token would not give is unread.
 async function readBalances(job) {
   const list = job.list;
   for (let i = job.balAt; i < list.length; i += BAL_CALLS) {
     stopIf(job);
     const part = list.slice(i, i + BAL_CALLS);
     const calls = part.map((a) => ({ to: job.token, data: SEL.balanceOf + pad(a) }));
-    let got = null;
-    if (!job.noMulti && part.length > 1) {
-      try {
-        const raw = await ask(job, "eth_call", [{ to: M.MULTICALL3, data: M.encode(calls) }, hex(job.block)]);
-        got = M.decode(raw, calls.length).map((r) => (r.ok ? firstWord(r.data) : null));
-      } catch (e) {
-        if (e === STOPPED) throw e;
-        job.noMulti = true;
-      }
-    }
-    if (!got) {
-      got = (await batched(job, calls.map((c) => ({ method: "eth_call", params: [{ to: c.to, data: c.data }, hex(job.block)] }))))
-        .map(firstWord);
-    }
+    const got = (await callAll(job, calls, hex(job.block))).map(firstWord);
     part.forEach((a, j) => { if (got[j] === null) job.unread.push(a); else job.bal.set(a, got[j]); });
     job.balAt = i + BAL_CALLS;
     progress(Math.min(1, job.balAt / list.length), "Reading balances at block " + job.block.toLocaleString("en-US") + ": " +
@@ -389,7 +413,8 @@ async function readBalances(job) {
 /// WHAT AN ADDRESS'S CODE SAYS IT IS. No code, or an EIP-7702 delegation
 /// (0xef0100 and an address), is a wallet: a person can move what it holds. A
 /// Safe proxy - it answers masterCopy() (0xa619486e) before delegating - is a
-/// person's or a team's wallet too. Anything else is a contract.
+/// person's or a team's wallet too. Anything else is a contract, which its
+/// answers sort further (kindFrom).
 const SAFE_PROXY = /7fa619486e0{56}/i;
 function kindOf(code) {
   const c = String(code || "0x").toLowerCase();
@@ -398,9 +423,36 @@ function kindOf(code) {
   if (SAFE_PROXY.test(c)) return "safe";
   return "contract";
 }
-/// The code of every holder with a balance, now.
+/// WHAT A CONTRACT'S ANSWERS SAY IT IS, to PROBES in that order. A pool
+/// answers token0() and token1() with addresses (Uniswap's and Aerodrome's,
+/// v2 and concentrated), a curve or a v2 pair getReserves() with two words or
+/// more: "pool". An ERC-4337 account answers entryPoint() - Coinbase Smart
+/// Wallet, the Base app's accounts, Alchemy's, Biconomy's, thirdweb's - or
+/// entrypoint() (Kernel v3) with an address: "account", a person's wallet.
+/// A contract that answers a function nobody has answers anything, so its
+/// answers say nothing; it and every other contract stay "contract".
+const PROBES = ["token0", "token1", "getReserves", "entryPoint", "entrypoint", "noSuchFunction"];
+function kindFrom(answers) {
+  const by = Object.fromEntries(PROBES.map((k, i) => [k, answers[i]]));
+  const size = (raw) => String(raw || "").replace(/^0x/, "").length / 2;
+  const address = (raw) => { const w = size(raw) === 32 ? firstWord(raw) : null; return w !== null && w > 0n && w < 2n ** 160n; };
+  if (size(by.noSuchFunction) > 0) return "contract";
+  if ((address(by.token0) && address(by.token1)) || size(by.getReserves) >= 64) return "pool";
+  if (address(by.entryPoint) || address(by.entrypoint)) return "account";
+  return "contract";
+}
+/// The code of every holder with a balance, now, and what each contract among
+/// them answers (probe). AGAIN, after a snapshot that has some, for the
+/// holders whose code was not read: Continue asks for those only.
 async function readCodes(job) {
-  const holders = job.list.filter((a) => (job.bal.get(a) || 0n) > 0n);
+  if (job.codesRead) {
+    job.codeList = job.codeList.filter((a) => job.kind.get(a) === "unknown");
+    job.codeAt = 0;
+    job.probeList = null;
+    job.codesRead = false;
+  }
+  if (!job.codeList) job.codeList = job.list.filter((a) => (job.bal.get(a) || 0n) > 0n);
+  const holders = job.codeList;
   for (let i = job.codeAt; i < holders.length; i += BATCH) {
     stopIf(job);
     const part = holders.slice(i, i + BATCH);
@@ -410,8 +462,33 @@ async function readCodes(job) {
     progress(Math.min(1, job.codeAt / holders.length), "Finding contracts among the holders: " +
       Math.min(job.codeAt, holders.length).toLocaleString("en-US") + " of " + holders.length.toLocaleString("en-US"));
   }
+  if (!job.probeList) {
+    // THE POOLMANAGER IS KNOWN BY ITS ADDRESS, and the token itself is left
+    // out whatever it answers.
+    if (job.kind.get(POOL_MANAGER) === "contract") job.kind.set(POOL_MANAGER, "pool");
+    job.probeList = holders.filter((a) => job.kind.get(a) === "contract" && a !== job.token && a !== POOL_MANAGER);
+    job.probeAt = 0;
+  }
+  await probe(job);
   job.codesRead = true;
 }
+/// EVERY CONTRACT AMONG THE HOLDERS ASKED THE PROBES, now, in rounds of about
+/// BAL_CALLS calls. A probe not answered is a question the contract did not
+/// answer: a pool left as "contract" is left out all the same.
+async function probe(job) {
+  const list = job.probeList;
+  const per = Math.max(1, Math.floor(BAL_CALLS / PROBES.length));
+  for (let i = job.probeAt; i < list.length; i += per) {
+    stopIf(job);
+    const part = list.slice(i, i + per);
+    const got = await callAll(job, part.flatMap((a) => PROBES.map((k) => ({ to: a, data: SEL[k] }))), "latest");
+    part.forEach((a, j) => job.kind.set(a, kindFrom(got.slice(j * PROBES.length, (j + 1) * PROBES.length))));
+    job.probeAt = i + per;
+    progress(Math.min(1, job.probeAt / list.length), "Asking the contracts among the holders what they are: " +
+      Math.min(job.probeAt, list.length).toLocaleString("en-US") + " of " + list.length.toLocaleString("en-US"));
+  }
+}
+const unreadCodes = (job) => [...job.kind.values()].filter((k) => k === "unknown").length;
 
 // ---------------------------------------------------------------- amounts and files
 /// A decimal the person typed, in units of `decimals` places. No comma, as on
@@ -456,18 +533,48 @@ function shown(v, decimals, places = 4) {
   if (b > 0n && b / base === 0n && !frac) return "<0." + "0".repeat(Math.max(0, places - 1)) + "1";
   return whole + (frac ? "." + frac : "");
 }
-/// AN ADDRESS IN ITS EIP-55 FORM, which Safe's app reads as it reads any.
+/// AN ADDRESS IN ITS EIP-55 FORM, which Safe's app reads as it reads any - and
+/// only an address: anything else throws, so no file carries it. Each one is
+/// hashed once a page: a redraw draws the same addresses again, and a file of
+/// 100,000 rows is 100,000 hashes.
+const checksums = new Map();
 function checksum(a) {
   const h = lower(a).replace(/^0x/, "");
+  if (!/^[0-9a-f]{40}$/.test(h)) throw new Error("Not an address, so not written: " + Meta.cut(String(a), 24));
+  const known = checksums.get(h);
+  if (known) return known;
   const k = keccak256("0x" + utf8Hex(h)).slice(2);
   let out = "0x";
   for (let i = 0; i < 40; i++) out += parseInt(k[i], 16) >= 8 ? h[i].toUpperCase() : h[i];
+  checksums.set(h, out);
   return out;
 }
 
+/// THE HOLDERS THAT ARE CONTRACTS, by kind (readCodes), and whether each kind
+/// is left out unless the person keeps it. A pool, a curve, or a contract the
+/// page does not recognise - a locker, a staking contract, another
+/// launchpad's curve - is left out: what is sent there is stuck, while a
+/// holder left out by mistake can still be sent their share later. A Safe or
+/// an ERC-4337 smart wallet is a person's or a team's, and is kept. A holder
+/// whose code could not be read is left out until Continue reads it.
+const KINDS = new Map([
+  ["pool", { out: true, why: "pool", what: "a pool or a curve" }],
+  ["contract", { out: true, why: "contract", what: "contract, not recognised" }],
+  ["unknown", { out: true, why: "code not read", what: "code not read" }],
+  ["safe", { out: false, why: "Safe, left out", what: "looks like a Safe" }],
+  ["account", { out: false, why: "smart wallet, left out", what: "smart wallet (ERC-4337)" }],
+]);
+/// WHETHER A CONTRACT AMONG THE HOLDERS IS LEFT OUT: its box as the person set
+/// it, else kept when they listed it, else its kind's default.
+function leftOut(h, s) {
+  if (s.choice.has(h.a)) return s.choice.get(h.a);
+  if (s.include && s.include.has(h.a)) return false;
+  return KINDS.get(h.kind).out;
+}
+
 /// WHO GETS WHAT, from a snapshot and the page's settings - nothing read.
-///   settings: { ratio, minRaw, exclude (Set), contractsOn, choice (Map:
-///   address -> true to leave out), newDecimals }
+///   settings: { ratio, minRaw, exclude (Set), include (Set: contracts to
+///   keep), contractsOn, choice (Map: address -> true to leave out), newDecimals }
 /// Each holder is in exactly one list: rows (in the files) or out, with why.
 function plan(snap, s) {
   const rows = [], out = [];
@@ -478,8 +585,7 @@ function plan(snap, s) {
     if (BURN.has(h.a)) why = "burn address";
     else if (h.a === snap.token) why = "the token itself";
     else if (s.exclude.has(h.a)) why = "your list";
-    else if (s.contractsOn && (kind === "contract" || kind === "safe") &&
-      (s.choice.has(h.a) ? s.choice.get(h.a) : kind === "contract")) why = kind === "safe" ? "Safe, left out" : "contract";
+    else if (s.contractsOn && KINDS.has(kind) && leftOut(h, s)) why = KINDS.get(kind).why;
     else if (h.bal < s.minRaw) why = "below the minimum";
     let amount = 0n;
     if (!why) {
@@ -554,11 +660,11 @@ function newJob() {
   const ep = endpoint();
   return {
     token, blockAsked: blockText ? Number(blockText) : null, fromAsked: fromText ? Number(fromText) : null,
-    url: ep.url, logs: ep.logs, ceiling: ep.ceiling, findContracts: $("mFindContracts").checked,
+    url: ep.url, logs: ep.logs, ceiling: ep.ceiling, own: ep.own, findContracts: $("mFindContracts").checked,
     stopped: false, ctl: new AbortController(), block: null, from: null, info: null, chainId: null,
     next: null, size: ep.ceiling ? Math.min(ep.ceiling, WINDOW) : WINDOW, cap: ep.ceiling || 0, calm: 0,
-    seen: new Set(), nft: false, list: null, balAt: 0, bal: new Map(), unread: [], noMulti: false, noBatch: false,
-    kind: new Map(), codeAt: 0, codesRead: false,
+    seen: new Set(), nft: false, list: null, balAt: 0, bal: new Map(), unread: [], noMulti: false, noMultiNow: false, noBatch: false,
+    kind: new Map(), codeList: null, codeAt: 0, probeList: null, probeAt: 0, codesRead: false,
   };
 }
 
@@ -593,7 +699,7 @@ async function run(goOn) {
     if (j.nft && !j.seen.size) throw new Error("This contract's Transfer events carry a token id: it is an NFT, not an ERC-20.");
     if (!j.list) j.list = [...j.seen].sort();
     await readBalances(j);
-    if (j.findContracts && !j.codesRead) await readCodes(j);
+    if (j.findContracts && (!j.codesRead || unreadCodes(j) > 0)) await readCodes(j);
     finish(j);
   } catch (e) {
     if (e === STOPPED) {
@@ -623,12 +729,22 @@ function finish(j) {
   holders.sort((x, y) => (y.bal > x.bal ? 1 : y.bal < x.bal ? -1 : x.a < y.a ? -1 : x.a > y.a ? 1 : 0));
   let sum = 0n;
   for (const h of holders) sum += h.bal;
+  // READ THROUGH AN ENDPOINT A LINK OR A SAVED PAIR NAMED, once config.js
+  // names a deployment (CurbBar.endpointRefusal): every holder and balance is
+  // that endpoint's word, and a file is the list a Safe pays, so none is made
+  // from it (drawFiles). One the visitor typed under More is theirs.
+  const refusal = j.own ? null : Bar.endpointRefusal(j.url);
+  const through = hostOf(j.url) + (j.logs !== j.url ? " and " + hostOf(j.logs) : "");
   snap = { token: j.token, chainId: j.chainId, block: j.block, from: j.from, ...j.info, holders, sum,
-    unread: j.unread.slice(), addresses: j.list.length, contractsLooked: j.codesRead, endpoint: hostOf(j.url) };
+    unread: j.unread.slice(), addresses: j.list.length, contractsLooked: j.codesRead, endpoint: hostOf(j.url), through, refusal };
   $("mProgress").hidden = true;
+  const notRead = unreadCodes(j);
   status("Read " + j.list.length.toLocaleString("en-US") + " addresses from block " + j.from.toLocaleString("en-US") +
-    " to " + j.block.toLocaleString("en-US") + " through " + hostOf(j.url) + (j.logs !== j.url ? " and " + hostOf(j.logs) : "") + ".");
-  $("mContinue").hidden = true;
+    " to " + j.block.toLocaleString("en-US") + " through " + through + "." +
+    (notRead ? " " + notRead.toLocaleString("en-US") + (notRead === 1 ? " holder's code" : " holders' code") +
+      " could not be read; Continue asks for " + (notRead === 1 ? "it" : "them") + " again." : ""), notRead > 0);
+  // CONTINUE, AFTER A SNAPSHOT READ IN FULL, reads the codes that were not read.
+  $("mContinue").hidden = notRead === 0;
   drawInfo();
   draw();
   $("mResult").hidden = false;
@@ -671,25 +787,32 @@ function settings() {
   try { ratio = parseRatio($("mRatio").value); } catch (e) { errs.push(e.message); }
   const minText = $("mMin").value.trim();
   if (minText) { try { minRaw = parseUnits(minText, snap.decimals, "The minimum"); } catch (e) { errs.push(e.message); } }
-  const exclude = new Set();
-  const bad = [];
-  for (const w of $("mExclude").value.split(/[\s,;]+/)) {
-    if (!w) continue;
-    if (isAddr(w)) exclude.add(lower(w)); else bad.push(w);
-  }
-  return { errs, bad, s: { ratio, minRaw, exclude, contractsOn: !!snap.contractsLooked && $("mFindContracts").checked, choice,
-    newDecimals: newToken.read ? newToken.decimals : 18 } };
+  const exclude = addresses($("mExclude").value);
+  const include = addresses($("mInclude").value);
+  return { errs, bad: exclude.bad, badInclude: include.bad, s: { ratio, minRaw, exclude: exclude.set, include: include.set,
+    contractsOn: !!snap.contractsLooked && $("mFindContracts").checked, choice, newDecimals: newToken.read ? newToken.decimals : 18 } };
 }
+/// The addresses a list names, and the words in it that are none.
+function addresses(text) {
+  const set = new Set(), bad = [];
+  for (const w of String(text || "").split(/[\s,;]+/)) {
+    if (!w) continue;
+    if (isAddr(w)) set.add(lower(w)); else bad.push(w);
+  }
+  return { set, bad };
+}
+const notUsed = (bad) => (bad.length ? " Not addresses, so not used: " + bad.slice(0, 3).map((x) => Meta.cut(x, 20)).join(", ") + (bad.length > 3 ? " …" : "") + "." : "");
+const count = (n, one, many) => n.toLocaleString("en-US") + " " + (n === 1 ? one : many);
 
 function box(value, label) { return el("div", { class: "box" }, [el("b", { text: value }), el("span", { text: label })]); }
 
 function draw() {
   if (!snap) return;
-  const { errs, bad, s } = settings();
+  const { errs, bad, badInclude, s } = settings();
   const errEl = $("mErr");
-  const excl = $("mExcludeNote");
-  excl.textContent = "The zero and dead addresses and the old token itself are always left out." +
-    (bad.length ? " Not addresses, so not used: " + bad.slice(0, 3).map((x) => Meta.cut(x, 20)).join(", ") + (bad.length > 3 ? " …" : "") + "." : "");
+  $("mExcludeNote").textContent = "The zero and dead addresses and the old token itself are always left out." + notUsed(bad);
+  $("mIncludeNote").textContent = "Kept, whatever kind of contract they are; an address under Leave out these addresses stays out." +
+    notUsed(badInclude);
   const sym = snap.symbol || "old tokens";
   const newSym = newToken.read && newToken.symbol ? newToken.symbol : "new tokens";
   if (errs.length) {
@@ -699,7 +822,7 @@ function draw() {
     $("mFiles").replaceChildren();
     $("mNeed").textContent = "";
     $("mTotals").replaceChildren(box(snap.holders.length.toLocaleString("en-US"), "holders at block " + snap.block.toLocaleString("en-US")));
-    drawContracts(null);
+    drawContracts(null, s);
     drawTable(null, s);
     return;
   }
@@ -712,72 +835,119 @@ function draw() {
     box(shown(p.needed, s.newDecimals), newSym + " needed at " + $("mRatio").value.trim() + " per old token"),
   );
   const need = $("mNeed");
-  // A LAUNCH TOKEN HAS 18 DECIMALS; a new token of other decimals is compared in its own.
-  const cap = (capSupply * capBps * 10n ** BigInt(s.newDecimals)) / (10000n * 10n ** 18n);
+  // A LAUNCH TOKEN HAS 18 DECIMALS; a new token of other decimals is compared
+  // in its own. What a launch mints, what its curve sells, and what a dev buy
+  // can receive of it.
+  const supply = (capSupply * 10n ** BigInt(s.newDecimals)) / 10n ** 18n;
+  const curve = (supply * CURVE_SELLS_BPS) / 10000n;
+  const cap = (supply * capBps) / 10000n;
   const capText = shown(cap, s.newDecimals, 0) + " (" + (Number(capBps) / 100) + "% of the supply)";
-  need.className = p.needed > cap ? "note warn" : "note";
-  need.textContent = p.rows.length
-    ? "The Safe that sends the airdrop must hold at least " + exact(p.needed, s.newDecimals) + " " + newSym + " when you submit it. " +
-      (p.needed > cap
-        ? "That is more than a dev buy can receive, " + capText + ": the rest has to be bought on the curve after the launch, like anyone's buy."
-        : "A dev buy can receive up to " + capText + ".")
-    : "Nobody is left in the airdrop.";
-  drawFiles(p, s);
-  drawContracts(s);
+  const hold = "The Safe that sends the airdrop must hold at least " + exact(p.needed, s.newDecimals) + " " + newSym + " when you submit it. ";
+  need.className = p.needed > supply ? "note bad" : p.needed > cap ? "note warn" : "note";
+  need.textContent = !p.rows.length ? "Nobody is left in the airdrop."
+    : p.needed > supply
+      ? "The airdrop needs " + exact(p.needed, s.newDecimals) + " " + newSym + ", more than the new coin's whole supply of " +
+        shown(supply, s.newDecimals, 0) + ": no Safe can hold that, so Safe's file is not made. Lower the ratio, or leave more out."
+      : p.needed > curve
+        ? hold + "That is more than a dev buy can receive, " + capText + ", and more than the curve sells, about " +
+          shown(curve, s.newDecimals, 0) + " (" + (Number(CURVE_SELLS_BPS) / 100) + "% of the supply): the rest has to be bought " +
+          "from the pool once the launch has graduated."
+        : p.needed > cap
+          ? hold + "That is more than a dev buy can receive, " + capText + ": the rest has to be bought on the curve after the launch, like anyone's buy."
+          : hold + "A dev buy can receive up to " + capText + ".";
+  drawFiles(p, s, p.needed > supply);
+  drawContracts(p, s);
   drawTable(p, s);
 }
 
-function drawFiles(p, s) {
+function drawFiles(p, s, tooMany) {
   const files = $("mFiles");
   files.replaceChildren();
   if (!p.rows.length) return;
+  const through = el("span", { class: "hint", text: "Read through " + snap.through + "." });
+  if (snap.refusal) {
+    files.append(el("button", { type: "button", class: "mSafe", text: "Safe file", disabled: true }),
+      el("button", { type: "button", class: "ghost", id: "mPlain", text: "address,amount file", disabled: true }),
+      el("p", { class: "note bad", id: "mRefused", text: "This snapshot was read through " + snap.endpoint + ", which this page's link " +
+        "or a saved setting named, not through this site's own endpoint: every holder and balance in it is that endpoint's word, " +
+        "and a file is the list your Safe pays, so none is made from it. Take the snapshot again through this site's own " +
+        "endpoint (open this page without the link's endpoint), or through one you give under More." }));
+    return;
+  }
   const stem = "airdrop-" + snap.token.slice(0, 10) + "-block-" + snap.block;
   const newOk = isAddr(newToken.address) && newToken.read;
-  const safe = newOk ? safeFiles(p.rows, newToken.address, s.newDecimals) : [];
-  if (newOk) {
-    safe.forEach((text, i) => {
-      const name = stem + "-safe" + (safe.length > 1 ? "-part-" + (i + 1) + "-of-" + safe.length : "") + ".csv";
-      const label = "Safe file" + (safe.length > 1 ? ", part " + (i + 1) + " of " + safe.length : "");
+  if (newOk && !tooMany) {
+    // BUILT ON THE PRESS, as the plain file is: a redraw - every keystroke in
+    // the ratio - builds no file.
+    const parts = Math.ceil(p.rows.length / SAFE_ROWS);
+    const token = newToken.address, decimals = s.newDecimals;
+    for (let i = 0; i < parts; i++) {
+      const name = stem + "-safe" + (parts > 1 ? "-part-" + (i + 1) + "-of-" + parts : "") + ".csv";
+      const label = "Safe file" + (parts > 1 ? ", part " + (i + 1) + " of " + parts : "");
       const b = el("button", { type: "button", class: "mSafe", text: label, "data-file": name });
-      b.addEventListener("click", () => download(name, text));
+      b.addEventListener("click", () => download(name, safeFiles(p.rows.slice(i * SAFE_ROWS, (i + 1) * SAFE_ROWS), token, decimals)[0]));
       files.append(b);
-    });
+    }
   } else {
     files.append(el("button", { type: "button", class: "mSafe", text: "Safe file", disabled: true,
-      title: "Give the new token's address first: Safe's file names it on every row" }));
+      title: tooMany ? "The airdrop needs more than the new coin's whole supply" : "Give the new token's address first: Safe's file names it on every row" }));
   }
   const plain = el("button", { type: "button", class: "ghost", id: "mPlain", text: "address,amount file", "data-file": stem + ".csv" });
   plain.addEventListener("click", () => download(stem + ".csv", plainFile(p.rows, s.newDecimals)));
   files.append(plain);
   if (!newOk) files.append(el("span", { class: "hint", text: newToken.error || "Give the new token's address for Safe's file." }));
+  files.append(through);
 }
 
-function drawContracts(s) {
+function drawContracts(p, s) {
   const boxEl = $("mContractsBox");
   const list = $("mContracts");
-  const contracts = snap.contractsLooked ? snap.holders.filter((h) => h.kind === "contract" || h.kind === "safe") : [];
   boxEl.hidden = !(snap.contractsLooked && $("mFindContracts").checked);
   if (boxEl.hidden) return;
+  // THE TOKEN ITSELF IS LEFT OUT WHATEVER IS TICKED, so it is not offered here.
+  const contracts = snap.holders.filter((h) => KINDS.has(h.kind) && h.a !== snap.token);
   if (!contracts.length) { list.replaceChildren(el("p", { class: "note", text: "None of the holders is a contract." })); return; }
+  const notes = [];
+  const notRead = contracts.filter((h) => h.kind === "unknown").length;
+  if (notRead) {
+    notes.push(el("p", { class: "note warn", id: "mCodesUnread", text: count(notRead, "holder's code", "holders' code") +
+      " could not be read, so the page cannot say whether " + (notRead === 1 ? "it is a pool or a wallet: it is" : "they are pools or wallets: they are") +
+      " left out until Continue, above, reads " + (notRead === 1 ? "it" : "them") + " again. Keep any you know here." }));
+  }
+  const strange = contracts.filter((h) => h.kind === "contract").length;
+  if (strange) {
+    notes.push(el("p", { class: "note", text: count(strange, "contract is", "contracts are") + " not a pool, a Safe or a smart " +
+      "wallet this page recognises - a locker, a staking contract or another launchpad's curve, most likely - so " +
+      (strange === 1 ? "it is" : "they are") + " left out. A smart wallet of a kind the page does not know would be among them: " +
+      "untick it, or list it under Keep these contracts." }));
+  }
   const rows = contracts.slice(0, CONTRACTS_SHOWN).map((h) => {
-    const out = choice.has(h.a) ? choice.get(h.a) : h.kind === "contract";
-    const cb = el("input", { type: "checkbox", checked: out, "aria-label": "Leave out " + h.a });
+    const cb = el("input", { type: "checkbox", checked: leftOut(h, s), "aria-label": "Leave out " + h.a });
     cb.addEventListener("change", () => { choice.set(h.a, cb.checked); draw(); });
     return el("tr", { "data-a": h.a }, [
       el("td", {}, [cb]),
       el("td", {}, [el("span", { class: "addr", text: checksum(h.a) })]),
       el("td", { class: "num", text: shown(h.bal, snap.decimals) }),
-      el("td", { text: h.kind === "safe" ? "looks like a Safe" : "contract" }),
+      el("td", { text: h.a === POOL_MANAGER ? "Uniswap v4's PoolManager" : KINDS.get(h.kind).what }),
     ]);
   });
-  list.replaceChildren(el("div", { class: "tableWrap" }, [el("table", {}, [
+  list.replaceChildren(...notes, el("div", { class: "tableWrap" }, [el("table", {}, [
     el("thead", {}, [el("tr", {}, [el("th", { text: "Leave out" }), el("th", { text: "Address" }),
       el("th", { class: "num", text: "Old balance" }), el("th", { text: "What it is" })])]),
     el("tbody", {}, rows),
   ])]));
   if (contracts.length > CONTRACTS_SHOWN) {
-    list.append(el("p", { class: "note", text: "The " + CONTRACTS_SHOWN + " largest of " + contracts.length.toLocaleString("en-US") +
-      " contracts are listed; the others are left out." }));
+    // WHAT THE FILES DO WITH THE ONES NOT LISTED, as plan() decided it.
+    const rest = contracts.slice(CONTRACTS_SHOWN);
+    let text = "The " + CONTRACTS_SHOWN + " largest of " + contracts.length.toLocaleString("en-US") + " contracts are listed.";
+    if (p) {
+      const inFiles = new Set(p.rows.map((r) => r.a));
+      const kept = rest.filter((h) => inFiles.has(h.a)).length;
+      text += " Of the other " + rest.length.toLocaleString("en-US") + ", " + (rest.length - kept).toLocaleString("en-US") +
+        " left out and " + kept.toLocaleString("en-US") + " in the airdrop: list an address under Keep these contracts, " +
+        "or under Leave out these addresses, to change one.";
+    }
+    list.append(el("p", { class: "note", id: "mContractsMore", text }));
   }
 }
 
@@ -788,16 +958,17 @@ function drawTable(p, s) {
   $("mTableNote").textContent = snap.holders.length > TABLE_ROWS
     ? "The " + TABLE_ROWS + " largest of " + snap.holders.length.toLocaleString("en-US") + " holders. The files have every one in the airdrop."
     : snap.holders.length.toLocaleString("en-US") + " holder" + (snap.holders.length === 1 ? "" : "s") + ", largest first.";
-  const kindNote = (k) => (k === "delegated" ? "wallet (EIP-7702)" : k === "safe" ? "Safe" : k === "contract" ? "contract" : "");
+  const NOTES = { delegated: "wallet (EIP-7702)", safe: "Safe", account: "smart wallet", pool: "pool", contract: "contract", unknown: "code not read" };
   const rows = shownRows.map((h, i) => {
     const why = whyOf.get(h.a);
     const amount = amounts.get(h.a);
+    const kind = NOTES[h.kind] || "";
     return el("tr", { "data-a": h.a, class: why ? "left" : "" }, [
       el("td", { class: "num", text: String(i + 1) }),
       el("td", {}, [el("span", { class: "addr", text: checksum(h.a) })]),
       el("td", { class: "num", text: shown(h.bal, snap.decimals) }),
       el("td", { class: "num", text: amount !== undefined ? shown(amount, s.newDecimals) : "—" }),
-      el("td", {}, [el("span", { class: "why", text: [why ? "left out: " + why : "", kindNote(h.kind)].filter(Boolean).join(" · ") })]),
+      el("td", {}, [el("span", { class: "why", text: [why ? "left out: " + why : "", kind !== why ? kind : ""].filter(Boolean).join(" · ") })]),
     ]);
   });
   $("mTable").replaceChildren(el("div", { class: "tableWrap" }, [el("table", {}, [
@@ -829,7 +1000,10 @@ async function readNew() {
     const dec = firstWord(d);
     if (dec === null || dec > 77n) throw new Error("it did not answer decimals()");
     let registered = null;
-    const lens = Bar.config().lens;
+    // THE REGISTRY config.js NAMES, once it names one: a link's lens could
+    // call any token a launch.
+    const siteLens = Bar.site().lens;
+    const lens = isAddr(siteLens) ? siteLens : Bar.config().lens;
     if (isAddr(lens)) {
       try {
         const reg = "0x" + String(await r.call(lens, SEL.registry)).replace(/^0x/, "").slice(24, 64);
@@ -948,9 +1122,20 @@ $("mFindContracts").addEventListener("change", () => {
 });
 let typing = 0;
 const later = (fn) => () => { clearTimeout(typing); typing = setTimeout(fn, 150); };
-for (const id of ["mRatio", "mMin", "mExclude"]) $(id).addEventListener("input", later(draw));
+for (const id of ["mRatio", "mMin", "mExclude", "mInclude"]) $(id).addEventListener("input", later(draw));
+/// A NEW TOKEN TYPED: the files made for the last one go at once - before the
+/// pause and the read (readNew) - so no Safe file names a token the field no
+/// longer shows, and a read of the last one still under way is dropped.
 let newTyping = 0;
-$("mNew").addEventListener("input", () => { clearTimeout(newTyping); newTyping = setTimeout(readNew, 250); });
+$("mNew").addEventListener("input", () => {
+  clearTimeout(newTyping);
+  ++newRead;
+  const was = newToken.read;
+  newToken = { address: lower($("mNew").value), decimals: 18, symbol: "", read: false, error: "" };
+  $("mNewInfo").hidden = true;
+  if (was) draw();
+  newTyping = setTimeout(readNew, 250);
+});
 
 // A LINK MAY NAME THE OLD TOKEN (?token=0x…), so a project can hand its own.
 try {
