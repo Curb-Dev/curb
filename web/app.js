@@ -1464,9 +1464,12 @@ async function send(pin, tx, what, kind, keep, extra) {
   let switchedDuringDialog = false;
   const onChainChanged = () => { switchedDuringDialog = true; };
   try { pin.eth.on && pin.eth.on("chainChanged", onChainChanged); } catch {}
+  // CURB'S BUILDER CODE (builder-code.js), added here and not in the try: a
+  // throw from it means the wallet was never asked.
+  const signed = window.CurbBuilder.attribute({ ...tx, from: pin.from });
   let hash;
   try {
-    hash = await pin.eth.request({ method: "eth_sendTransaction", params: [{ ...tx, from: pin.from }] });
+    hash = await pin.eth.request({ method: "eth_sendTransaction", params: [signed] });
   } catch (e) {
     // THE CODE, AND ONLY THE CODE. An earlier version also accepted any error
     // whose TEXT said "user rejected" - and a provider that fails for its own

@@ -715,6 +715,11 @@ These are not CURB's. The site sends trades to them where a route needs them.
 | Aerodrome SwapRouter | `0x698Cb2b6dd822994581fEa6eA4Fc755d1363A92F` | The [Aerodrome route](#aerodrome-route) and selling back |
 | Uniswap UniversalRouter | `0x6ff5693b99212da76ad316178a184ab56d299b43` | Pool trades paid in ETH, and ETH buys where the CURB router cannot be used |
 
+Every transaction the site sends ends with CURB's Base Builder Code: 29 bytes after the calldata (ERC-8021), the
+code `bc_hhvip0hj`, its length, schema 0 and the ERC's marker. The contract called reads its arguments and never
+the bytes after them, so the call does the same; Base reads them to count the activity the site brings. A transfer
+with no calldata is sent as it is.
+
 ### Aerodrome route
 
 Paying ETH for a curve buy on the seven tokenized stocks, cbXRP or cbZEC can take a second route: the ETH is

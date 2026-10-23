@@ -856,7 +856,8 @@ test("WITHOUT THE ROUTER: on a WETH pair a curve sale pays ether: the card says 
   const sent = (await p.evaluate(() => window.ethereum.sent.map((t) => ({ to: t.to, data: t.data })))).slice(sentBefore);
   const unwraps = sent.filter((t) => t.to.toLowerCase() === WETH && t.data.toLowerCase().startsWith(WITHDRAW));
   expect(unwraps.length, "no unwrap was sent after the sale").toBe(1);
-  expect(BigInt("0x" + unwraps[0].data.slice(10)), "the unwrap is not exactly what the sale paid").toBe(paid);
+  // THE AMOUNT IS THE ONE WORD after the selector; CURB's Builder Code follows it.
+  expect(BigInt("0x" + unwraps[0].data.slice(10, 74)), "the unwrap is not exactly what the sale paid").toBe(paid);
   expect(await wethOf(seller), "the sale's WETH stayed in the wallet").toBe(wethBefore);
   const exact = (await p.locator("#msg").textContent()).match(/unwrapped\s+(\d+)/);
   expect(exact && BigInt(exact[1]), "the report's unwrapped figure is not what the chain unwrapped").toBe(paid);

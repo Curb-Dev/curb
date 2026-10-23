@@ -1250,6 +1250,11 @@ test("Holder fees lists what the connected wallet earned, token by token: earned
   expect(card.claimable, "nothing is claimable, so the claim below proves nothing").not.toBe("0 NVDAc");
   await row.locator("button.shClaimLink").click();
   await expect(p.locator("#msg .toastTitle")).toHaveText("Claimed", { timeout: 90_000 });
+  // THE CLAIM THAT PAID carried CURB's Builder Code (builder-code.js): the
+  // distributor read its arguments and ignored the bytes after them.
+  const claimTx = await p.evaluate(() => window.ethereum.sent[window.ethereum.sent.length - 1]);
+  expect(claimTx.data.toLowerCase().endsWith(require("./serve.js").BUILDER_SUFFIX),
+    "the claim did not carry CURB's Base Builder Code").toBe(true);
   await expect(p.locator(`.shMineRow[data-token="${L.token.toLowerCase()}"] .shClaimFig b`)).toHaveText("0 NVDAc", { timeout: 60_000 });
   await expect(p.locator(`.shMineRow[data-token="${L.token.toLowerCase()}"] button.shClaimLink`)).toHaveCount(0);
   // NO EXPLANATIONS, ROLES OR CATALOG ON THIS PAGE ANY MORE (they are in the docs).

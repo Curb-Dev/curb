@@ -28,6 +28,8 @@ const path = require("node:path");
 
 const STATE = JSON.parse(fs.readFileSync(path.join(__dirname, ".state.json"), "utf8"));
 const STUB = fs.readFileSync(path.join(__dirname, "..", "wallet-stub.js"), "utf8");
+/// CURB's ERC-8021 suffix (builder-code.js), after the calldata of every send.
+const { BUILDER_SUFFIX } = require("./serve.js");
 
 const ADDRS = { lens: STATE.lens, token: STATE.token, rpc: STATE.rpc };
 
@@ -128,6 +130,7 @@ test("a connected wallet sends one transaction, to the Graduator the lens report
   expect(sent).toHaveLength(1);
   const grad = await page.inputValue("#grad");
   expect(sent[0].to.toLowerCase()).toBe(grad.toLowerCase());
+  expect(sent[0].data.toLowerCase().endsWith(BUILDER_SUFFIX), "the move did not carry CURB's Base Builder Code").toBe(true);
 });
 
 test("an unresolved transaction survives an actual page reload", async ({ page }) => {

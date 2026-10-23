@@ -21,6 +21,8 @@ const path = require("node:path");
 
 const STATE = JSON.parse(fs.readFileSync(path.join(__dirname, ".state.json"), "utf8"));
 const STUB = fs.readFileSync(path.join(__dirname, "..", "wallet-stub.js"), "utf8");
+/// CURB's ERC-8021 suffix (builder-code.js), after the calldata of every send.
+const { BUILDER_SUFFIX } = require("./serve.js");
 
 const APP = STATE.app;
 // The OTHER deployment, from script/b20/demo-waiting.sh. Its factory, lens and
@@ -2388,6 +2390,8 @@ test("a poisoned cache cannot reach the launch calldata at all", async () => {
   const data = tx.data.toLowerCase();
   const word = (a) => a.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 
+  // CURB'S BUILDER CODE ends the create (builder-code.js; site.spec.js checks the code itself).
+  expect(data.endsWith(BUILDER_SUFFIX), "the create did not carry CURB's Base Builder Code").toBe(true);
   expect(data, "the other deployment's hook ended up in the calldata").not.toContain(word(truth.otherHook));
   expect(data, "a hook address is in the calldata at all - launch() has no hook field")
     .not.toContain(word(truth.hook));

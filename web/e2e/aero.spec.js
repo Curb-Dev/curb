@@ -20,6 +20,8 @@
 const { test, expect } = require("@playwright/test");
 const fs = require("node:fs");
 const path = require("node:path");
+/// CURB's Builder Code suffix (builder-code.js), after the calldata of every send.
+const { BUILDER_SUFFIX } = require("./serve.js");
 
 const STATE = JSON.parse(fs.readFileSync(path.join(__dirname, ".state.json"), "utf8"));
 const STUB = fs.readFileSync(path.join(__dirname, "..", "wallet-stub.js"), "utf8");
@@ -691,7 +693,7 @@ test("A4 Aerodrome chosen, end to end on the card: swap to the buyer, exact appr
   expect(x.minOut).toBe(slip(await aeroQuoteAt(x.path, x.amountIn, prior), 100));
   // [1] AN EXACT APPROVAL FOR WHAT ARRIVED; [2] THE BUY WITH IT.
   expect(sent[1].to).toBe(SPCXC);
-  expect(sent[1].data).toBe(sel("approve(address,uint256)") + pad(curve) + word(received));
+  expect(sent[1].data).toBe(sel("approve(address,uint256)") + pad(curve) + word(received) + BUILDER_SUFFIX);
   expect(sent[2].to).toBe(curve);
   const w = argWords(sent[2].data);
   expect(sent[2].data.slice(0, 10)).toBe(sel("buy(uint256,uint256,address)"));
@@ -1286,7 +1288,7 @@ test("A18 Sell it back: an exact approval, then the swap back and the unwrap; a 
   await expect(p.locator("#msg")).toContainText("Nothing else was sent.");
   R.other = null;
   let sent = await sentSince(p, before);
-  expect(sent.map((t) => t.data)).toEqual([sel("approve(address,uint256)") + pad(AERO_ROUTER) + word(held)]);
+  expect(sent.map((t) => t.data)).toEqual([sel("approve(address,uint256)") + pad(AERO_ROUTER) + word(held) + BUILDER_SUFFIX]);
   expect(await allowanceOf(SPCXC, buyer, AERO_ROUTER)).toBe(held);
   await p.locator("#msg button[data-held-revoke]").click();
   await expect(p.locator("#msg")).toContainText("Revoked: Aerodrome's router may no longer move your SPCXc.", { timeout: 120_000 });
@@ -1301,7 +1303,7 @@ test("A18 Sell it back: an exact approval, then the swap back and the unwrap; a 
   await expect(p.locator("#msg")).toContainText("on Aerodrome.", { timeout: 120_000 });
   sent = await sentSince(p, before);
   expect(sent.length).toBe(2);
-  expect(sent[0].data).toBe(sel("approve(address,uint256)") + pad(AERO_ROUTER) + word(held));
+  expect(sent[0].data).toBe(sel("approve(address,uint256)") + pad(AERO_ROUTER) + word(held) + BUILDER_SUFFIX);
   expect(sent[1].to).toBe(AERO_ROUTER);
   const calls = bytesArray("0x" + sent[1].data.slice(10), 0);
   const x = exactInputOf(calls[0]);

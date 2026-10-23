@@ -122,5 +122,10 @@ function start() {
     });
 }
 
+/// WHAT EVERY SEND'S CALLDATA ENDS WITH: CURB's Builder Code suffix as
+/// web/builder-code.js has it, without 0x. site.spec.js pins the value itself;
+/// the suites that read a send's calldata take it from here.
+const BUILDER_SUFFIX = fs.readFileSync(path.join(ROOT, "builder-code.js"), "utf8").match(/dataSuffix = "0x([0-9a-f]+)"/)[1];
+
 if (require.main === module) start();
-module.exports = { siteHeaders, testHeaders, fileFor, testConfig };
+module.exports = { siteHeaders, testHeaders, fileFor, testConfig, BUILDER_SUFFIX };

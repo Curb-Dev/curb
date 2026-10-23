@@ -275,10 +275,12 @@ async function claim(l, btn) {
       notice("err", "This claim would fail. <a href=\"" + esc(link) + "\">Claim to another address</a>");
       return;
     }
+    // CURB'S BUILDER CODE (builder-code.js).
+    const signed = window.CurbBuilder.attribute({ from: who, to: l.d, data });
     notice("wait", "Confirm the claim in your wallet…");
     let hash;
     try {
-      hash = await eth.request({ method: "eth_sendTransaction", params: [{ from: who, to: l.d, data }] });
+      hash = await eth.request({ method: "eth_sendTransaction", params: [signed] });
     } catch (e) {
       notice("err", e && e.code === 4001 ? "Cancelled." : esc((e && e.message) || e));
       return;

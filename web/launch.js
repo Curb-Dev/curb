@@ -506,6 +506,9 @@ async function complete() {
         ? " (This browser has no Web Locks API, so a second tab is only discouraged here, not prevented — do not send this from two tabs.)"
         : ""));
 
+    // CURB'S BUILDER CODE (builder-code.js), added before `dispatched`: a throw
+    // from it means the wallet was never asked.
+    const signed = window.CurbBuilder.attribute({ from, to: graduator, data: SEL.graduate + pad(token) });
     dispatched = true;
     // Watched for the life of the request. The wallet's confirm dialog can sit
     // open for minutes, and a network switch inside it is invisible to any
@@ -513,9 +516,7 @@ async function complete() {
     try { eth.on && eth.on("chainChanged", onChainChanged); } catch {}
     let hash;
     try {
-      hash = await request("eth_sendTransaction", [
-        { from, to: graduator, data: SEL.graduate + pad(token) },
-      ]);
+      hash = await request("eth_sendTransaction", [signed]);
     } finally {
       try { eth.removeListener && eth.removeListener("chainChanged", onChainChanged); } catch {}
     }

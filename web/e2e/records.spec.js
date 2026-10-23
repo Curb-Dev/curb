@@ -35,6 +35,8 @@
 const { test, expect } = require("@playwright/test");
 const fs = require("node:fs");
 const path = require("node:path");
+/// CURB's Builder Code suffix (builder-code.js), after the calldata of every send.
+const { BUILDER_SUFFIX } = require("./serve.js");
 
 const STATE = JSON.parse(fs.readFileSync(path.join(__dirname, ".state.json"), "utf8"));
 const STUB = fs.readFileSync(path.join(__dirname, "..", "wallet-stub.js"), "utf8");
@@ -1734,7 +1736,7 @@ test("a WETH dev buy the creator is short of is wrapped from ETH first, then app
     window.ethereum.sent.map((t) => ({ to: t.to, data: t.data, value: t.value || "0x0" })));
   expect(sent.length, "expected a wrap, an approval and the launch").toBe(3);
   expect(sent[0].to.toLowerCase(), "the first send is not to WETH").toBe(WETH_ADDR);
-  expect(sent[0].data.toLowerCase(), "the first send is not WETH.deposit()").toBe(sel("deposit()"));
+  expect(sent[0].data.toLowerCase(), "the first send is not WETH.deposit()").toBe(sel("deposit()") + BUILDER_SUFFIX);
   expect(BigInt(sent[0].value), "the wrap is not exactly the shortfall").toBe(devBuy - who.held);
   expect(sent[1].data.toLowerCase().startsWith(sel("approve(address,uint256)")), "the second send is not the approval")
     .toBe(true);
@@ -1791,7 +1793,7 @@ test("WITHOUT THE ROUTER: a curve buy on the WETH pair wraps the buyer's shortfa
   const sent = await p.evaluate(() =>
     window.ethereum.sent.map((t) => ({ to: t.to, data: t.data, value: t.value || "0x0" })));
   expect(sent[0].to.toLowerCase(), "no wrap went out before the buy").toBe(WETH_ADDR);
-  expect(sent[0].data.toLowerCase()).toBe(sel("deposit()"));
+  expect(sent[0].data.toLowerCase()).toBe(sel("deposit()") + BUILDER_SUFFIX);
   expect(BigInt(sent[0].value), "the wrap is not exactly the shortfall").toBe(amount - heldNow);
   expect(sent[sent.length - 1].data.toLowerCase().startsWith(sel("buy(uint256,uint256,address)")),
     "the last send is not the buy").toBe(true);

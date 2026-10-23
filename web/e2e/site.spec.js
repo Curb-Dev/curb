@@ -940,3 +940,67 @@ test("the search loads and reads nothing until it is opened", async ({ page }) =
   expect(seen.script).toBe(1);
   expect(seen.calls).toBeGreaterThan(0);
 });
+
+// ================================================================ attribution
+// CURB'S BASE BUILDER CODE (builder-code.js) goes after the calldata of every
+// transaction the site sends. The helper is checked as browser code, and the
+// senders as source: a helper that works but is not called attributes nothing,
+// and a new sender that skips it would be a path Base never counts.
+test("every transaction the site sends carries CURB's Base Builder Code, and nothing else about it changes", async ({ page }) => {
+  const SUFFIX = "62635f686876697030686a0b0080218021802180218021802180218021";
+  // THE DASHBOARD'S CODE, READ BACK OUT OF THE SUFFIX: the code's bytes, its
+  // length, schema 0, and ERC-8021's marker eight times.
+  expect(Buffer.from(SUFFIX.slice(0, 22), "hex").toString("utf8")).toBe("bc_hhvip0hj");
+  expect(SUFFIX.slice(22, 26)).toBe("0b00");
+  expect(SUFFIX.slice(26)).toBe("8021".repeat(8));
+
+  await page.goto("/app.html");
+  const got = await page.evaluate(() => {
+    const B = window.CurbBuilder;
+    const tx = { from: "0x0000000000000000000000000000000000000002", to: "0x0000000000000000000000000000000000000001",
+      data: "0xA9059CBB", value: "0x1" };
+    const once = B.attribute(tx);
+    const refused = (t) => { try { B.attribute(t); return "accepted"; } catch (e) { return e.name; } };
+    return {
+      code: B.code, suffix: B.dataSuffix, frozen: Object.isFrozen(B),
+      once, twice: B.attribute(once), original: tx.data,
+      empty: B.attribute({ to: tx.to, data: "0x", value: "0x5" }).data,
+      none: B.attribute({ to: tx.to, value: "0x5" }).data,
+      odd: refused({ data: "0x123" }), notHex: refused({ data: "0xzz" }), noTx: refused(null),
+    };
+  });
+  expect(got.code).toBe("bc_hhvip0hj");
+  expect(got.suffix).toBe("0x" + SUFFIX);
+  expect(got.frozen).toBe(true);
+  expect(got.once).toEqual({ from: "0x0000000000000000000000000000000000000002",
+    to: "0x0000000000000000000000000000000000000001", data: "0xA9059CBB" + SUFFIX, value: "0x1" });
+  expect(got.twice.data, "a second pass added the code again").toBe(got.once.data);
+  expect(got.original, "the transaction given was changed").toBe("0xA9059CBB");
+  // A PLAIN VALUE TRANSFER STAYS ONE: bytes after it would run fallback() instead of receive().
+  expect(got.empty).toBe("0x");
+  expect(got.none).toBeUndefined();
+  expect([got.odd, got.notHex, got.noTx]).toEqual(["TypeError", "TypeError", "TypeError"]);
+
+  // EVERY SENDER, BY ITS SOURCE. walletconnect.js relays what a page sends;
+  // wallet-stub.js is the tests' wallet.
+  const WEB = path.join(__dirname, "..");
+  const senders = fs.readdirSync(WEB).filter((f) => f.endsWith(".js") && !["walletconnect.js", "wallet-stub.js"].includes(f))
+    .filter((f) => fs.readFileSync(path.join(WEB, f), "utf8").includes('"eth_sendTransaction"')).sort();
+  expect(senders, "a file sends transactions without being checked here").toEqual(["app.js", "launch.js", "sharing-page.js"]);
+  for (const f of senders) {
+    const src = fs.readFileSync(path.join(WEB, f), "utf8");
+    const sends = src.split("\n").filter((l) => l.includes('"eth_sendTransaction"') && !l.trim().startsWith("//"));
+    expect(sends.length, f + " has no send").toBeGreaterThan(0);
+    for (const l of sends) expect(l, f + " sends something other than the attributed transaction").toMatch(/\[signed\]\s*\}?\)?;?\s*$/);
+    expect(src, f + " never attributes").toMatch(/const signed = window\.CurbBuilder\.attribute\(/);
+  }
+  // AND EVERY PAGE THAT RUNS ONE LOADS THE HELPER FIRST.
+  for (const [html, script] of [["app.html", "app.js"], ["launch.html", "launch.js"], ["sharing.html", "sharing-page.js"]]) {
+    const src = fs.readFileSync(path.join(WEB, html), "utf8");
+    const helper = src.search(/<script src="\/?builder-code\.js"><\/script>/);
+    const at = src.search(new RegExp('<script src="/?' + script.replace(".", "\\.") + '"></script>'));
+    expect(at, html + " does not load " + script).toBeGreaterThan(-1);
+    expect(helper, html + " does not load builder-code.js").toBeGreaterThan(-1);
+    expect(helper, html + " loads builder-code.js after " + script).toBeLessThan(at);
+  }
+});
