@@ -210,7 +210,8 @@ under [What CURB can and cannot do](#what-curb-can-and-cannot-do).
 
 A dev buy is an optional first purchase made inside the launch transaction, so nobody can buy before it. You pay
 it in the paired asset, it pays the same tax as any buy, and the tokens go to the creator wallet. The form takes
-it as an amount or as a percentage of the supply.
+it as an amount or as a percentage of the supply. Moving a community from a token on another launchpad?
+[Move a community](migrate.html) takes a snapshot of its holders and makes the airdrop file for your own Safe.
 
 - A dev buy can get at most 20% of the 1,000,000,000 minted, 200,000,000 tokens. The limit is on the tokens, so it
   is the same on every pair. In the paired asset it is about 0.42 WETH on an ETH pair, a little more at a higher

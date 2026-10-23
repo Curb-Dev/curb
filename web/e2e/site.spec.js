@@ -66,6 +66,8 @@ const PAGES = [
   ["/docs.html", "Docs"],
   // WHERE HOLDER SHARING IS SEEN, in the bar on every page (the owner looked for it).
   ["/sharing.html?" + pair, "Holder fees"],
+  // MOVING A COMMUNITY: linked from the docs and the launch form, not the bar.
+  ["/migrate.html?" + pair, null],
 ];
 
 async function barReady(page) {

@@ -567,9 +567,11 @@ test("every page works under the site's policy: no violation, and the data still
     { timeout: 30_000 }).toBeGreaterThan(0);
   expect(await violations(page), "a violation on app.html").toEqual([]);
 
-  for (const p of ["/sharing", "/docs.html", "/curb.html", "/terms.html", "/launch.html", "/no/such/page"]) {
+  for (const p of ["/sharing", "/docs.html", "/curb.html", "/terms.html", "/launch.html", "/migrate.html", "/no/such/page"]) {
     await page.goto(base + p);
     await expect(page.locator("#siteBar .cbInner")).toBeVisible({ timeout: 15_000 });
+    // MOVING A COMMUNITY reads the factories' terms through the stand-in's lens.
+    if (p === "/migrate.html") await expect(page.locator("#mCostTable tbody tr").first()).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(1500);
     expect(await violations(page), "a violation on " + p).toEqual([]);
   }

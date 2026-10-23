@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Curb · Move a community</title>
+<link rel="icon" href="/curb-mark.svg" />
+<link rel="stylesheet" href="/topbar.css" />
+<meta name="description" content="Relaunch a Base token's community on Curb: launch the new coin, take a snapshot of the old token's holders, and airdrop it from your own Safe." />
+<meta property="og:site_name" content="Curb" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Move a community · Curb" />
+<meta property="og:description" content="Relaunch a Base token's community on Curb: launch the new coin, take a snapshot of the old token's holders, and airdrop it from your own Safe." />
+<meta property="og:image" content="https://curbfun.xyz/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Curb: launch coins paired with ETH, stocks and more" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@curbfun" />
+<!-- THE DEPLOYMENT AND THE INCIDENT SWITCHES, before any script reads them. -->
+<script src="/config.js"></script>
+<script src="/multicall.js"></script>
+<style>
+  /* THE SAME PALETTE AS EVERY OTHER PAGE. */
+  :root {
+    color-scheme: dark;
+    --bg: #080b11; --panel: #0e131b; --panel2: #131a24; --line: #1d2633;
+    --ink: #eef2f7; --dim: #94a0b0; --dimmer: #5f6b7c;
+    --paint: #0052ff; --paint-hi: #2a6dff; --good: #3ddc97; --bad: #ff6b6b;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); }
+  main { max-width: 920px; margin: 0 auto; padding: 0 16px 96px; }
+  a { color: var(--paint-hi); }
+  h1 { font-size: 24px; letter-spacing: -0.02em; margin: 0 0 8px; }
+  h2 { font-size: 17px; letter-spacing: -0.01em; margin: 36px 0 10px; }
+  .lede { color: var(--dim); font-size: 14px; line-height: 1.65; margin: 0 0 18px; max-width: 72ch; }
+  .steps { margin: 0; padding: 0 0 0 22px; font-size: 14px; line-height: 1.7; color: #d4dbe5; max-width: 76ch; }
+  .steps li { margin: 0 0 10px; padding-left: 3px; }
+  .steps li::marker { color: var(--dimmer); font-weight: 700; }
+  .steps strong, .note strong { color: var(--ink); }
+  .note { font-size: 13px; line-height: 1.65; color: var(--dim); margin: 8px 0 0; max-width: 76ch; overflow-wrap: anywhere; }
+  .note.warn { color: var(--ink); border-left: 3px solid #ffc400; padding-left: 10px; }
+  .note.bad { color: var(--ink); border-left: 3px solid var(--bad); padding-left: 10px; }
+  .note.good { color: var(--ink); border-left: 3px solid var(--good); padding-left: 10px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin: 14px 0 0; }
+  /* TABLES scroll inside their own box on a phone rather than taking the page sideways. */
+  .tableWrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; margin: 12px 0 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  th { background: var(--panel2); font-size: 11px; font-weight: 600; color: var(--dim); text-transform: uppercase;
+    letter-spacing: 0.06em; white-space: nowrap; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+  /* IN A TABLE AN ADDRESS STAYS ON ONE LINE, and the table scrolls in its box. */
+  td .addr { word-break: normal; white-space: nowrap; }
+  label { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dimmer); margin: 0 0 5px; }
+  input, textarea { width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); font: inherit; font-size: 13px; }
+  textarea { resize: vertical; min-height: 70px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  input:focus, textarea:focus { outline: none; border-color: var(--paint-hi); }
+  input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--paint); }
+  .check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.5; color: var(--ink);
+    text-transform: none; letter-spacing: 0; margin: 12px 0 0; cursor: pointer; }
+  .check input { margin-top: 3px; flex: none; }
+  .fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
+  .fields3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 14px 0 0; }
+  .hint { font-size: 11.5px; color: var(--dimmer); margin: 5px 0 0; line-height: 1.5; }
+  details.more { margin: 14px 0 0; }
+  details.more > summary { cursor: pointer; font-size: 13px; color: var(--dim); }
+  details.more[open] > summary { margin-bottom: 10px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0 0; }
+  button { font: inherit; font-size: 13px; font-weight: 600; padding: 10px 16px; border-radius: 8px;
+    border: 1px solid var(--paint); background: var(--paint); color: #ffffff; cursor: pointer; }
+  button:hover { background: #0043d1; border-color: #0043d1; }
+  button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  button.ghost:hover { background: rgba(255, 255, 255, 0.07); border-color: var(--dim); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button.ghost:disabled:hover { background: transparent; border-color: var(--line); }
+  progress { width: 100%; height: 6px; margin: 14px 0 0; accent-color: var(--paint); }
+  #mStatus { font-size: 13px; line-height: 1.6; color: var(--dim); margin: 10px 0 0; overflow-wrap: anywhere; }
+  #mStatus.bad { color: var(--ink); border-left: 3px solid var(--bad); padding-left: 10px; }
+  .info { font-size: 14px; line-height: 1.6; margin: 0; overflow-wrap: anywhere; }
+  .info b { font-weight: 650; }
+  .boxes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0 0; }
+  .box { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+  .box b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .box span { display: block; margin-top: 3px; font-size: 11.5px; color: var(--dim); line-height: 1.45; }
+  .left { color: var(--dimmer); }
+  td .why { color: var(--dim); font-size: 12px; }
+  @media (max-width: 760px) {
+    .boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .fields, .fields3 { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<header id="siteBar" data-page="migrate"></header>
+<script src="/topbar.js"></script>
+<!-- MOVING A COMMUNITY: how a token's holders on Base, from any launchpad,
+     relaunch on Curb, and the snapshot tool that turns the old token's holders
+     into an airdrop file (migrate.js). The page reads; it never asks a wallet
+     for anything and never sends. -->
+<main>
+  <h1>Move a community to Curb</h1>
+  <p class="lede">A token whose holders are on Base, from any launchpad, can relaunch on Curb and give those holders
+    the new coin. You do every step yourself, from your own wallets: Curb never holds or sends anything for a
+    migration.</p>
+
+  <ol class="steps">
+    <li><strong>Launch the new coin.</strong> On <a href="app.html#create-launch" data-carry>Launch a token</a>, choose
+      <strong>Holders</strong> under <strong>Who earns your tax</strong>: the creator share of every trade then goes
+      to the coin's holders, your community, for good, instead of to you.</li>
+    <li><strong>Buy what you will give away.</strong> Every launch puts its whole supply on its curve, and nothing is
+      set aside for anyone, so you can airdrop only what you buy. A dev buy, made inside the launch transaction, can
+      receive up to <span id="mCapLine">20% of the supply (200,000,000 tokens)</span>; anything more you buy on the
+      curve afterwards, like anyone else.</li>
+    <li><strong>Take a snapshot.</strong> The tool below reads the old token's holders at a block you choose, leaves
+      out burn addresses, the contracts you choose and any address you list, and works out each holder's share of the
+      new coin at your ratio.</li>
+    <li><strong>Send it yourself.</strong> Move the tokens to a Safe you control and load the file in Safe's
+      <strong>CSV Airdrop</strong> app (in <a href="https://app.safe.global" target="_blank" rel="noreferrer noopener">Safe{Wallet}</a>,
+      under Apps). Each file is one transaction your Safe's owners sign. The app takes up to 500 transfers per file,
+      so a larger airdrop comes as several files. Put the Safe in <strong>Creator wallet</strong> under
+      <strong>Advanced</strong> when you launch, and the dev buy's tokens go straight to it.</li>
+  </ol>
+
+  <h2 id="costs">What filling a curve costs</h2>
+  <p class="note">A launch graduates when its curve has raised its graduation threshold, which buys the tokens the
+    curve sells. Buyers pay the launch's tax on top, 1% to 5% of each payment. The figures are read from the chain.</p>
+  <div id="mCosts"><p class="note">Reading…</p></div>
+
+  <h2 id="snapshot">Snapshot</h2>
+  <div class="panel">
+    <div class="fields">
+      <div>
+        <label for="mOld">Old token on Base</label>
+        <input id="mOld" placeholder="0x… the ERC-20 your community holds" autocomplete="off" spellcheck="false" />
+      </div>
+      <div>
+        <label for="mBlock">At block</label>
+        <input id="mBlock" placeholder="latest" inputmode="numeric" autocomplete="off" spellcheck="false" />
+      </div>
+    </div>
+    <label class="check" for="mFindContracts">
+      <input type="checkbox" id="mFindContracts" checked />
+      <span>Find the contracts among the holders (pools, lockers, the old launchpad's curve), so you can leave them out</span>
+    </label>
+    <details class="more" id="mMore">
+      <summary>More</summary>
+      <div class="fields">
+        <div>
+          <label for="mRpc">Your own endpoint</label>
+          <input id="mRpc" placeholder="https://… blank to read through this site's" autocomplete="off" spellcheck="false" />
+          <p class="hint">Read-only. A paid endpoint that answers wide log ranges reads a long history faster.</p>
+        </div>
+        <div>
+          <label for="mFrom">From block</label>
+          <input id="mFrom" placeholder="the token's first" inputmode="numeric" autocomplete="off" spellcheck="false" />
+          <p class="hint">Only if the endpoint cannot find the block the token was created in.</p>
+        </div>
+      </div>
+    </details>
+    <div class="row">
+      <button type="button" id="mRun">Take the snapshot</button>
+      <button type="button" class="ghost" id="mStop" hidden>Stop</button>
+      <button type="button" class="ghost" id="mContinue" hidden>Continue</button>
+    </div>
+    <progress id="mProgress" max="1000" value="0" hidden></progress>
+    <p id="mStatus" role="status" aria-live="polite" hidden></p>
+  </div>
+
+  <section id="mResult" hidden>
+    <div class="panel">
+      <p class="info" id="mInfo"></p>
+      <p class="note" id="mSupply"></p>
+      <div class="fields3">
+        <div>
+          <label for="mRatio">New tokens per old token</label>
+          <input id="mRatio" value="1" inputmode="decimal" autocomplete="off" spellcheck="false" />
+        </div>
+        <div>
+          <label for="mMin">Minimum old balance</label>
+          <input id="mMin" placeholder="none" inputmode="decimal" autocomplete="off" spellcheck="false" />
+        </div>
+        <div>
+          <label for="mNew">New token (your Curb launch)</label>
+          <input id="mNew" placeholder="0x… for Safe's file" autocomplete="off" spellcheck="false" />
+        </div>
+      </div>
+      <p class="note" id="mNewInfo" hidden></p>
+      <div style="margin-top:14px">
+        <label for="mExclude">Leave out these addresses</label>
+        <textarea id="mExclude" rows="3" placeholder="0x… one per line: the old team's wallets, an exchange, the old launchpad's contracts" spellcheck="false"></textarea>
+        <p class="hint" id="mExcludeNote">The zero and dead addresses and the old token itself are always left out.</p>
+      </div>
+      <div class="boxes" id="mTotals"></div>
+      <p class="note" id="mNeed"></p>
+      <p class="note" id="mErr" hidden></p>
+      <div class="row" id="mFiles"></div>
+      <p class="hint">Amounts in the files are in whole tokens, to 18 decimal places at most. Safe's file has the
+        columns token_type, token_address, receiver, amount and id; the other is address,amount.</p>
+    </div>
+    <div class="panel" id="mContractsBox" hidden>
+      <h2 style="margin-top:0">Contracts among the holders</h2>
+      <p class="note">A pool, a locker or a launchpad's curve holds tokens nobody can use, so they are left out. A Safe
+        is a person's or a team's wallet, so it is kept. Change any of them here.</p>
+      <div id="mContracts"></div>
+    </div>
+    <div class="panel">
+      <h2 style="margin-top:0">Holders</h2>
+      <p class="note" id="mTableNote"></p>
+      <div id="mTable"></div>
+    </div>
+  </section>
+</main>
+<script src="/keccak.js"></script>
+<script src="/abi.js"></script>
+<script src="/token-meta.js"></script>
+<script src="/sharing.js"></script>
+<script src="/migrate.js"></script>
+</body>
+</html>
