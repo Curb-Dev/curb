@@ -3936,10 +3936,16 @@ test("an approval is never asked for a curve the registry does not name", async 
       if (answer.length >= 14 * 64) {
         payload.result = "0x" + answer.slice(0, 64) + impostor.padStart(64, "0") + answer.slice(128);
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
+      // A READ THE PAGE GAVE UP ON while it was being fetched here (its own
+      // timeout, a refresh replacing it) is already handled: nothing to answer.
+      try {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
+      } catch (e) {
+        if (!/already handled/i.test(String(e && e.message))) throw e;
+      }
       return;
     }
-    await route.continue();
+    await route.continue().catch((e) => { if (!/already handled/i.test(String(e && e.message))) throw e; });
   });
 
   const sentBefore = await page.evaluate(() => window.ethereum.sent.length);
