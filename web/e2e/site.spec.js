@@ -1064,3 +1064,38 @@ test("every page answers by its name, a slash after it is sent on, and the hosts
   expect(await topOf(), "app.html alone already opens at the form, so this proves nothing").toBeGreaterThan(anchored + 20);
   expect(Math.abs(named - anchored), "/launchpad did not open where app.html#create-launch does").toBeLessThan(4);
 });
+
+
+// ================================================================ the Base Dashboard
+// CURB'S PROJECT IN THE BASE DASHBOARD (project "Curb", whose Builder Code is
+// builder-code.js's) is named by one tag in the <head> of every page the site
+// publishes: <meta name="base:app_id" content="6adb5cfb9fd7480a0f113787" />.
+// PUBLISHED IS WHAT VERCEL UPLOADS - every .html in web/ that .vercelignore does
+// not leave out - so a page added later is held to it too, and the test pages,
+// which are never uploaded, are not.
+test("every published page carries CURB's Base Dashboard app id in its head, exactly once", async ({ page, request }) => {
+  const WEB = path.join(__dirname, "..");
+  const ignored = new Set(fs.readFileSync(path.join(WEB, ".vercelignore"), "utf8").split(/\r?\n/)
+    .map((l) => l.trim()).filter((l) => l.startsWith("/")));
+  const published = fs.readdirSync(WEB).filter((f) => f.endsWith(".html") && !ignored.has("/" + f)).sort();
+  expect(published, "the pages read as published are not the site's pages").toEqual(expect.arrayContaining(
+    ["404.html", "app.html", "browse.html", "curb.html", "docs.html", "launch.html", "migrate.html", "sharing.html", "terms.html"]));
+  expect(published, "a test page reads as published").not.toContain("tests.html");
+  expect(published, "a test page reads as published").not.toContain("wallet-setup.html");
+  // PARSED AS A BROWSER PARSES IT, scripts not run: a tag written after </head>,
+  // or inside a comment, is not one the dashboard reads.
+  await page.goto("/terms.html");
+  for (const f of published) {
+    const res = await request.get("/" + f);
+    expect(res.status(), f + " did not answer").toBe(200);
+    const found = await page.evaluate((src) => {
+      const doc = new DOMParser().parseFromString(src, "text/html");
+      return {
+        head: [...doc.head.querySelectorAll('meta[name="base:app_id"]')].map((m) => m.getAttribute("content")),
+        all: doc.querySelectorAll('meta[name="base:app_id"]').length,
+      };
+    }, await res.text());
+    expect(found.head, f + " does not carry CURB's app id in its <head>").toEqual(["6adb5cfb9fd7480a0f113787"]);
+    expect(found.all, f + " carries the tag outside its <head> too").toBe(1);
+  }
+});
