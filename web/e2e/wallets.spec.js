@@ -19,6 +19,7 @@ const crypto = require("node:crypto");
 const { testConfig } = require("./serve.js");
 const {
   walletsScript, uuid, logs, clearLogs, WC_URI, PROJECT_ID, wcSession, useFakeWalletConnect, isWalletConnect,
+  IN_APP_UA, IN_APP_FLAGS,
 } = require("./fake-wallets.js");
 
 const STATE = JSON.parse(fs.readFileSync(path.join(__dirname, ".state.json"), "utf8"));
@@ -506,6 +507,177 @@ test("on launch.html the wallet picked is the only one complete() asks", async (
   expect(asked.A).toBeUndefined();
   expect(asked.eth).toBeUndefined();
   expect(await page.evaluate(() => window.__wallets.B.sent.length + window.__wallets.A.sent.length + window.ethereum.sent.length)).toBe(0);
+});
+
+// ================================================================== Coinbase Wallet's own browser
+// THE SITE OPENED INSIDE COINBASE WALLET (go.base.app/app?url=...): the app's
+// smart wallet is window.ethereum, with isCoinbaseBrowser, and has already
+// allowed the site. Whether it announces itself, and under which id, is not
+// documented - so each way is tested: an id the site does not list, nothing,
+// and Coinbase Wallet's own. Every test here has WalletConnect configured
+// (useSite), so "no phone wallet" means something.
+/// A context that is the app's browser: its user agent, on a phone's screen.
+const inApp = (browser) => browser.newContext({ userAgent: IN_APP_UA, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+/// The app's wallet announcing an id LISTED does not name, already allowing the site.
+const HOST = { id: "H", uuid: uuid("a"), rdns: "app.base.wallet", name: "Base", account: TRADER, connected: true, flags: IN_APP_FLAGS };
+
+test("inside Coinbase Wallet's browser its wallet, announcing an id the site does not list, is Coinbase Wallet: connected silently, and no phone wallet", async ({ browser }) => {
+  const ctx = await inApp(browser);
+  const page = await ctx.newPage();
+  const seen = wcRequests(page);
+  await useSite(page);
+  await useFakeWalletConnect(page);
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [HOST] }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  // ALREADY ALLOWED: taken at load, asked only eth_accounts.
+  await expect(page.locator("#barConnect")).toContainText(short(TRADER), { timeout: 10_000 });
+  let asked = await logs(page);
+  expect(asked.H).toContain("eth_accounts");
+  expect(asked.H, "the app's wallet was prompted at load").not.toContain("eth_requestAccounts");
+  expect(await page.evaluate(() => window.CurbBar.wallet() === window.__wallets.H)).toBe(true);
+
+  // DISCONNECTED AND CONNECTED AGAIN: straight to it - no picker, no phone
+  // wallet - and remembered under Coinbase Wallet's id, not the one announced.
+  await page.click("#barConnect");
+  await page.click("#siteBar .cbOut");
+  await expect(page.locator("#barConnect")).toHaveText("Connect wallet");
+  await clearLogs(page);
+  await page.click("#barConnect");
+  await expect(page.locator("#barConnect")).toContainText(short(TRADER), { timeout: 10_000 });
+  await expect(picker(page), "a picker was opened for the app's one wallet").toBeHidden();
+  expect((await logs(page)).H).toContain("eth_requestAccounts");
+  expect((await stored(page)).wallet).toBe("6963:com.coinbase.wallet");
+
+  // THE NEXT PAGE: the remembered id is the app's wallet, chosen silently.
+  await clearLogs(page);
+  await page.goto("/docs.html");
+  await barReady(page);
+  await expect(page.locator("#barConnect")).toContainText(short(TRADER), { timeout: 10_000 });
+  asked = await logs(page);
+  expect(asked.H).toContain("eth_accounts");
+  expect(asked.H).not.toContain("eth_requestAccounts");
+  expect(seen, "something of WalletConnect's was requested inside the app").toEqual([]);
+  await ctx.close();
+});
+
+test("inside Coinbase Wallet's browser its wallet, announcing nothing, is Coinbase Wallet and not \"Browser wallet\", and the picker offers no phone wallet", async ({ browser }) => {
+  // ALONE, NOT YET ALLOWED: chosen at load (one wallet, no phone wallet), asked
+  // silently, not prompted; Connect then asks it and no other.
+  let ctx = await inApp(browser);
+  let page = await ctx.newPage();
+  const seen = wcRequests(page);
+  await useSite(page);
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [],
+    legacy: { ...LEGACY, connected: false, flags: IN_APP_FLAGS } }) });
+  await page.goto("/app.html");
+  await barReady(page);
+  await settle(page);
+  await expect(page.locator("#barConnect")).toHaveText("Connect wallet");
+  expect((await logs(page)).eth || [], "the app's wallet was prompted at load").not.toContain("eth_requestAccounts");
+  expect(await page.evaluate(() => window.CurbBar.wallet() === window.ethereum), "the lone wallet was not chosen").toBe(true);
+  await page.click("#barConnect");
+  await expect(page.locator("#wallet")).toContainText(TRADER, { ignoreCase: true, timeout: 20_000 });
+  await expect(picker(page)).toBeHidden();
+  expect((await logs(page)).eth).toContain("eth_requestAccounts");
+  expect((await stored(page)).wallet, "remembered as the browser's window.ethereum, not as Coinbase Wallet").toBe("6963:com.coinbase.wallet");
+  expect(seen).toEqual([]);
+  await ctx.close();
+
+  // BESIDE A LISTED WALLET: two rows, the app's under Coinbase Wallet's name,
+  // and no "Phone wallet" though the site has WalletConnect on.
+  ctx = await inApp(browser);
+  page = await ctx.newPage();
+  await useSite(page);
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [A], legacy: { ...LEGACY, flags: IN_APP_FLAGS } }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await settle(page);
+  expect(await logs(page), "a wallet was asked before the person picked one").toEqual({});
+  await page.click("#barConnect");
+  await expect(picker(page)).toBeVisible();
+  expect(await rows(page).locator(".cbPickName").allTextContents()).toEqual(["MetaMask", "Coinbase Wallet"]);
+  await expect(picker(page)).not.toContainText("Phone wallet");
+  await ctx.close();
+});
+
+test("inside Coinbase Wallet's browser, the app's wallet announcing Coinbase Wallet's own id is one row, not two", async ({ browser }) => {
+  const ctx = await inApp(browser);
+  const page = await ctx.newPage();
+  await useSite(page);
+  // window.ethereum WITH THE FLAG, ANNOUNCED UNDER COINBASE WALLET'S ID AS
+  // ANOTHER OBJECT that does not carry it - as a provider that announces a
+  // wrapper of itself does.
+  const wrapped = function () {
+    var h = window.ethereum;
+    var wrapper = { request: function (a) { return h.request(a); }, on: function (e, f) { h.on(e, f); },
+      removeListener: function (e, f) { h.removeListener(e, f); } };
+    var d = { info: { uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Coinbase Wallet", rdns: "com.coinbase.wallet" }, provider: wrapper };
+    window.addEventListener("eip6963:requestProvider", function () {
+      window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail: d }));
+    });
+  };
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [B],
+    legacy: { ...LEGACY, connected: false, flags: IN_APP_FLAGS } }, wrapped) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await settle(page);
+  expect(await logs(page), "a wallet was asked before the person picked one").toEqual({});
+  await page.click("#barConnect");
+  await expect(picker(page)).toBeVisible();
+  // ONE ROW FOR THE APP'S WALLET, however many ways it said so - and no twin warning.
+  expect(await rows(page).locator(".cbPickName").allTextContents()).toEqual(["Rabby Wallet", "Coinbase Wallet"]);
+  await expect(picker(page).locator(".cbPickWarn")).toHaveCount(0);
+  await rows(page).nth(1).click();
+  await expect(page.locator("#barConnect")).toContainText(short(TRADER), { timeout: 10_000 });
+  expect(await page.evaluate(() => window.CurbBar.wallet() === window.ethereum), "the app's wallet is not window.ethereum").toBe(true);
+  expect((await logs(page)).B, "the wallet not picked was asked").toBeUndefined();
+  expect((await stored(page)).wallet).toBe("6963:com.coinbase.wallet");
+  await ctx.close();
+});
+
+test("on a desktop browser a wallet setting isCoinbaseBrowser is not taken for the app's: unlisted stays unlisted, window.ethereum stays \"Browser wallet\", and the phone wallet stays", async ({ browser }) => {
+  // AN EXTENSION ANNOUNCING AN ID THE SITE DOES NOT LIST, WITH THE FLAG: not
+  // drawn, asked nothing, and window.ethereum not offered in its place.
+  let page = await browser.newPage();
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [HOST], legacy: { ...LEGACY, flags: IN_APP_FLAGS } }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await settle(page);
+  await page.click("#barConnect");
+  await expect(page.locator("#siteBar .cbNote")).toContainText("This browser's wallets are not ones the site lists.");
+  await expect(picker(page)).toBeHidden();
+  expect(await logs(page), "a wallet only flagged as Coinbase Wallet's browser was asked").toEqual({});
+  await page.close();
+
+  // window.ethereum WITH THE FLAG AND NO ANNOUNCEMENT: "Browser wallet", beside
+  // the phone wallet - nothing chosen for the person, nothing named for it.
+  page = await browser.newPage();
+  await useSite(page);
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [], legacy: { ...LEGACY, connected: false, flags: IN_APP_FLAGS } }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await settle(page);
+  await page.click("#barConnect");
+  await expect(picker(page)).toBeVisible();
+  expect(await rows(page).locator(".cbPickName").allTextContents()).toEqual(["Browser wallet", "Phone wallet - WalletConnect"]);
+  await rows(page).nth(0).click();
+  await expect(page.locator("#barConnect")).toContainText(short(TRADER), { timeout: 10_000 });
+  expect((await stored(page)).wallet).toBe("legacy");
+  await page.close();
+
+  // THE USER AGENT ALONE IS NOT ENOUGH EITHER: inside the app's browser, a
+  // provider without the flag announcing an unlisted id is unlisted.
+  const ctx = await inApp(browser);
+  page = await ctx.newPage();
+  await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [{ ...HOST, flags: undefined }] }) });
+  await page.goto("/curb.html");
+  await barReady(page);
+  await settle(page);
+  await page.click("#barConnect");
+  await expect(page.locator("#siteBar .cbNote")).toContainText("This browser's wallets are not ones the site lists.");
+  expect(await logs(page)).toEqual({});
+  await ctx.close();
 });
 
 // ================================================================== WalletConnect

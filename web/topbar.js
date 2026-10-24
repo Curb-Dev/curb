@@ -358,6 +358,8 @@ else carryLinks();
 // (app.js, launch.js and sharing-page.js send through nothing else). A browser
 // whose wallet announces nothing still has window.ethereum, as the one choice
 // "Browser wallet" - which is every browser test that announces nothing.
+// INSIDE COINBASE WALLET'S OWN BROWSER its wallet is "Coinbase Wallet" whatever
+// it announces, or with nothing, and no phone wallet is offered (IN_APP below).
 //
 // EVERY ANNOUNCEMENT IS A STRANGER'S. Any extension can announce, under any
 // name, id and picture. Only a LISTED id is drawn, and under the name LISTED
@@ -398,16 +400,48 @@ const LISTED = new Map([
   ["io.zerion.wallet", "Zerion"],
   ["com.brave.wallet", "Brave Wallet"],
 ]);
+/// COINBASE WALLET'S OWN BROWSER (the "Base App" until September 2026): the
+/// site opened inside the app - go.base.app/app?url= - where the app's wallet,
+/// an ERC-4337 smart wallet, is window.ethereum, and since April 2026 has
+/// already allowed the site. Coinbase's own SDKs know it by two signs
+/// (coinbase-wallet-sdk isCoinbaseWalletHost and getInjectedProvider,
+/// base/account-sdk getInjectedProvider): the app's browser puts
+/// "CoinbaseWalletRN/" in its user agent, and its provider carries
+/// isCoinbaseBrowser: true. Whether it announces itself (EIP-6963), and under
+/// which id, neither SDK nor Coinbase's docs say.
+///
+/// BOTH SIGNS, AND THE USER AGENT ABOVE ALL. Inside the app its wallet is drawn
+/// as Coinbase Wallet whatever id it announces, or with none - so a desktop
+/// extension that could pass for it would be drawn under that name. A flag on
+/// a provider is what any extension can set (wallets copy each other's flags to
+/// pass compatibility checks), and the SDK itself calls these signs "routing
+/// hints", not a trust boundary. The user agent is the app's browser's own:
+/// sent with every request, set by no wallet, and an extension rewriting it in
+/// the page would be doing far more than setting a flag. A desktop browser with
+/// the flag alone is read as it always was. An older build of the app, which
+/// sends no such user agent, is too: its wallet is still offered when it
+/// announces Coinbase Wallet's id, or announces nothing ("Browser wallet").
+const IN_APP = /CoinbaseWalletRN\//.test(String((typeof navigator !== "undefined" && navigator.userAgent) || ""));
+/// The id the app's wallet is filed under: Coinbase Wallet's, as LISTED names it.
+const HOST_ID = "com.coinbase.wallet";
 /// WALLETCONNECT IS OFFERED ONLY WITH A PROJECT ID, A DEPLOYMENT AND THE SITE'S
 /// OWN ENDPOINT: its session's one chain is config.js's, and every read it
-/// answers goes to config.js's rpc (walletconnect.js).
-const WC_ON = !!(SITE.walletConnect && SEND_CHAIN && SITE.rpc);
+/// answers goes to config.js's rpc (walletconnect.js). AND NEVER INSIDE
+/// COINBASE WALLET'S OWN BROWSER (IN_APP): the wallet is right there, and a
+/// phone wallet would be another app on the same phone.
+const WC_ON = !!(SITE.walletConnect && SEND_CHAIN && SITE.rpc) && !IN_APP;
 
 /// A provider worth keeping: an object with a request function, and never a
 /// DOM node - an element with id "ethereum" IS window.ethereum on a browser
 /// with no wallet (docs.js keeps its headings off that id for this reason).
 const isProvider = (p) => !!p && typeof p === "object" && typeof p.request === "function" &&
   !(typeof Node === "function" && p instanceof Node);
+/// WHETHER A PROVIDER IS THE APP'S OWN WALLET: inside Coinbase Wallet's browser
+/// (IN_APP), where no extension runs, the one that says so. Never anywhere else.
+function isHost(p) {
+  if (!IN_APP || !isProvider(p)) return false;
+  try { return p.isCoinbaseBrowser === true; } catch { return false; }
+}
 /// A stored choice, checked as a stranger's value would be: "" for anything else.
 function walletKey(v) {
   const s = typeof v === "string" ? v.trim().toLowerCase() : "";
@@ -466,6 +500,15 @@ function onAnnounce(e) {
     const uuid = info.uuid, rdns = info.rdns, icon = info.icon;
     if (typeof uuid !== "string" || !UUID.test(uuid)) return;
     if (typeof rdns !== "string" || rdns.length > 100 || !RDNS.test(rdns)) return;
+    // THE APP'S OWN WALLET, inside its browser: Coinbase Wallet, whatever id it
+    // announced, once - and never "unlisted" (see IN_APP). An announcement of
+    // Coinbase Wallet's own id there is the app's too, whatever object it hands
+    // over: no extension runs in the app's browser, and taken as a wallet of
+    // its own it would be the app's wallet's twin.
+    if (isHost(provider) || (rdns.toLowerCase() === HOST_ID && isHost(window.ethereum))) {
+      adoptHost(provider, uuid.toLowerCase(), icon);
+      return;
+    }
     const id = rdns.toLowerCase(), name = LISTED.get(id);
     if (!name) { unlisted = true; return; }
     if (announced.length >= MAX_WALLETS) return;
@@ -482,6 +525,28 @@ function onAnnounce(e) {
     if (chosen && chosen.kind === "legacy" && chosen.provider === provider) chosen = entry;
     arrived(entry);
   } catch { /* a malformed announcement is no wallet */ }
+}
+
+/// THE APP'S WALLET, INSIDE COINBASE WALLET'S BROWSER, IS ONE CHOICE: Coinbase
+/// Wallet, under the id LISTED gives it, whether it announced itself - under
+/// any id - or not (window.ethereum, looked at once the wallets were asked).
+/// The first to arrive is it; a second announcement, or the look after it,
+/// adds nothing. Its announcement's uuid and icon are kept when it made one.
+/// @param provider  the announced provider - window.ethereum is asked instead
+///                  when this one does not say it is the app's, or none was
+function adoptHost(provider, uuid, icon) {
+  const host = isHost(provider) ? provider : window.ethereum;
+  if (!isHost(host) || announced.some((w) => w.host)) return;
+  const entry = {
+    kind: "injected", key: "6963:" + HOST_ID, uuid: uuid || "", rdns: HOST_ID, name: LISTED.get(HOST_ID),
+    icon: typeof icon === "string" && icon.length <= ICON_MAX && ICON_URI.test(icon) ? icon : "",
+    provider: host, host: true,
+  };
+  announced.push(entry);
+  // window.ethereum, CHOSEN AS "Browser wallet" before it was seen to be the
+  // app's: the same provider with its name now, so its handlers stay put.
+  if (chosen && chosen.kind === "legacy" && chosen.provider === host) chosen = entry;
+  arrived(entry);
 }
 
 /// A WALLET ARRIVED. The remembered one settles the load straight away - after
@@ -1352,12 +1417,15 @@ paint();
 // injected answers at once, and one that injects later announces itself.
 window.addEventListener("eip6963:announceProvider", onAnnounce);
 requestWallets();
+// INSIDE COINBASE WALLET'S BROWSER, its wallet whether it announced or not -
+// looked at after the request, so an announcement it made comes first.
+adoptHost();
 // SETTLED AT ONCE where waiting cannot change the choice (nothingToWaitFor);
 // else as soon as the remembered wallet announces, or a moment after the page
 // is parsed, and never later than a second in.
 if (nothingToWaitFor()) settleNow();
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => { requestWallets(); setTimeout(settleNow, 150); }, { once: true });
+  document.addEventListener("DOMContentLoaded", () => { requestWallets(); adoptHost(); setTimeout(settleNow, 150); }, { once: true });
 } else {
   setTimeout(settleNow, 150);
 }
@@ -1366,6 +1434,7 @@ const ready = settled.then(detect);
 // SOME WALLETS INJECT LATE, after the page's scripts have run, and announce it.
 if (!window.ethereum) {
   window.addEventListener("ethereum#initialized", () => {
+    adoptHost();
     if (settledYet && !chosen && !hidden) {
       const c = autoChoice();
       if (c) choose(c, true);

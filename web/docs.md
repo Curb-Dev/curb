@@ -784,6 +784,14 @@ one, both are listed, the site says so, and neither is chosen for you. The one y
 asks from then on, and it is remembered for your next visit until you press Disconnect. If it does not connect - you decline, or it is
 locked - while another wallet is there to pick, it is forgotten, and the next Connect asks which wallet again.
 
+CURB works inside **Coinbase Wallet's in-app browser** (the app called the Base App until September 2026): open
+[go.base.app/app?url=https%3A%2F%2Fcurbfun.xyz%2F](https://go.base.app/app?url=https%3A%2F%2Fcurbfun.xyz%2F) on your
+phone, and the site opens inside the app with its wallet already connected. There the app's own wallet is the one
+the site asks, as Coinbase Wallet, and no phone wallet is offered. Its accounts are smart wallets: what you confirm
+is carried on chain inside a transaction of its own, which can succeed while your operation inside it reverts. The
+site reads the operation's own result, so an operation that reverted is reported as failed - nothing is called
+bought, sold or claimed.
+
 Where the site offers it, **Phone wallet** connects a wallet on your phone through WalletConnect: scan the code with
 the wallet, or, on the phone itself, open the wallet from the list.
 

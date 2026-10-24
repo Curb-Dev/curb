@@ -406,3 +406,45 @@ B. WALLETCONNECT - only once config.js names walletConnectProjectId, Reown's
    5. Two tabs: the second says WalletConnect is open in another tab, and takes
       over once the first is closed.
    6. Disconnect in the bar: the phone's wallet shows the session ended.
+
+
+INSIDE COINBASE WALLET (its in-app browser, the "Base App" until Sept 2026)
+-------------------------------------------------------------------------
+
+The browser suite plays the app's browser with its user agent and a stub
+wallet carrying isCoinbaseBrowser (web/e2e/wallets.spec.js), and a smart
+wallet's receipt with a contract of its own at the EntryPoint's address
+(web/e2e/smart-wallet.spec.js). What the app itself does - its user agent, its
+flag, whether it announces itself and under which id, the hash it hands back -
+only the app can answer. On a phone, with real Base and tiny amounts, from an
+account holding nothing else - never a send from an agent.
+
+C. THE APP'S OWN BROWSER.
+   1. Open https://go.base.app/app?url=https%3A%2F%2Fcurbfun.xyz%2F on the
+      phone: it opens Coinbase Wallet and the site inside it. The bar shows the
+      app's account with no prompt (the app has already allowed the site), and
+      Connect, after a Disconnect, goes straight to the app's wallet: no
+      picker, no "Phone wallet".
+   2. Write down what the app injects, in Safari's or Chrome's remote
+      inspector on the app's web view (or a page that prints them):
+      navigator.userAgent (it must hold "CoinbaseWalletRN/" - topbar.js IN_APP
+      reads that), window.ethereum.isCoinbaseBrowser and isCoinbaseWallet,
+      eth_chainId, and the rdns and name of any eip6963:announceProvider
+      answer. Anything else - no CoinbaseWalletRN/, no flag - is a finding to
+      write here: the site then falls back to the rules for every other
+      browser.
+   3. Move to another page (Docs, Launches): the account stays, no prompt.
+   4. Buy a token for a tiny amount on a launch's page. It must report the
+      buy from the curve's own event ("Done. The curve gave you ..."); the
+      hash the page shows is the transaction the app sent - check it on
+      basescan: from a bundler, to the EntryPoint, carrying a
+      UserOperationEvent for your account with success true.
+   5. A buy that must fail on chain: set the slippage to 0 and buy while
+      another tab moves the price, or buy more than the curve has left. If
+      the app sends it rather than refusing it, the page must say the
+      operation reverted - never "Done" - and the account's balance must not
+      move. Note which: the app refused before sending, or the page said it
+      reverted.
+   6. Claim on Holder fees with something owed, and complete a waiting launch's
+      move on launch.html if one is waiting: each reports what the chain did,
+      and a reverted operation is said as failed.
