@@ -295,6 +295,77 @@ function waitForReceipt(tx, eth, opts) {
   });
 }
 
+// ---------------------------------------------------------------- smart wallets
+// A MINED RECEIPT IS NOT ALWAYS THE ACCOUNT'S OWN VERDICT. A smart wallet
+// (ERC-4337: Coinbase Wallet's, the one its in-app browser connects) sends what
+// the person signed as a user operation, and a bundler puts it on chain inside
+// a transaction of its own, to the EntryPoint. The hash the wallet hands back
+// can be that bundle's, and its receipt says status 0x1 when the bundle ran -
+// whether or not the operation inside it did. The EntryPoint says which, in
+// UserOperationEvent's `success` (with UserOperationRevertReason beside it). A
+// page that read `status` alone called a reverted buy, claim or move done.
+//
+// MATCHED BY SENDER, THE CONNECTED ACCOUNT. A bundle carries many accounts'
+// operations, and another account's failure in it is not this one's. ERC-4337's
+// bundlers put one operation per sender in a bundle (ERC-7562's rule, unless
+// the sender is staked), so the sender names this one. ONLY THE ENTRYPOINTS
+// DEPLOYED ON BASE count: any contract can emit an event with the same topic.
+//
+// A BUNDLE WITH NO OPERATION OF THIS ACCOUNT'S says nothing about it: a receipt
+// someone else sent, whose EntryPoint events are all other accounts', is not
+// this account's transaction, and is not called a success either.
+/// v0.6, v0.7 and v0.8, each with code on Base (eth_getCode at mainnet.base.org).
+const ENTRY_POINTS = Object.freeze([
+  "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789",
+  "0x0000000071727de22e5e9d8baf0edac6f37da032",
+  "0x4337084d9e255ff0702461cf8895ce9e3b5ff108",
+]);
+/// keccak256("UserOperationEvent(bytes32,address,address,uint256,bool,uint256,uint256)"),
+/// the same in all three: userOpHash, sender and paymaster indexed, then nonce,
+/// success, actualGasCost and actualGasUsed in the data.
+const USER_OP_EVENT = "0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f";
+
+/// THE ENTRYPOINT'S UserOperationEvents IN A RECEIPT, as { op, sender, success }.
+/// A log too short to carry `success` is read as an operation that did not succeed.
+function userOpsOf(receipt) {
+  const out = [];
+  for (const l of receipt && Array.isArray(receipt.logs) ? receipt.logs : []) {
+    if (!l || !ENTRY_POINTS.includes(String(l.address || "").toLowerCase())) continue;
+    const t = Array.isArray(l.topics) ? l.topics.map((x) => String(x || "").toLowerCase()) : [];
+    if (t[0] !== USER_OP_EVENT || t.length < 3) continue;
+    const data = String(l.data || "").replace(/^0x/, "");
+    const flag = data.length >= 128 ? data.slice(64, 128) : "";
+    out.push({ op: t[1], sender: "0x" + t[2].slice(-40), success: /[1-9a-f]/.test(flag) });
+  }
+  return out;
+}
+
+/// WHETHER A MINED RECEIPT SAYS THE ACCOUNT'S TRANSACTION WENT THROUGH - the
+/// one question every page asks of a receipt before it says anything worked.
+/// @param sender  the account that sent it (the connected account)
+/// @return { ok: true } or { ok: false, why } - why "reverted" (the receipt's
+///   status), "operation" (this account's user operation reverted inside a
+///   bundle that ran) or "elsewhere" (a bundle with no operation of this
+///   account's in it)
+function receiptVerdict(receipt, sender) {
+  if (!receipt || receipt.status !== "0x1") return { ok: false, why: "reverted" };
+  const ops = userOpsOf(receipt);
+  const mine = sender ? ops.filter((o) => same(o.sender, sender)) : ops;
+  if (mine.some((o) => !o.success)) return { ok: false, why: "operation" };
+  if (!mine.length && ops.length && !same(receipt.from, sender)) return { ok: false, why: "elsewhere" };
+  return { ok: true };
+}
+
+/// WHAT A FAILED VERDICT SAYS, after "the transaction" or a page's own name for
+/// it - the same words on every page.
+function failedWords(verdict) {
+  if (verdict && verdict.why === "operation") return "was mined, but your wallet's operation inside it reverted";
+  if (verdict && verdict.why === "elsewhere") {
+    return "was mined, but nothing in it is an operation from your account, so nothing shows it went through";
+  }
+  return "reverted on chain";
+}
+
 // ---------------------------------------------------------------- settling
 // A RECORD IS CLEARED ONLY ON WHAT THE CHAIN PROVES, and both pages ask the
 // chain the same questions, here.
@@ -567,6 +638,7 @@ window.CurbTx = {
   keyOf, storageKeyOf, loadPendingAll, savePending, clearPending, updatePending, unresolvedFor, migratePendingStore,
   newPageId, loadPreparing, claimPreparation, releasePreparation, preparingElsewhere,
   makeSendLock, locksSupported, waitForReceipt, defaultReceiptTimeout,
+  ENTRY_POINTS, USER_OP_EVENT, userOpsOf, receiptVerdict, failedWords,
   nonceOfHash, judgePending, findReplacement,
   stampJudged, ageOf, isStale, ageText, staleAfter, readVerdict, mayForget, useTheNonce,
 };

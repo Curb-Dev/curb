@@ -42,6 +42,9 @@ function installWallets(spec) {
   function make(w) {
     var x = window.makeWallet(spec.rpc, Object.assign({ forward: true, chainId: "0x2105" }, w.cfg || {},
       { account: w.account, connected: localStorage.getItem("grant." + w.id) === "1" }));
+    // w.flags: what the provider says of itself - isCoinbaseBrowser, the flag
+    // Coinbase Wallet's own browser puts on its wallet, and the like.
+    if (w.flags) Object.assign(x, w.flags);
     var inner = x.request.bind(x);
     // w.slow: { method: ms } - a wallet slow to answer that method (an
     // extension waking its service worker, a person reading the prompt).
@@ -88,6 +91,14 @@ function walletsScript(spec, extra) {
 
 /// A wallet's announced uuid, from a digit: 36 characters, as EIP-6963 has them.
 const uuid = (d) => `${d}${d}${d}${d}${d}${d}${d}${d}-${d}${d}${d}${d}-4${d}${d}${d}-8${d}${d}${d}-${d.repeat(12)}`;
+
+/// COINBASE WALLET'S OWN BROWSER, as a context's user agent: a phone's, with
+/// "CoinbaseWalletRN/" in it - the one part the site reads (topbar.js IN_APP),
+/// as Coinbase's SDK does (isCoinbaseWalletHost).
+const IN_APP_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+  "Mobile/15E148 CoinbaseWalletRN/29.10.0";
+/// The flags the app's wallet carries: isCoinbaseBrowser is the one its SDKs read.
+const IN_APP_FLAGS = { isCoinbaseBrowser: true, isCoinbaseWallet: true };
 
 /// What a page asked each wallet, by id.
 const logs = (page) => page.evaluate(() => JSON.parse(sessionStorage.getItem("wallets.log") || "{}"));
@@ -175,7 +186,40 @@ async function useFakeWalletConnect(page) {
 /// file, or a Reown host.
 const isWalletConnect = (url) => /\/walletconnect\.js(\?|$)|\/vendor\/|walletconnect\.(org|com)/.test(url);
 
+// ---------------------------------------------------------------- a smart wallet's bundle
+// AN ERC-4337 SMART WALLET, AS ITS RECEIPTS LOOK: what the person signed goes on
+// chain as a user operation inside a bundler's transaction to the EntryPoint,
+// and the hash the wallet hands back can be that bundle's - status 0x1 though
+// the operation reverted, the EntryPoint saying so in UserOperationEvent.
+// wallet-stub.js's `userOps` makes the bundle; the contract below, put at an
+// EntryPoint's address for the length of a test, is what it calls.
+/// v0.6, the EntryPoint Coinbase Wallet's smart wallet was first built on.
+const ENTRY_POINT = "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789";
+global.window = global.window || global;
+require("../keccak.js");
+/// UserOperationEvent's topic, worked out here from its signature.
+const USER_OP_EVENT = window.CurbKeccak.keccak256("0x" +
+  Buffer.from("UserOperationEvent(bytes32,address,address,uint256,bool,uint256,uint256)", "utf8").toString("hex"));
+/// AN ENTRYPOINT THAT ONLY REPORTS: called with (opHash, sender, success) as
+/// three words, it emits UserOperationEvent(opHash, sender, paymaster 0) with
+/// nonce 0, `success` and no gas, and runs nothing else.
+///   PUSH1 0x40 CALLDATALOAD PUSH1 0x20 MSTORE        memory[32] = success
+///   PUSH1 0 PUSH1 0x20 CALLDATALOAD PUSH1 0 CALLDATALOAD PUSH32 topic
+///   PUSH1 0x80 PUSH1 0 LOG4 STOP                    topics: event, opHash, sender, 0
+const REPORTING_ENTRY_POINT = "0x604035602052" + "6000602035600035" + "7f" + USER_OP_EVENT.slice(2) + "60806000a400";
+/// `fn` run with the reporting contract at `address`, its own code put back after.
+/// @param rpc  (method, params) => result, on the run's node
+async function withReportingEntryPoint(rpc, fn, address = ENTRY_POINT) {
+  const code = await rpc("eth_getCode", [address, "latest"]);
+  await rpc("anvil_setCode", [address, REPORTING_ENTRY_POINT]);
+  try { return await fn(); } finally { await rpc("anvil_setCode", [address, code]); }
+}
+/// wallet-stub.js's `userOps`: the sends whose data starts with one of `only`
+/// (every send, without it) made as `bundler`'s bundle, the operation `success`.
+const bundled = (bundler, success, only) => ({ entryPoint: ENTRY_POINT, bundler, success, only });
+
 module.exports = {
-  walletsScript, uuid, logs, clearLogs,
+  walletsScript, uuid, logs, clearLogs, IN_APP_UA, IN_APP_FLAGS,
   WC_URI, PROJECT_ID, wcSession, FAKE_UP, UMD_PATH, useFakeWalletConnect, isWalletConnect, sri,
+  ENTRY_POINT, USER_OP_EVENT, REPORTING_ENTRY_POINT, withReportingEntryPoint, bundled,
 };

@@ -679,11 +679,17 @@ async function settleInner(tx, eth) {
         : `Check the hash in your wallet before sending anything else.`));
   }
 
-  if (receipt.status !== "0x1") {
+  // A REVERT IS ALSO A SMART WALLET'S OPERATION THAT REVERTED inside a bundle
+  // that ran: its receipt says status 0x1 (TX.receiptVerdict, matched to the
+  // account that sent it). It used to read "The transaction succeeded".
+  const verdict = TX.receiptVerdict(receipt, tx.account);
+  if (!verdict.ok) {
+    const failed = verdict.why === "reverted" ? "was mined but reverted" : escapeHtml(TX.failedWords(verdict));
     if (after && after.status === 3) {
-      show("ok", `Your transaction reverted${about}, but that launch is graduated — someone else completed it first.`);
+      show("ok", `Your transaction ${failed}${about}, but that launch is graduated — someone else completed it first.`);
     } else {
-      show("err", `The transaction was mined but reverted${about}. Nothing changed; you can try again.`);
+      show("err", `The transaction ${failed}${about}.` + (verdict.why === "elsewhere"
+        ? " Check your wallet's activity before sending it again." : " Nothing changed; you can try again."));
     }
   } else if (after && after.status === 3) {
     show("ok", `Done — confirmed on chain, not just submitted${about}. Trading now happens in the pool.`);
@@ -876,9 +882,12 @@ async function actOnRecord(tx, eth, alsoNote) {
         // whether it landed is said here; what a trade delivered is app.html's
         // to work out from its receipt.
         clearPending(tx);
-        const ok = verdict.receipt.status === "0x1";
+        // WENT THROUGH AS settle() JUDGES IT: a smart wallet's reverted operation is a revert.
+        const landed = TX.receiptVerdict(verdict.receipt, tx.account || tx.from);
+        const ok = landed.ok;
         show(ok ? "ok" : "err",
-          `A transaction from a previous visit ${forToken} ${ok ? "succeeded" : "reverted"}: ${link}.${alsoNote}`);
+          `A transaction from a previous visit ${forToken} ` +
+          `${ok ? "succeeded" : landed.why === "reverted" ? "reverted" : escapeHtml(TX.failedWords(landed))}: ${link}.${alsoNote}`);
         if (tx.page !== "app") await refresh(true);
         return "";
       }

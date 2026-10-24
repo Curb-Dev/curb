@@ -287,7 +287,15 @@ async function claim(l, btn) {
     }
     notice("wait", "Claiming…");
     const rec = await receiptOf(r, hash);
-    if (!rec || rec.status !== "0x1") { notice("err", "The claim failed. " + txLine(hash, parseInt(nodeChain, 16))); return; }
+    // WENT THROUGH AS EVERY PAGE JUDGES IT (tx-core.js receiptVerdict): a smart
+    // wallet's operation that reverted inside a bundle that ran is a failed
+    // claim, though its receipt says status 0x1.
+    const verdict = rec ? window.CurbTx.receiptVerdict(rec, who) : null;
+    if (!verdict || !verdict.ok) {
+      notice("err", "The claim failed" + (verdict && verdict.why !== "reverted" ? ": it " + esc(window.CurbTx.failedWords(verdict)) : "") +
+        ". " + txLine(hash, parseInt(nodeChain, 16)));
+      return;
+    }
     const got = (l.claim0 || 0n);
     notice("ok", `<span class="toastShort"><span class="toastIcon">${TICK}</span><span class="toastBody"><b class="toastTitle">Claimed</b>` +
       `<span class="toastLine"><strong>${esc(fmt(got, l.qd, 6))} ${esc(l.qSym)}</strong> <span class="toastArrow">·</span> ${esc(l.sym)}</span></span></span>` +

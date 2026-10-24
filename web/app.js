@@ -1585,7 +1585,7 @@ async function send(pin, tx, what, kind, keep, extra) {
   }
   if (!keep) TX.clearPending(record);
   receipt.record = record;
-  return finishSend(receipt, what, hash);
+  return finishSend(receipt, what, hash, pin.from);
   } finally {
     inFlight.delete(flightKey);
   }
@@ -1593,12 +1593,20 @@ async function send(pin, tx, what, kind, keep, extra) {
 
 /// The tail of send(), once the receipt is in hand: a revert throws here. The
 /// in-flight entry is dropped by send()'s finally either way.
-function finishSend(receipt, what, hash) {
+/// A REVERT IS ALSO A SMART WALLET'S OPERATION THAT REVERTED inside a bundle
+/// that ran (TX.receiptVerdict): its receipt says status 0x1, and every caller
+/// of send() would otherwise go on to report what it did not do.
+/// @param from  the account that sent it, whose operation the receipt is read for
+function finishSend(receipt, what, hash, from) {
   // THE WARNING IS NOT CLEARED HERE. A receipt arriving does not put the hash
   // back anywhere it can be read from after a reload, and the success line is
   // exactly the message that used to overwrite it. It goes when the NEXT action
   // starts, by which point the user has seen it.
-  if (receipt.status !== "0x1") throw new Error(`${what} reverted on chain (${hash}). Nothing changed.`);
+  const verdict = TX.receiptVerdict(receipt, from);
+  if (!verdict.ok) {
+    throw new Error(`${what} ${TX.failedWords(verdict)} (${hash}). ` +
+      (verdict.why === "elsewhere" ? "Check your wallet's activity before sending it again." : "Nothing changed."));
+  }
   return receipt;
 }
 
@@ -1840,7 +1848,11 @@ async function settleRecord(tx, say) {
 
   if (verdict.state === "mined") {
     const receipt = verdict.receipt;
-    if (receipt.status === "0x1" && tx.kind === "create" && !foreign) {
+    // WENT THROUGH, AS send() JUDGES IT: a smart wallet's operation that
+    // reverted inside a bundle that ran is a revert here too (TX.receiptVerdict).
+    const landed = TX.receiptVerdict(receipt, tx.from || tx.account);
+    const ok = landed.ok;
+    if (ok && tx.kind === "create" && !foreign) {
       // adoptCreated clears the record ITSELF, and only once the address is
       // somewhere that survives a reload. An error thrown in here leaves the
       // record in place, which is the point.
@@ -1848,7 +1860,7 @@ async function settleRecord(tx, say) {
     }
     // A TWO-STEP BUY'S SWAP, MINED: what it delivered is held until it is
     // spent, sold back or dismissed - a reload between the steps loses nothing.
-    if (receipt.status === "0x1" && tx.kind === "eth-swap" && !foreign) {
+    if (ok && tx.kind === "eth-swap" && !foreign) {
       const held = creditsTo(receipt, tx.asset, tx.from).reduce((a, b) => a + b, 0n);
       if (held > 0n) {
         TX.updatePending(tx, { held: held.toString(), heldAt: Date.now(), heldBlock: receipt.blockNumber });
@@ -1860,15 +1872,15 @@ async function settleRecord(tx, say) {
     // it took from this account is no longer held. Without this the swap's
     // record kept the whole amount, and beside other units of the asset the
     // held row and the refusal of ETH buys went on about units already spent.
-    if (receipt.status === "0x1" && tx.spendsHeld && !foreign && isAddr(tx.asset)) {
+    if (ok && tx.spendsHeld && !foreign && isAddr(tx.asset)) {
       spendHeldOf(tx.chainId, tx.from, tx.lens, tx.token, netSpent(receipt, tx.asset, tx.from));
     }
     TX.clearPending(tx);
-    say(receipt.status === "0x1" ? "ok" : "err",
+    say(ok ? "ok" : "err",
       // "EARLIER", NOT "FROM A PREVIOUS VISIT": the record may be another open
       // tab's, mined a moment ago.
       `An earlier transaction (${escapeHtml(what)}) ` +
-      `${receipt.status === "0x1" ? "succeeded" : "reverted"}: ${link}.`);
+      `${ok ? "succeeded" : landed.why === "reverted" ? "reverted" : escapeHtml(TX.failedWords(landed))}: ${link}.`);
     return { done: true };
   }
 
@@ -1902,7 +1914,7 @@ async function settleRecord(tx, say) {
     if (tx.kind === "eth-swap" && !foreign && isAddr(tx.asset)) {
       const found = await TX.findReplacement(tx, verdict, request, tx.asset, TOPIC.transfer,
         [TOPIC.transfer, null, "0x" + pad32(tx.from)]);
-      if (found.receipt && found.receipt.status === "0x1") {
+      if (found.receipt && TX.receiptVerdict(found.receipt, tx.from).ok) {
         const held = creditsTo(found.receipt, tx.asset, tx.from).reduce((a, b) => a + b, 0n);
         if (held > 0n) {
           TX.updatePending(tx, { held: held.toString(), heldAt: Date.now(), heldBlock: found.receipt.blockNumber,
@@ -6565,7 +6577,11 @@ async function unwrapPaid(pin, amount, what) {
   try {
     const receipt = await send(pin, { to: WETH, data: SEL.wethWithdraw + amount.toString(16).padStart(64, "0") },
       `unwrap the ${fmt(amount, 18, 6)} WETH ${what} into ETH`);
-    return { unwrapped: unwrappedFor(receipt, pin.from), why: "" };
+    // WETH9's OWN Withdrawal IS THE UNWRAP: a receipt without one for this
+    // account unwrapped nothing, however it mined.
+    const unwrapped = unwrappedFor(receipt, pin.from);
+    return { unwrapped, why: unwrapped > 0n ? "" : `the unwrap was mined in ${receipt.transactionHash}, but WETH ` +
+      `records no withdrawal for this account in it` };
   } catch (e) {
     if (e && e.declined) return { unwrapped: 0n, why: "you declined the unwrap in your wallet", declined: true };
     return { unwrapped: 0n, why: e && e.message ? e.message : String(e) };
@@ -6630,6 +6646,10 @@ async function unwrapWeth() {
     const receipt = await send(pin, { to: WETH, data: SEL.wethWithdraw + have.toString(16).padStart(64, "0") },
       `unwrap ${fmt(have, 18, 6)} WETH into ETH`);
     const got = unwrappedFor(receipt, pin.from);
+    if (got === 0n) {
+      throw new Error(`The unwrap was mined in ${receipt.transactionHash}, but WETH records no withdrawal for this ` +
+        `account in it, so nothing was unwrapped. Check your wallet's activity before unwrapping again.`);
+    }
     showDone(doneHead("Unwrapped", `${brief(got, 18)} WETH <span class="toastArrow">→</span> <strong>ETH</strong>`), receipt, `Unwrapped ${amt(got, 18, "WETH")} into ether in <code>${escapeHtml(receipt.transactionHash)}</code>.` +
       exactly([["unwrapped", got]]));
   });
@@ -8156,10 +8176,15 @@ async function curveActionInner(pin) {
     // FROM THE CURVE'S OWN EVENT, not from a balance either side of the send.
     // The curve states what it moved and what it charged; a balance difference
     // states what happened to the account, which is not the same question.
+    // A RECEIPT WITHOUT IT IS NO TRADE ON THIS CURVE, however it mined: a
+    // smart wallet's bundle runs, and says status 0x1, around an operation
+    // that never reached the curve. It used to read "Done".
     const ev = logsOf(receipt, curve, side === "buy" ? TOPIC.curveBuy : TOPIC.curveSell)[0];
     if (!ev) {
-      show("ok", `Done, but this transaction carries no ${side === "buy" ? "CurveBuy" : "CurveSell"} event, ` +
-        `so there is nothing to report from it. Its hash is in your wallet's activity.`);
+      show("err", `This transaction was mined, but it carries no ${side === "buy" ? "CurveBuy" : "CurveSell"} event ` +
+        `from the curve, so it did not ${side === "buy" ? "buy" : "sell"} on it, and this page cannot say what it ` +
+        `did. Look it up in your wallet's activity before trading again: ` +
+        `<code>${escapeHtml((receipt && receipt.transactionHash) || "")}</code>.`);
       return;
     }
     const [inAmt, outAmt, fee, tax] = words(ev.data).slice(0, 4).map(wordToBig);
@@ -8632,8 +8657,15 @@ async function buyCurveWithArrived(pin, v, received, st) {
     st.unsettled = !!(e && (e.sent || e.uncertain));
     throw e;
   }
+  // MINED WITHOUT THE CURVE'S CurveBuy IS NO BUY: what arrived is still held,
+  // and is said as held, not as bought with figures from the quote.
+  const bought = logsOf(receipt, v.curve, TOPIC.curveBuy)[0];
+  if (!bought) {
+    throw new Error(`the buy was mined in ${receipt.transactionHash}, but it carries no CurveBuy event from the ` +
+      `curve, so it did not buy on it`);
+  }
   const refundLog = logsOf(receipt, v.curve, TOPIC.curveRefund)[0];
-  return { receipt, refund: refundLog ? wordToBig(words(refundLog.data)[0]) : 0n, q2 };
+  return { receipt, bought, refund: refundLog ? wordToBig(words(refundLog.data)[0]) : 0n, q2 };
 }
 
 /// AFTER STEP 1, BOTH ROUTES: what arrived, kept as held; step 2; and the
@@ -8674,8 +8706,7 @@ async function finishTwoStep(pin, v, swap, venue) {
     : v.amount;
   const ethBack = v.amount > wrapped ? v.amount - wrapped : 0n;
   await report(buy, async () => {
-    const ev = logsOf(buy, v.curve, TOPIC.curveBuy)[0];
-    const [inAmt, outAmt, fee, tax] = ev ? words(ev.data).slice(0, 4).map(wordToBig) : [received, out.q2.out, 0n, 0n];
+    const [inAmt, outAmt, fee, tax] = words(out.bought.data).slice(0, 4).map(wordToBig);
     const refund = out.refund;
     const route = escapeHtml(routeWords(v.route, sym, true));
     showDone(wentCame(v.amount - ethBack, 18, "ETH", outAmt, 18, await launchSym(pin),
@@ -8952,11 +8983,20 @@ async function sellHeldBackInner(pin, slipText, carried) {
       if (e && e.uncertain) throw Object.assign(e, { unsettled: true });
       throw e;
     }
+    // THE ETH IT PAID IS THE ROUTER'S OWN UNWRAP, WETH9's Withdrawal. A receipt
+    // without one sold nothing through the router, however it mined - a smart
+    // wallet's bundle runs around an operation that may not have - so nothing
+    // held is taken off and nothing is called sold.
+    const eth = logsOf(receipt, WETH, TOPIC.wethWithdrawal)
+      .filter((l) => l.topics.length > 1 && same(wordToAddress(l.topics[1].slice(2)), AERODROME.router.address))
+      .map((l) => wordToBig(words(l.data)[0])).reduce((a, b) => a + b, 0n);
+    if (eth === 0n) {
+      throw Object.assign(new Error(`The sale of ${r} was mined in ${receipt.transactionHash}, but it carries no ` +
+        `unwrap by Aerodrome's router, so it did not sell through it, and this page cannot say what it did. Look ` +
+        `it up in your wallet's activity before selling again.`), { unsettled: true });
+    }
     spendHeld(pin, amount);
     await report(receipt, async () => {
-      const eth = logsOf(receipt, WETH, TOPIC.wethWithdrawal)
-        .filter((l) => l.topics.length > 1 && same(wordToAddress(l.topics[1].slice(2)), AERODROME.router.address))
-        .map((l) => wordToBig(words(l.data)[0])).reduce((a, b) => a + b, 0n);
       showDone(wentCame(amount, pin.quoteDecimals, sym, eth, 18, "ETH"), receipt,
         `Sold ${amt(amount, pin.quoteDecimals, escapeHtml(sym))} for ${amt(eth, 18, "ETH")} on Aerodrome.` +
         exactly([["sold", amount], ["received", eth]]));
@@ -9632,12 +9672,16 @@ async function poolActionInner(pin) {
       }
     }
 
+    // NO SWAP OF THIS POOL IN IT IS NO TRADE, however it mined: a smart
+    // wallet's bundle runs, and says status 0x1, around an operation that may
+    // never have reached the pool. It used to read as swapped.
     if (r.gross == null) {
-      show("ok",
-        `Swapped through the official UniversalRouter, but this transaction carries no Swap event for ` +
-        `this pool, so what the swap itself produced cannot be stated. It moved ` +
+      show("err",
+        `This transaction was mined, but ${escapeHtml(r.why)}, so this page cannot call it a swap or say what it ` +
+        `did. It moved ` +
         `${amt(r.credited, side === "buy" ? 18 : pin.quoteDecimals, side === "buy" ? "tokens" : pin.quoteSym)} ` +
-        `into your account.` + exactly([["credited", r.credited]]));
+        `into your account. Look it up in your wallet's activity before trading again: ` +
+        `<code>${escapeHtml(receipt.transactionHash || "")}</code>.` + exactly([["credited", r.credited]]));
       return;
     }
 

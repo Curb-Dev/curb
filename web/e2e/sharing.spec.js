@@ -18,6 +18,7 @@ const { test, expect } = require("@playwright/test");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { withReportingEntryPoint, bundled } = require("./fake-wallets.js");
 
 const STATE = JSON.parse(fs.readFileSync(path.join(__dirname, ".state.json"), "utf8"));
 const STUB = fs.readFileSync(path.join(__dirname, "..", "wallet-stub.js"), "utf8");
@@ -1248,6 +1249,22 @@ test("Holder fees lists what the connected wallet earned, token by token: earned
   // CLAIM, ON THIS PAGE: epoch 2 is in force and nobody pushed it, so the
   // trader is owed - it pays, and the row reads nothing claimable afterwards.
   expect(card.claimable, "nothing is claimable, so the claim below proves nothing").not.toBe("0 NVDAc");
+  // FIRST THROUGH A SMART WALLET WHOSE OPERATION REVERTED (smart-wallet.spec.js
+  // says how such a receipt looks): the bundle mined with status 0x1 and the
+  // claim did not - said as failed, nothing called claimed, the share still
+  // owed. Then the wallet sends as itself.
+  const bundler = await freshAccount("claim bundler");
+  await withReportingEntryPoint(rpc, async () => {
+    await p.evaluate((op) => { window.ethereum.cfg.userOps = op; }, bundled(bundler, false));
+    await row.locator("button.shClaimLink").click();
+    await expect(p.locator("#msg")).toContainText("The claim failed: it was mined, but your wallet's operation inside it reverted",
+      { timeout: 90_000 });
+    await expect(p.locator("#msg")).toHaveClass(/err/);
+    await expect(p.locator("#msg .toastTitle"), "a reverted operation was called claimed").toHaveCount(0);
+    expect(await p.evaluate(() => window.ethereum.sent.length), "the claim was not asked of the wallet").toBe(1);
+    await expect(row.locator(".shClaimFig b")).toHaveText(card.claimable);
+    await p.evaluate(() => { window.ethereum.cfg.userOps = null; });
+  });
   await row.locator("button.shClaimLink").click();
   await expect(p.locator("#msg .toastTitle")).toHaveText("Claimed", { timeout: 90_000 });
   // THE CLAIM THAT PAID carried CURB's Builder Code (builder-code.js): the

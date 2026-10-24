@@ -65,7 +65,9 @@ THE SEND-PATH PROTECTIONS ARE SHARED - web/tx-core.js
   poll were written for launch.html one correction at a time. app.html needs
   every one of them, and a second copy would drift - the wallet stub already
   taught that lesson, where two runners tested different wallets while claiming
-  to test one page. Both pages load tx-core.js.
+  to test one page. Both pages load tx-core.js, and so does sharing.html, for
+  the one question every page asks of a receipt (receiptVerdict: a smart
+  wallet's operation that reverted inside a bundle that ran is a failure).
     Nothing in it keeps state that belongs to a page: the page id and the send
     lock are handed out per context and the disposed flag is passed in, because
     the in-page harness evaluates launch.js repeatedly to make independent

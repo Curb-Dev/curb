@@ -43,6 +43,16 @@ function makeWallet(rpcUrl, opts) {
     // behaviour around a send - rejection, a switched network, a lost record -
     // and those need a send they control, not one that really happens.
     forward: false,
+
+    // A SMART WALLET'S BUNDLE (ERC-4337), with `forward`: { entryPoint,
+    // bundler, success, only }. A send whose data starts with one of `only`
+    // (every send, without it) is not made from the account: a bundler's
+    // transaction to `entryPoint` is, carrying the operation's hash, this
+    // account and `success`, and the contract a test put at that address emits
+    // UserOperationEvent with them. The hash handed back is the bundle's, as a
+    // smart wallet's can be - and its receipt says status 0x1 whatever the
+    // operation did. Every other send goes through as it always does.
+    userOps: null,
   }, opts || {});
 
   const sent = [];
@@ -115,6 +125,16 @@ function makeWallet(rpcUrl, opts) {
     if (cfg.onSend) cfg.onSend(params[0], wallet);
     if (cfg.sendError) throw cfg.sendError;
     if (cfg.forward) {
+      const op = cfg.userOps;
+      const data = String(params[0].data || "0x").toLowerCase();
+      if (op && (!op.only || op.only.some((s) => data.startsWith(String(s).toLowerCase())))) {
+        const word = (x) => String(x).toLowerCase().replace(/^0x/, "").padStart(64, "0");
+        const opHash = word((sent.length + 1).toString(16) + "0b");
+        const hash = await raw("eth_sendTransaction", [{ from: op.bundler, to: op.entryPoint,
+          data: "0x" + opHash + word(params[0].from || cfg.account) + word(op.success ? "1" : "0") }]);
+        sent.push(params[0]);
+        return hash;
+      }
       // The node signs with its own unlocked account, so the `from` has to be
       // one it holds. A wrong `from` fails here rather than silently sending as
       // somebody else.
