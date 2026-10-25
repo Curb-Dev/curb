@@ -438,7 +438,11 @@ C. THE APP'S OWN BROWSER.
       buy from the curve's own event ("Done. The curve gave you ..."); the
       hash the page shows is the transaction the app sent - check it on
       basescan: from a bundler, to the EntryPoint, carrying a
-      UserOperationEvent for your account with success true.
+      UserOperationEvent for your account with success true. Write down the
+      EntryPoint's address: it must be one of tx-core.js ENTRY_POINTS (v0.6,
+      v0.7, v0.8 or v0.9). Any other is a finding - until it is added there, a
+      reverted operation in its bundles is caught only where a page looks for
+      the event the send was for (a trade's, a claim's, a sweep's).
    5. A buy that must fail on chain: set the slippage to 0 and buy while
       another tab moves the price, or buy more than the curve has left. If
       the app sends it rather than refusing it, the page must say the

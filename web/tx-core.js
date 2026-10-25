@@ -314,16 +314,22 @@ function waitForReceipt(tx, eth, opts) {
 // A BUNDLE WITH NO OPERATION OF THIS ACCOUNT'S says nothing about it: a receipt
 // someone else sent, whose EntryPoint events are all other accounts', is not
 // this account's transaction, and is not called a success either.
-/// v0.6, v0.7 and v0.8, each with code on Base (eth_getCode at mainnet.base.org).
+/// v0.6, v0.7, v0.8 and v0.9, each with code on Base (eth_getCode at
+/// mainnet.base.org). v0.9 was missing at first, and a reverted operation in
+/// its bundles still read as a success.
 const ENTRY_POINTS = Object.freeze([
   "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789",
   "0x0000000071727de22e5e9d8baf0edac6f37da032",
   "0x4337084d9e255ff0702461cf8895ce9e3b5ff108",
+  "0x433709009b8330fda32311df1c2afa402ed8d009",
 ]);
 /// keccak256("UserOperationEvent(bytes32,address,address,uint256,bool,uint256,uint256)"),
-/// the same in all three: userOpHash, sender and paymaster indexed, then nonce,
+/// the same in all four: userOpHash, sender and paymaster indexed, then nonce,
 /// success, actualGasCost and actualGasUsed in the data.
 const USER_OP_EVENT = "0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f";
+/// keccak256("BeforeExecution()"): each of the four emits it once in a bundle,
+/// after every operation in it was validated and before the first one runs.
+const BEFORE_EXECUTION = "0xbb47ee3e183a558b1a2ff0874b079f3fc5478b7454eacf2bfc5af2ff5878f972";
 
 /// THE ENTRYPOINT'S UserOperationEvents IN A RECEIPT, as { op, sender, success }.
 /// A log too short to carry `success` is read as an operation that did not succeed.
@@ -354,6 +360,43 @@ function receiptVerdict(receipt, sender) {
   if (mine.some((o) => !o.success)) return { ok: false, why: "operation" };
   if (!mine.length && ops.length && !same(receipt.from, sender)) return { ok: false, why: "elsewhere" };
   return { ok: true };
+}
+
+/// THE LOGS OF THIS ACCOUNT'S OWN OPERATION, out of a bundle that carries other
+/// accounts' too. A page reads what a send did from its receipt's events - the
+/// curve's CurveBuy, the pool's Swap, the factory's LaunchCreated - and took the
+/// first of each kind, whoever's: in a bundle where another account bought the
+/// same launch first, that buy was reported, and its figures kept, as this
+/// account's. The EntryPoint runs the operations one after another, and each
+/// one's logs end with its own UserOperationEvent: they run from the
+/// EntryPoint's event before it (BeforeExecution, or the previous operation's
+/// UserOperationEvent) to that one. The logs before BeforeExecution are the
+/// validation's, not any operation's work.
+/// @return the logs as they are for a receipt with no operation of this
+///         account's in it - an ordinary transaction's, or one receiptVerdict
+///         does not let through
+function ownLogs(receipt, sender) {
+  const logs = receipt && Array.isArray(receipt.logs) ? receipt.logs : [];
+  if (!sender) return logs;
+  const out = [];
+  let from = 0, found = false;
+  logs.forEach((l, i) => {
+    if (!l || !ENTRY_POINTS.includes(String(l.address || "").toLowerCase())) return;
+    const t = Array.isArray(l.topics) ? l.topics.map((x) => String(x || "").toLowerCase()) : [];
+    if (t[0] === BEFORE_EXECUTION) { from = i + 1; return; }
+    if (t[0] !== USER_OP_EVENT || t.length < 3) return;
+    if (same("0x" + t[2].slice(-40), sender)) { out.push(...logs.slice(from, i + 1)); found = true; }
+    from = i + 1;
+  });
+  return found ? out : logs;
+}
+
+/// A receipt as this account's own: its logs only those of its own operation
+/// (ownLogs), everything else as it came. The same receipt when nothing is cut.
+function ownReceipt(receipt, sender) {
+  if (!receipt) return receipt;
+  const logs = ownLogs(receipt, sender);
+  return logs === receipt.logs ? receipt : { ...receipt, logs };
 }
 
 /// WHAT A FAILED VERDICT SAYS, after "the transaction" or a page's own name for
@@ -638,7 +681,7 @@ window.CurbTx = {
   keyOf, storageKeyOf, loadPendingAll, savePending, clearPending, updatePending, unresolvedFor, migratePendingStore,
   newPageId, loadPreparing, claimPreparation, releasePreparation, preparingElsewhere,
   makeSendLock, locksSupported, waitForReceipt, defaultReceiptTimeout,
-  ENTRY_POINTS, USER_OP_EVENT, userOpsOf, receiptVerdict, failedWords,
+  ENTRY_POINTS, USER_OP_EVENT, BEFORE_EXECUTION, userOpsOf, receiptVerdict, ownLogs, ownReceipt, failedWords,
   nonceOfHash, judgePending, findReplacement,
   stampJudged, ageOf, isStale, ageText, staleAfter, readVerdict, mayForget, useTheNonce,
 };

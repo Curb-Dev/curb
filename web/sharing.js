@@ -151,6 +151,8 @@ const TOPIC = {
   factoryRetired: topic("FactoryRetired(address)"),
   recommendedSet: topic("RecommendedSet(address)"),
   holderSharingEnabled: topic("HolderSharingEnabled(address,address,address,address,bool,uint64)"),
+  // A DISTRIBUTOR'S PAYOUT to a holder: what /sharing's Claim reads it paid.
+  paid: topic("Paid(address,address,uint256,uint256,bool)"),
 };
 /// THE DISTRIBUTOR'S AND THE LOCK'S OWN REFUSALS, as sentences (app.js
 /// revertSentence reads the selector out of a simulation's revert).

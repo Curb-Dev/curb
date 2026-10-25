@@ -385,6 +385,13 @@ const TOPIC = {
   // came back. A router trade is reported from these and nothing else.
   routerBought: topic("BoughtWithEth(address,address,address,address,uint256,uint256,uint256,uint256,uint256)"),
   routerSold: topic("SoldForEth(address,address,address,address,uint256,uint256,uint256,bool)"),
+  // WHAT A CLAIM, A SWEEP, A RESCUE OR A NOTE DID, as the contract sent to says
+  // it (mustCarry): a receipt without its event did not do it.
+  escrowClaimed: topic("Claimed(address,address,uint256)"),
+  hookClaimed: topic("FeeClaimed(address,address,uint256)"),
+  feesSwept: topic("FeesSwept(uint256,uint256,uint256)"),
+  feesRescued: topic("FeesRescued(address,address,uint256,uint256)"),
+  readyNoted: topic("ReadyNoted(address,uint256)"),
 };
 
 const STATUS = ["NotFound", "Selling", "Waiting", "Graduated"];
@@ -1596,6 +1603,9 @@ async function send(pin, tx, what, kind, keep, extra) {
 /// A REVERT IS ALSO A SMART WALLET'S OPERATION THAT REVERTED inside a bundle
 /// that ran (TX.receiptVerdict): its receipt says status 0x1, and every caller
 /// of send() would otherwise go on to report what it did not do.
+/// AND WHAT IT HANDS BACK IS THIS ACCOUNT'S OWN: in a bundle, only its own
+/// operation's logs (TX.ownLogs), so no caller reads another account's trade,
+/// swap or launch in the same bundle as its own.
 /// @param from  the account that sent it, whose operation the receipt is read for
 function finishSend(receipt, what, hash, from) {
   // THE WARNING IS NOT CLEARED HERE. A receipt arriving does not put the hash
@@ -1607,7 +1617,7 @@ function finishSend(receipt, what, hash, from) {
     throw new Error(`${what} ${TX.failedWords(verdict)} (${hash}). ` +
       (verdict.why === "elsewhere" ? "Check your wallet's activity before sending it again." : "Nothing changed."));
   }
-  return receipt;
+  return TX.ownReceipt(receipt, from);
 }
 
 /// A transaction this page sent and then lost sight of - a reload, a closed
@@ -1847,10 +1857,11 @@ async function settleRecord(tx, say) {
   const what = foreign ? "completing the move to the pool, sent from launch.html" : (tx.what || "an action");
 
   if (verdict.state === "mined") {
-    const receipt = verdict.receipt;
     // WENT THROUGH, AS send() JUDGES IT: a smart wallet's operation that
-    // reverted inside a bundle that ran is a revert here too (TX.receiptVerdict).
-    const landed = TX.receiptVerdict(receipt, tx.from || tx.account);
+    // reverted inside a bundle that ran is a revert here too (TX.receiptVerdict)
+    // - and what it did is read from its own operation's logs (TX.ownLogs).
+    const landed = TX.receiptVerdict(verdict.receipt, tx.from || tx.account);
+    const receipt = TX.ownReceipt(verdict.receipt, tx.from || tx.account);
     const ok = landed.ok;
     if (ok && tx.kind === "create" && !foreign) {
       // adoptCreated clears the record ITSELF, and only once the address is
@@ -1915,7 +1926,7 @@ async function settleRecord(tx, say) {
       const found = await TX.findReplacement(tx, verdict, request, tx.asset, TOPIC.transfer,
         [TOPIC.transfer, null, "0x" + pad32(tx.from)]);
       if (found.receipt && TX.receiptVerdict(found.receipt, tx.from).ok) {
-        const held = creditsTo(found.receipt, tx.asset, tx.from).reduce((a, b) => a + b, 0n);
+        const held = creditsTo(TX.ownReceipt(found.receipt, tx.from), tx.asset, tx.from).reduce((a, b) => a + b, 0n);
         if (held > 0n) {
           TX.updatePending(tx, { held: held.toString(), heldAt: Date.now(), heldBlock: found.receipt.blockNumber,
             replacedBy: found.receipt.transactionHash });
@@ -7797,6 +7808,35 @@ async function report(receipt, fn) {
 const logsOf = (receipt, address, topic0) =>
   (receipt.logs || []).filter((l) => same(l.address, address) && l.topics && l.topics[0] === topic0);
 
+/// THE CURVE'S EVENT FOR THIS ACCOUNT'S OWN TRADE on it: CurveBuy, CurveSell or
+/// CurveBuyRefunded from `curve` whose first indexed word - the buyer or the
+/// seller, the curve's caller - is `who`, as routerEventOf reads the router's.
+/// The first of the kind was taken before, whoever's it was.
+const curveEventOf = (receipt, curve, topic0, who) =>
+  logsOf(receipt, curve, topic0).find((l) => l.topics.length > 1 && same(wordToAddress(l.topics[1].slice(2)), who));
+
+/// A SEND THAT MINED WITHOUT THE EVENT IT WAS SENT FOR did not do it, however
+/// it mined: a smart wallet's bundle runs, and says status 0x1, around an
+/// operation that never reached the contract - an account that runs its calls
+/// in "try" mode says its operation succeeded too, and an EntryPoint not yet
+/// known here says nothing at all. A claim, a sweep, a graduation and a rescue
+/// used to be said as done on the receipt's word alone, with the figures read
+/// before they were sent. Said as the error it is.
+/// @param name    the event, for the sentence
+/// @param where   the contract sent to, for the sentence
+/// @param undone  what did not happen, for the sentence
+/// @param match   which of the contract's events of that kind count, or none for any
+/// @return the events that count (one at least)
+function mustCarry(receipt, address, topic0, name, where, undone, match) {
+  const hit = logsOf(receipt, address, topic0).filter((l) => !match || match(l));
+  if (hit.length) return hit;
+  throw new Error(`This transaction was mined, but it carries no ${name} event from ${where}, so ${undone}. ` +
+    `Look it up in your wallet's activity before sending it again: ${(receipt && receipt.transactionHash) || ""}.`);
+}
+/// A log whose first `n` indexed words are these addresses (in order).
+const indexedAre = (...who) => (l) => l.topics.length > who.length &&
+  who.every((w, i) => same(wordToAddress(l.topics[i + 1].slice(2)), w));
+
 /// ERC20 credits to one account, in one transaction.
 const creditsTo = (receipt, token, who) =>
   logsOf(receipt, token, TOPIC.transfer)
@@ -8179,7 +8219,9 @@ async function curveActionInner(pin) {
     // A RECEIPT WITHOUT IT IS NO TRADE ON THIS CURVE, however it mined: a
     // smart wallet's bundle runs, and says status 0x1, around an operation
     // that never reached the curve. It used to read "Done".
-    const ev = logsOf(receipt, curve, side === "buy" ? TOPIC.curveBuy : TOPIC.curveSell)[0];
+    // THIS ACCOUNT'S OWN: in a bundle, another account's trade on the same
+    // curve was taken for this one's (curveEventOf).
+    const ev = curveEventOf(receipt, curve, side === "buy" ? TOPIC.curveBuy : TOPIC.curveSell, pin.from);
     if (!ev) {
       show("err", `This transaction was mined, but it carries no ${side === "buy" ? "CurveBuy" : "CurveSell"} event ` +
         `from the curve, so it did not ${side === "buy" ? "buy" : "sell"} on it, and this page cannot say what it ` +
@@ -8192,7 +8234,7 @@ async function curveActionInner(pin) {
     if (side === "buy") spendHeld(pin, inAmt);
     const outDec = side === "buy" ? 18 : pin.quoteDecimals;
     const unit = side === "buy" ? "tokens" : pin.quoteSym;
-    const refundLog = logsOf(receipt, curve, TOPIC.curveRefund)[0];
+    const refundLog = curveEventOf(receipt, curve, TOPIC.curveRefund, pin.from);
     const refund = refundLog ? wordToBig(words(refundLog.data)[0]) : 0n;
 
     // AND THE TWO ARE COMPARED. Equal is the ordinary case and says nothing worth
@@ -8659,12 +8701,12 @@ async function buyCurveWithArrived(pin, v, received, st) {
   }
   // MINED WITHOUT THE CURVE'S CurveBuy IS NO BUY: what arrived is still held,
   // and is said as held, not as bought with figures from the quote.
-  const bought = logsOf(receipt, v.curve, TOPIC.curveBuy)[0];
+  const bought = curveEventOf(receipt, v.curve, TOPIC.curveBuy, pin.from);
   if (!bought) {
     throw new Error(`the buy was mined in ${receipt.transactionHash}, but it carries no CurveBuy event from the ` +
       `curve, so it did not buy on it`);
   }
-  const refundLog = logsOf(receipt, v.curve, TOPIC.curveRefund)[0];
+  const refundLog = curveEventOf(receipt, v.curve, TOPIC.curveRefund, pin.from);
   return { receipt, bought, refund: refundLog ? wordToBig(words(refundLog.data)[0]) : 0n, q2 };
 }
 
@@ -9201,6 +9243,7 @@ async function sweepCurveFeesInner(pin) {
   }
   const receipt = await send(pin, { to: pin.view.curve, data: SEL.sweepFees + "0".repeat(64) },
     "sweep this launch's curve fees to the escrow");
+  mustCarry(receipt, pin.view.curve, TOPIC.feesSwept, "FeesSwept", "the curve", "no fees were swept");
   showDone(doneHead("Fees swept", "Ready to claim"), receipt,
     `Swept in <code>${escapeHtml(receipt.transactionHash)}</code>. The fees are in the escrow now: ` +
     `"Claim curve fees" takes yours.`);
@@ -9213,6 +9256,7 @@ async function claimFees(from) {
 }
 
 /// @param from  "escrow" for the curve's fees, "hook" for the pool's.
+/// @return what was paid, as the payer's own event says
 async function claimFeesInner(pin, from) {
   // BOTH ADDRESSES FROM THE PINNED FACTORY, like everything else a send uses:
   // the escrow is the factory's, the hook is its registry's.
@@ -9244,12 +9288,20 @@ async function claimFeesInner(pin, from) {
       "there until the issuer lifts that block. Nothing was sent.");
   }
   const receipt = await send(pin, { to, data }, what, "claim");
-  showDone(doneHead("Claimed", `<strong>${brief(wordToBig(owedNow[0]), pin.quoteDecimals)} ${escapeHtml(same(pin.quote, WETH) ? "ETH" : pin.quoteSym)}</strong>`), receipt,
+  // PAID, AS THE PAYER SAYS: its own event - Claimed from the escrow, FeeClaimed
+  // from the hook - to this account in this asset, and the amount it names,
+  // not the one read before the send (mustCarry).
+  const [paid] = mustCarry(receipt, to, from === "escrow" ? TOPIC.escrowClaimed : TOPIC.hookClaimed,
+    from === "escrow" ? "Claimed" : "FeeClaimed", from === "escrow" ? "the fee escrow" : "the fee hook",
+    "nothing was claimed", indexedAre(pin.from, pin.quote));
+  const got = wordToBig(words(paid.data)[0] || "0");
+  showDone(doneHead("Claimed", `<strong>${brief(got, pin.quoteDecimals)} ${escapeHtml(same(pin.quote, WETH) ? "ETH" : pin.quoteSym)}</strong>`), receipt,
     `Claimed in <code>${escapeHtml(receipt.transactionHash)}</code>. ` +
     (same(pin.quote, WETH)
       ? "It was paid as ETH, or as WETH if your address would not take ether."
       : `It was paid in ${escapeHtml(pin.quoteSym)}.`));
   await renderOwed();
+  return got;
 }
 
 /// EVERYTHING THIS ACCOUNT CAN TAKE, IN ONE PRESS (the owner's call: one Claim,
@@ -9279,19 +9331,21 @@ async function claimAll() {
         }
       }
     }
+    // WHAT EACH CLAIM PAID, as its payer's event says (claimFeesInner) - not
+    // what was read as owed before it.
     const escrow = oneAddress(await pin.call(pin.factory, SEL.feeEscrow), "The factory's feeEscrow()");
     const fromEscrow = await owed(escrow, SEL.escrowBalanceOf);
-    if (fromEscrow > 0n) await claimFeesInner(pin, "escrow");
+    const gotEscrow = fromEscrow > 0n ? await claimFeesInner(pin, "escrow") : 0n;
     const fromHook = await owed(pin.hook, SEL.hookOwed);
-    if (fromHook > 0n) await claimFeesInner(pin, "hook");
+    const gotHook = fromHook > 0n ? await claimFeesInner(pin, "hook") : 0n;
     if (!swept && fromEscrow === 0n && fromHook === 0n) {
       throw new Error(`Nothing is waiting for this account in ${pin.quoteSym}. Nothing was sent.`);
     }
     const unit = same(pin.quote, WETH) ? "ETH" : pin.quoteSym;
-    showDone(doneHead("Claimed", `<strong>${brief(fromEscrow + fromHook, pin.quoteDecimals)} ${escapeHtml(unit)}</strong>`), null, `Claimed ${amt(fromEscrow + fromHook, pin.quoteDecimals, escapeHtml(unit))}` +
+    showDone(doneHead("Claimed", `<strong>${brief(gotEscrow + gotHook, pin.quoteDecimals)} ${escapeHtml(unit)}</strong>`), null, `Claimed ${amt(gotEscrow + gotHook, pin.quoteDecimals, escapeHtml(unit))}` +
       (swept ? ", with this launch's curve fees swept in first" : "") + "." +
       (same(pin.quote, WETH) ? " Paid as ETH, or as WETH to an address that will not take ether." : "") +
-      exactly([["escrow", fromEscrow], ["hook", fromHook]]));
+      exactly([["escrow", gotEscrow], ["hook", gotHook]]));
     await renderOwed();
   });
 }
@@ -9348,6 +9402,8 @@ async function completeGraduationInner(pin) {
   }
   const receipt = await send(pin, { to: pin.graduator, data: SEL.graduate + pad32(pin.token) },
     "complete the move into the pool");
+  mustCarry(receipt, pin.graduator, TOPIC.graduated, "Graduated", "the graduator", "the launch did not graduate",
+    indexedAre(pin.token));
   showDone(doneHead("Graduated", "Trading in the pool now"), receipt,
     `The launch graduated in <code>${escapeHtml(receipt.transactionHash)}</code>, ` +
     `using ${parseInt(receipt.gasUsed, 16).toLocaleString("en-US")} gas. ` +
@@ -9389,6 +9445,8 @@ async function rescueFees() {
         " Nothing was sent.");
     }
     const receipt = await send(pin, { to: pin.graduator, data }, "rescue this curve's fees");
+    // THE CURVE PAYS THEM, and says so (the graduator only asks it to).
+    mustCarry(receipt, pin.view.curve, TOPIC.feesRescued, "FeesRescued", "the curve", "no fees were rescued");
     hideRescue();
     showDone(doneHead("Fees rescued", "Complete the move now"), receipt,
       `Rescued in <code>${escapeHtml(receipt.transactionHash)}</code>: the curve's fees were paid to their ` +
@@ -9416,13 +9474,22 @@ async function noteStuck(pin) {
   const receipt = await send(pin, { to: pin.graduator, data },
     "note this launch as stuck, which opens the rescue of its fees to anyone an hour from now");
   let when = "an hour after this note";
+  let since = null;
   try {
-    const [since, delay] = await Promise.all([
+    const [at, delay] = await Promise.all([
       pin.call(pin.graduator, SEL.readySince + pad32(pin.token)).then((r) => wordToBig(words(r)[0] || "0")),
       pin.call(pin.graduator, SEL.rescueDelay).then((r) => wordToBig(words(r)[0] || "0")),
     ]);
+    since = at;
     if (since > 0n && delay > 0n) when = utcMinute(since + delay);
   } catch { /* the sentence below says it without the time */ }
+  // NOTED, AS THE GRADUATOR SAYS: its ReadyNoted for this launch, or - noted by
+  // somebody else meanwhile, when this one emits nothing - the note it now
+  // holds. Neither, and nothing was noted (mustCarry's reason).
+  if (since === 0n) {
+    mustCarry(receipt, pin.graduator, TOPIC.readyNoted, "ReadyNoted", "the graduator", "this launch was not noted",
+      indexedAre(pin.token));
+  }
   showDone(doneHead("Noted as stuck", "The rescue opens later"), receipt,
     `Noted in <code>${escapeHtml(receipt.transactionHash)}</code>. Nothing was rescued yet: anyone may rescue ` +
     `this curve's fees from ${escapeHtml(when)} if the move has still not completed by then - press "Rescue the ` +

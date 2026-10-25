@@ -202,11 +202,20 @@ const USER_OP_EVENT = window.CurbKeccak.keccak256("0x" +
   Buffer.from("UserOperationEvent(bytes32,address,address,uint256,bool,uint256,uint256)", "utf8").toString("hex"));
 /// AN ENTRYPOINT THAT ONLY REPORTS: called with (opHash, sender, success) as
 /// three words, it emits UserOperationEvent(opHash, sender, paymaster 0) with
-/// nonce 0, `success` and no gas, and runs nothing else.
+/// nonce 0, `success` and no gas. Given a fourth word, an address, it first
+/// calls that address with the rest of its data, whatever the call does: a
+/// call to itself is another account's operation before this one, in the same
+/// bundle, with that operation's own logs before its event.
+///   PUSH1 0x60 CALLDATALOAD DUP1 ISZERO PUSH1 0x21 JUMPI      no fourth word: to the event
+///   PUSH1 0x80 CALLDATASIZE SUB DUP1 PUSH1 0x80 PUSH2 0x100 CALLDATACOPY
+///                                                            memory[0x100..] = data[0x80..]
+///   PUSH1 0 PUSH1 0 DUP3 PUSH2 0x100 PUSH1 0 DUP7 GAS CALL POP  the call
+///   JUMPDEST
 ///   PUSH1 0x40 CALLDATALOAD PUSH1 0x20 MSTORE        memory[32] = success
 ///   PUSH1 0 PUSH1 0x20 CALLDATALOAD PUSH1 0 CALLDATALOAD PUSH32 topic
 ///   PUSH1 0x80 PUSH1 0 LOG4 STOP                    topics: event, opHash, sender, 0
-const REPORTING_ENTRY_POINT = "0x604035602052" + "6000602035600035" + "7f" + USER_OP_EVENT.slice(2) + "60806000a400";
+const REPORTING_ENTRY_POINT = "0x" + "606035801560215760803603806080610100376000600082610100600086" + "5af1505b" +
+  "604035602052" + "6000602035600035" + "7f" + USER_OP_EVENT.slice(2) + "60806000a400";
 /// `fn` run with the reporting contract at `address`, its own code put back after.
 /// @param rpc  (method, params) => result, on the run's node
 async function withReportingEntryPoint(rpc, fn, address = ENTRY_POINT) {
@@ -215,11 +224,18 @@ async function withReportingEntryPoint(rpc, fn, address = ENTRY_POINT) {
   try { return await fn(); } finally { await rpc("anvil_setCode", [address, code]); }
 }
 /// wallet-stub.js's `userOps`: the sends whose data starts with one of `only`
-/// (every send, without it) made as `bundler`'s bundle, the operation `success`.
-const bundled = (bundler, success, only) => ({ entryPoint: ENTRY_POINT, bundler, success, only });
+/// (every send, without it) made as `bundler`'s bundle, the operation
+/// `success`, the EntryPoint making `call` ({ to, data }) first.
+const bundled = (bundler, success, only, call) => ({ entryPoint: ENTRY_POINT, bundler, success, only, call });
+const word32 = (x) => BigInt(x).toString(16).padStart(64, "0");
+/// ANOTHER ACCOUNT'S OPERATION, for `bundled`'s `call`: `sender`'s, `success`,
+/// its own logs those of `call` ({ to, data }) when one is given - made by the
+/// EntryPoint, as the operation's account would.
+const otherOp = (sender, success, call) => ({ to: ENTRY_POINT, data: "0x" + word32("0x" + "0d".repeat(32)) +
+  word32(sender) + word32(success ? 1 : 0) + (call ? word32(call.to) + String(call.data).replace(/^0x/, "") : "") });
 
 module.exports = {
   walletsScript, uuid, logs, clearLogs, IN_APP_UA, IN_APP_FLAGS,
   WC_URI, PROJECT_ID, wcSession, FAKE_UP, UMD_PATH, useFakeWalletConnect, isWalletConnect, sri,
-  ENTRY_POINT, USER_OP_EVENT, REPORTING_ENTRY_POINT, withReportingEntryPoint, bundled,
+  ENTRY_POINT, USER_OP_EVENT, REPORTING_ENTRY_POINT, withReportingEntryPoint, bundled, otherOp,
 };

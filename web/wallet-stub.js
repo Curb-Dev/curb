@@ -45,13 +45,16 @@ function makeWallet(rpcUrl, opts) {
     forward: false,
 
     // A SMART WALLET'S BUNDLE (ERC-4337), with `forward`: { entryPoint,
-    // bundler, success, only }. A send whose data starts with one of `only`
-    // (every send, without it) is not made from the account: a bundler's
+    // bundler, success, only, call }. A send whose data starts with one of
+    // `only` (every send, without it) is not made from the account: a bundler's
     // transaction to `entryPoint` is, carrying the operation's hash, this
     // account and `success`, and the contract a test put at that address emits
     // UserOperationEvent with them. The hash handed back is the bundle's, as a
     // smart wallet's can be - and its receipt says status 0x1 whatever the
     // operation did. Every other send goes through as it always does.
+    // `call` ({ to, data }) is made by that contract first, inside the same
+    // bundle: another account's operation before this one, or what this
+    // operation's own logs carry.
     userOps: null,
   }, opts || {});
 
@@ -130,8 +133,9 @@ function makeWallet(rpcUrl, opts) {
       if (op && (!op.only || op.only.some((s) => data.startsWith(String(s).toLowerCase())))) {
         const word = (x) => String(x).toLowerCase().replace(/^0x/, "").padStart(64, "0");
         const opHash = word((sent.length + 1).toString(16) + "0b");
+        const call = op.call ? word(op.call.to) + String(op.call.data || "0x").replace(/^0x/, "") : "";
         const hash = await raw("eth_sendTransaction", [{ from: op.bundler, to: op.entryPoint,
-          data: "0x" + opHash + word(params[0].from || cfg.account) + word(op.success ? "1" : "0") }]);
+          data: "0x" + opHash + word(params[0].from || cfg.account) + word(op.success ? "1" : "0") + call }]);
         sent.push(params[0]);
         return hash;
       }

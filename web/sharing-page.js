@@ -296,7 +296,19 @@ async function claim(l, btn) {
         ". " + txLine(hash, parseInt(nodeChain, 16)));
       return;
     }
-    const got = (l.claim0 || 0n);
+    // PAID, AS THE DISTRIBUTOR SAYS: its Paid to this account, in this
+    // account's own operation's logs (tx-core.js ownLogs), and the amount it
+    // names - not the one read before the send. A receipt without it paid
+    // nothing however it mined (app.js mustCarry's reason); it used to say
+    // "Claimed" with the figure on the row.
+    const paid = window.CurbTx.ownLogs(rec, who).find((x) => Sh.same(x.address, l.d) && Array.isArray(x.topics) &&
+      x.topics[0] === Sh.TOPIC.paid && x.topics.length > 1 && Sh.same(wordToAddress(x.topics[1].slice(2)), who));
+    if (!paid) {
+      notice("err", "The claim was mined, but it carries no Paid event from the distributor, so nothing was claimed. " +
+        "Look it up in your wallet's activity before claiming again. " + txLine(hash, parseInt(nodeChain, 16)));
+      return;
+    }
+    const got = wordToBig(words(paid.data)[0] || "0");
     notice("ok", `<span class="toastShort"><span class="toastIcon">${TICK}</span><span class="toastBody"><b class="toastTitle">Claimed</b>` +
       `<span class="toastLine"><strong>${esc(fmt(got, l.qd, 6))} ${esc(l.qSym)}</strong> <span class="toastArrow">·</span> ${esc(l.sym)}</span></span></span>` +
       txLine(hash, parseInt(nodeChain, 16)));

@@ -1263,6 +1263,18 @@ test("Holder fees lists what the connected wallet earned, token by token: earned
     await expect(p.locator("#msg .toastTitle"), "a reverted operation was called claimed").toHaveCount(0);
     expect(await p.evaluate(() => window.ethereum.sent.length), "the claim was not asked of the wallet").toBe(1);
     await expect(row.locator(".shClaimFig b")).toHaveText(card.claimable);
+    // AND A BUNDLE WHOSE OPERATION SAYS IT SUCCEEDED, never reaching the
+    // distributor: no Paid event, so no claim - it used to say "Claimed" with
+    // the figure on the row.
+    await p.evaluate(() => { document.getElementById("msg").textContent = ""; });
+    await p.evaluate((op) => { window.ethereum.cfg.userOps = op; }, bundled(bundler, true));
+    await row.locator("button.shClaimLink").click();
+    await expect(p.locator("#msg")).toContainText("The claim was mined, but it carries no Paid event from the distributor, so nothing was claimed",
+      { timeout: 90_000 });
+    await expect(p.locator("#msg")).toHaveClass(/err/);
+    await expect(p.locator("#msg .toastTitle"), "a claim that paid nothing was called claimed").toHaveCount(0);
+    expect(await p.evaluate(() => window.ethereum.sent.length)).toBe(2);
+    await expect(row.locator(".shClaimFig b")).toHaveText(card.claimable);
     await p.evaluate(() => { window.ethereum.cfg.userOps = null; });
   });
   await row.locator("button.shClaimLink").click();
