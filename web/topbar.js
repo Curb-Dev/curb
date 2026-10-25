@@ -359,7 +359,8 @@ else carryLinks();
 // whose wallet announces nothing still has window.ethereum, as the one choice
 // "Browser wallet" - which is every browser test that announces nothing.
 // INSIDE COINBASE WALLET'S OWN BROWSER its wallet is "Coinbase Wallet" whatever
-// it announces, or with nothing, and no phone wallet is offered (IN_APP below).
+// it announces, or with nothing, and no phone wallet is offered beside it
+// (IN_APP and wcOn below).
 //
 // EVERY ANNOUNCEMENT IS A STRANGER'S. Any extension can announce, under any
 // name, id and picture. Only a LISTED id is drawn, and under the name LISTED
@@ -426,10 +427,17 @@ const IN_APP = /CoinbaseWalletRN\//.test(String((typeof navigator !== "undefined
 const HOST_ID = "com.coinbase.wallet";
 /// WALLETCONNECT IS OFFERED ONLY WITH A PROJECT ID, A DEPLOYMENT AND THE SITE'S
 /// OWN ENDPOINT: its session's one chain is config.js's, and every read it
-/// answers goes to config.js's rpc (walletconnect.js). AND NEVER INSIDE
-/// COINBASE WALLET'S OWN BROWSER (IN_APP): the wallet is right there, and a
-/// phone wallet would be another app on the same phone.
-const WC_ON = !!(SITE.walletConnect && SEND_CHAIN && SITE.rpc) && !IN_APP;
+/// answers goes to config.js's rpc (walletconnect.js).
+const WC_SITE = !!(SITE.walletConnect && SEND_CHAIN && SITE.rpc);
+/// AND NOT INSIDE COINBASE WALLET'S OWN BROWSER ONCE ITS WALLET IS HERE
+/// (adoptHost): the wallet is right there, and a phone wallet would be another
+/// app on the same phone. THE USER AGENT ALONE DOES NOT WITHHOLD IT: it was
+/// read at load at first, and a build whose wallet did not say it was the app's
+/// - announcing an id the site does not list - was left with no way to connect
+/// at all, and told to install a wallet inside the wallet.
+function wcOn() { return WC_SITE && !hostHere(); }
+/// Whether the app's own wallet was found (adoptHost).
+const hostHere = () => announced.some((w) => w.host);
 
 /// A provider worth keeping: an object with a request function, and never a
 /// DOM node - an element with id "ethereum" IS window.ethereum on a browser
@@ -577,7 +585,7 @@ function arrived(entry) {
 function nothingToWaitFor() {
   if (hidden) return true;
   if (remembered.startsWith("6963:")) return false;
-  return WC_ON || choices().length !== 1;
+  return wcOn() || choices().length !== 1;
 }
 
 /// The wallet chosen at load, prompting nothing (see above).
@@ -589,12 +597,12 @@ function autoChoice() {
     if (same.length > 1) clash = same[0].rdns;
     return same.length === 1 ? same[0] : null;
   }
-  if (remembered === "walletconnect" && WC_ON) {
+  if (remembered === "walletconnect" && wcOn()) {
     restoreWalletConnect();
     return null;
   }
   const list = choices();
-  return list.length === 1 && !WC_ON ? list[0] : null;
+  return list.length === 1 && !wcOn() ? list[0] : null;
 }
 
 function requestWallets() {
@@ -644,7 +652,7 @@ let hidden = readJson(STORE).hidden === true;
 const subs = new Set();
 
 function paint() {
-  const any = !!chosen || choices().length > 0 || WC_ON;
+  const any = !!chosen || choices().length > 0 || wcOn();
   btn.classList.toggle("on", !!account);
   btn.classList.toggle("nowallet", !account && !any);
   btn.textContent = "";
@@ -694,7 +702,7 @@ async function detect() {
   // switch has a wallet to ask. One that was not allowed stays unchosen.
   // (Nothing remembered, or this very wallet: a remembered one missing this
   // visit still means no wallet is asked anything.)
-  if (!chosen && WC_ON && !hidden && !clash && remembered !== "walletconnect") {
+  if (!chosen && wcOn() && !hidden && !clash && remembered !== "walletconnect") {
     const list = choices();
     if (list.length === 1 && (!remembered || remembered === list[0].key)) {
       const lone = list[0];
@@ -757,12 +765,12 @@ async function pick() {
   await settled;
   if (chosen) return chosen.provider;
   const list = choices();
-  if (!list.length && !WC_ON) {
+  if (!list.length && !wcOn()) {
     showNote((unlisted ? "This browser's wallets are not ones the site lists." : "No browser wallet found.") +
       " Install one - Coinbase Wallet, MetaMask or Rabby - and reload this page.");
     return null;
   }
-  if (list.length === 1 && !WC_ON && !clash) {
+  if (list.length === 1 && !wcOn() && !clash) {
     await choose(list[0], true);
     return list[0].provider;
   }
@@ -814,7 +822,7 @@ async function connect() {
 /// @param eth  the provider pick() gave, which did not connect
 function declined(eth) {
   if (!chosen || chosen.provider !== eth) return;
-  if (choices().length < 2 && !WC_ON) return;
+  if (choices().length < 2 && !wcOn()) return;
   if (chosen.key === remembered) { remembered = ""; writeSite({ wallet: undefined }); }
   choose(null, false);
 }
@@ -1008,7 +1016,7 @@ function drawPicker() {
       "extension you do not know." }));
   }
   for (const w of list) pickBox.append(pickRow(walletIcon(w), w.name, () => picked(w)));
-  if (WC_ON) {
+  if (wcOn()) {
     pickBox.append(pickRow(el("span", { class: "cbPickTile cbPickWc", html: PHONE_ICON }), "Phone wallet - WalletConnect",
       () => startWalletConnect()));
   }

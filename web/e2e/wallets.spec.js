@@ -667,15 +667,21 @@ test("on a desktop browser a wallet setting isCoinbaseBrowser is not taken for t
   await page.close();
 
   // THE USER AGENT ALONE IS NOT ENOUGH EITHER: inside the app's browser, a
-  // provider without the flag announcing an unlisted id is unlisted.
+  // provider without the flag announcing an unlisted id is unlisted - and the
+  // phone wallet stays, the one way left to connect. It used to be withheld on
+  // the user agent alone, and the person was told to install a wallet.
   const ctx = await inApp(browser);
   page = await ctx.newPage();
+  await useSite(page);
+  await useFakeWalletConnect(page);
   await page.addInitScript({ content: walletsScript({ rpc: STATE.rpc, list: [{ ...HOST, flags: undefined }] }) });
   await page.goto("/curb.html");
   await barReady(page);
   await settle(page);
   await page.click("#barConnect");
-  await expect(page.locator("#siteBar .cbNote")).toContainText("This browser's wallets are not ones the site lists.");
+  await expect(page.locator("#siteBar .cbWcApps a").first(), "inside the app with no wallet of its own, WalletConnect was withheld")
+    .toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("#siteBar .cbNote")).not.toContainText("Install one");
   expect(await logs(page)).toEqual({});
   await ctx.close();
 });
