@@ -44,11 +44,15 @@ const AERO_FACTORY = "0xf8f2eb4940cfe7d13603dddd87f123820fc061ef";
 const ROUTER_HASH = "0xfedc4e21e1097b0ec1b4f1aa901cf645c22f9e5d297727b0f37275ee1d083df4";
 const QUOTER_HASH = "0x4c4c43e0024343e65597f0f0a1b829aaf69e5a6c0a0148fb63d28ff5730be551";
 const FACTORY_HASH = "0x4961963494e47f363617ab9a0f3999a28b33c519e51392952db06350cce700bd";
-const NINE = {
+// THE TWELVE: the nine of 18 October, and MSTRc, SNDKc and TSLAc, listed after
+// launch on 29 October 2026.
+const TWELVE = {
   cbXRP: "0xcb585250f852c6c6bf90434ab21a00f02833a4af", cbZEC: "0xb2000000000000000000008501b13360000cb2ec",
   GOOGLc: "0xb2000000000000000000002d0ba3164cc74f58b7", NVDAc: "0xb20000000000000000000078ee7ce2fe4908108c",
   SPCXc: SPCXC, AMZNc: "0xb200000000000000000000d9192b6b456483c2e8", MSFTc: "0xb200000000000000000000ab99cfa739e253872b",
   AAPLc: "0xb200000000000000000000c2e324d24d7eecd1fb", METAc: "0xb2000000000000000000008bc8786b856e61707c",
+  MSTRc: "0xb2000000000000000000004884b426556b92883d", SNDKc: "0xb200000000000000000000397293cb8cda9a10c5",
+  TSLAc: "0xb2000000000000000000001e800a7f5189430cd0",
 };
 const MIN_SQRT = 4295128739n;
 const HOST = "http://aero-quotes.test:8702";
@@ -521,9 +525,9 @@ test("A1 the router, quoter and factory are on the fork with the hashes the page
   expect(pins.quoter.codehash.toLowerCase()).toBe(QUOTER_HASH);
   expect(pins.factory.toLowerCase()).toBe(AERO_FACTORY);
   expect(pins.frozen, "AERO_PATHS is not frozen at every level").toBe(true);
-  // THE KEYS ARE EXACTLY THE NINE, each the quoteToken() of a factory here.
-  expect(Object.keys(pins.paths).sort()).toEqual(Object.values(NINE).sort());
-  for (const asset of Object.values(NINE)) expect(await factoryFor(asset), "no factory prices in " + asset).not.toBeNull();
+  // THE KEYS ARE EXACTLY THE TWELVE, each the quoteToken() of a factory here.
+  expect(Object.keys(pins.paths).sort()).toEqual(Object.values(TWELVE).sort());
+  for (const asset of Object.values(TWELVE)) expect(await factoryFor(asset), "no factory prices in " + asset).not.toBeNull();
   // EVERY HOP'S POOL EXISTS, and every path starts at WETH and ends at its key.
   for (const [asset, rows] of Object.entries(pins.paths)) {
     for (const hops of rows) {

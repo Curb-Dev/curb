@@ -112,7 +112,7 @@ move.
 
 A launch is only as easy to trade as its paired asset: if the asset is hard to buy or sell, so is the launch, and
 a launch on a thin asset may never reach its threshold. Paying ETH on a pair that is not ETH buys the asset
-through Uniswap v3 or, for the seven tokenized stocks, cbXRP and cbZEC, on Aerodrome when that gives clearly more
+through Uniswap v3 or, for the ten tokenized stocks, cbXRP and cbZEC, on Aerodrome when that gives clearly more
 (see [Aerodrome route](#aerodrome-route)). Uniswap can be much thinner than an asset's main market: when you pick
 an asset, the launch form checks whether those routes can buy one threshold. Paying in the asset itself does not
 go through them.
@@ -725,7 +725,7 @@ with no calldata is sent as it is.
 
 ### Aerodrome route
 
-Paying ETH for a curve buy on the seven tokenized stocks, cbXRP or cbZEC can take a second route: the ETH is
+Paying ETH for a curve buy on the ten tokenized stocks, cbXRP or cbZEC can take a second route: the ETH is
 swapped into the paired asset on Aerodrome Slipstream (its "Gauges V3" deployment, where those assets' deepest
 pools are), and the curve is then bought with exactly what arrived. Nothing of CURB's is involved; the site pins
 Aerodrome's contracts the way it pins the CURB router:

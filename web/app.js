@@ -116,6 +116,10 @@ const AERO_PATHS = (() => {
     spcxc: "0xb2000000000000000000007b9fcbd005511acbd5", amznc: "0xb200000000000000000000d9192b6b456483c2e8",
     msftc: "0xb200000000000000000000ab99cfa739e253872b", aaplc: "0xb200000000000000000000c2e324d24d7eecd1fb",
     metac: "0xb2000000000000000000008bc8786b856e61707c",
+    // THE THREE ADDED AFTER LAUNCH, 29 OCTOBER 2026: their only markets are
+    // these pools (USDC, tick spacing 10); their Uniswap v3 pools hold cents.
+    mstrc: "0xb2000000000000000000004884b426556b92883d", sndkc: "0xb200000000000000000000397293cb8cda9a10c5",
+    tslac: "0xb2000000000000000000001e800a7f5189430cd0",
   };
   // USDC'S ADDRESS WRITTEN OUT: its constant is declared further down, after
   // this table is built.
@@ -132,6 +136,8 @@ const AERO_PATHS = (() => {
     [A.spcxc]: rows(...viaUsdc(A.spcxc, 10)), [A.amznc]: rows(...viaUsdc(A.amznc, 10)),
     [A.msftc]: rows(...viaUsdc(A.msftc, 10)), [A.aaplc]: rows(...viaUsdc(A.aaplc, 10)),
     [A.metac]: rows(...viaUsdc(A.metac, 10)),
+    [A.mstrc]: rows(...viaUsdc(A.mstrc, 10)), [A.sndkc]: rows(...viaUsdc(A.sndkc, 10)),
+    [A.tslac]: rows(...viaUsdc(A.tslac, 10)),
   });
 })();
 const aeroRows = (quote) => AERO_PATHS[String(quote || "").toLowerCase()] || null;
@@ -3756,7 +3762,7 @@ async function describeTwins(choices, callFn) {
 ///
 /// The curve has to TAKE IN one graduation threshold of the quote asset before
 /// it can graduate. A buyer paying ETH gets the asset through Uniswap v3 (the
-/// CURB router's SwapRouter02 path) and, for the AERO_PATHS assets - the seven
+/// CURB router's SwapRouter02 path) and, for the AERO_PATHS assets - the ten
 /// tokenized stocks, cbXRP and cbZEC - on Aerodrome too, where its router and
 /// quoter are the code this page pins (aeroReady). So both venues are asked
 /// here whether they can buy one threshold, and the cheaper one is named. It is
