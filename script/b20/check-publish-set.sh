@@ -331,14 +331,19 @@ selftest() {
   local R="0x00000000000000000000000000000000000000dD"
   ADDR_FILE="$t/ADDRESSES.txt"
   printf '  LaunchRegistry        %s\n  LaunchLens            %s\n    CurbLaunchFactory   %s\n    CurbLaunchFactory   %s\n' "$R" "$L" "$F1" "$F2" > "$ADDR_FILE"
-  fresh; expect fail "deploy day with config.js as committed (no endpoint, no lens) is refused" "rpc is ''"
   # setcfg <rpc> <lens> <factories> [<registry>]: the registry is the recorded
   # one unless a fourth argument (empty included) names another.
   setcfg() { perl -0777 -pi -e "s|rpc: \"[^\"]*\"|rpc: \"$1\"|; s|lens: \"[^\"]*\"|lens: \"$2\"|; s|registry: \"[^\"]*\"|registry: \"${4-$R}\"|; s|factories: \[[^\]]*\]|factories: [$3]|" "$t/w/config.js"; }
   setcode() { perl -0777 -pi -e "s|const CODE_AT = \"[^\"]*\"|const CODE_AT = \"$1\"|" "$t/w/sharing.js"; }
+  # THE PLACEHOLDERS ARE WRITTEN HERE, NOT TAKEN FROM THE COMMITTED FILES:
+  # these two cases read config.js and sharing.js as committed while both
+  # were still blank, and failed from deploy day on (16 October 2026), when
+  # STEP 5 filled them - the first test-all.sh since then found it.
+  fresh; setcfg "" "" "" ""
+  expect fail "deploy day with config.js's placeholders (no endpoint, no lens) is refused" "rpc is ''"
   local REPO="https://github.com/curb-org/curb/tree/0123456789abcdef0123456789abcdef01234567/services/sharer"
-  fresh; setcfg "https://base.example/v1/key" "$L" "\"$F1\", \"0x00000000000000000000000000000000000000cc\""
-  expect fail "deploy day with sharing.js's repository as committed (empty) is refused" "CODE_AT is ''"
+  fresh; setcfg "https://base.example/v1/key" "$L" "\"$F1\", \"0x00000000000000000000000000000000000000cc\""; setcode ""
+  expect fail "deploy day with sharing.js's repository left empty is refused" "CODE_AT is ''"
   setcode "$REPO"
   expect pass "deploy day with the recorded lens and factories, and the repository at a commit, passes"
   setcode "https://github.com/curb-org/curb/tree/main/services/sharer"
