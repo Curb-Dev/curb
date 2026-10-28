@@ -45,10 +45,14 @@ const USD_FEEDS = {
   "0xb200000000000000000000ab99cfa739e253872b": ["0xeb10a6c9aa7e537aed766c08c35dae35b321b18c", "Coinbase MSFT"],
   "0xb200000000000000000000c2e324d24d7eecd1fb": ["0x787f13dea48db0897cbcdd985de77809d837f988", "Coinbase AAPL"],
   "0xb2000000000000000000008bc8786b856e61707c": ["0x6526ae6797a76123638b863aee4dd27ba4e4b27d", "Coinbase META"],
-  // Equities app.js names that no factory lists yet - priced if one ever does.
-  "0xb2000000000000000000001e800a7f5189430cd0": ["0xfaf869185383a24f8cb00e27bda6b63b9905dcb4", "Coinbase TSLA"],
+  // LISTED SINCE 29 OCTOBER 2026, added after launch: the same three feeds
+  // this table held ahead of any listing, read back on live Base that night
+  // (description() as written, decimals() 8, answering $143.41, $1,369.99 and
+  // $401.65) and named again in services/sharer/deploy/sharer.example.json.
   "0xb2000000000000000000004884b426556b92883d": ["0xb3ce282cd188b35da0e38d8bc7d58e33173d202a", "Coinbase MSTR"],
   "0xb200000000000000000000397293cb8cda9a10c5": ["0x388b0dc46c0fb05a74bee0994fa5b02c6fcca2ea", "Coinbase SNDK"],
+  "0xb2000000000000000000001e800a7f5189430cd0": ["0xfaf869185383a24f8cb00e27bda6b63b9905dcb4", "Coinbase TSLA"],
+  // Equities app.js names that no factory lists yet - priced if one ever does.
   "0xb200000000000000000000c85a31389d71f3ecfb": ["0x408e44f504a7371a345f03a73ddc96a4b48e8aa7", "Coinbase COIN"],
   "0xb20000000000000000000019f6e7c675b73c2e4d": ["0x0231cf2635d1e17bb5c2462cc7504ba1fbd61f33", "Coinbase CRCL"],
   "0xb2000000000000000000004aff16039ba04bdfbc": ["0xab657c39bac0d5886250d70849e2e3e008f2eecb", "Coinbase INTC"],

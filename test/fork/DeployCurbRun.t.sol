@@ -306,50 +306,56 @@ contract DeployCurbRunTest is B20ForkTest {
         assertEq(d.s.registry.launcherCount(), probe.assets().length, "not one launcher per listed asset");
     }
 
-    /// WHAT THE THREE LAUNCHERS ADDED ON 2026-10-15 COST EVERY LAUNCH, MEASURED.
+    /// WHAT THE LAUNCHERS ADDED SINCE THE ELEVEN COST EVERY LAUNCH, MEASURED.
     ///
     /// launch() asks every admitted launcher, one by one, whether the creator
     /// is that launcher or its escrow, fee policy or buyback vault
     /// (CurbLaunchFactory._refuseOtherLaunchers): one registry read and three
     /// bounded calls per launcher. So each launcher admitted is gas on every
     /// launch on every factory, for good - none is ever removed - and the list
-    /// grew from eleven to fourteen. This runs the deployment both ways, the
-    /// eleven kept and all fourteen, and makes the same launch on each one's
-    /// WETH factory, with everything the run built made COLD first, as it is
-    /// to a real launch transaction: measured warm, right after the run that
-    /// wrote it, the loop costs a fraction of what a launch pays on chain.
+    /// grew from eleven to fourteen on 2026-10-15 (USDC, VIRTUAL, AERO) and to
+    /// seventeen on 2026-10-29 (MSTRc, SNDKc, TSLAc, admitted after launch).
+    /// This runs the deployment both ways, the eleven kept and all seventeen,
+    /// and makes the same launch on each one's WETH factory, with everything
+    /// the run built made COLD first, as it is to a real launch transaction:
+    /// measured warm, right after the run that wrote it, the loop costs a
+    /// fraction of what a launch pays on chain.
     ///
     /// MEASURED 2026-10-15 at the pin: 2,839,518 gas with eleven, 2,857,539
     /// with fourteen - 18,021 for the three, about 6,000 a launcher (its slot
     /// in the registry and its account, both cold, and three calls to it).
+    /// MEASURED 2026-10-29 at the pin: 2,839,524 with eleven, 2,875,542 with
+    /// seventeen - 36,018 for the six, still about 6,000 a launcher.
     /// THE BOUND IS PER LAUNCHER, 25,000 gas: the three calls are capped at
     /// 20,000 each only against a launcher that burns its gas, which no
     /// factory here does; the measured cost is a quarter of the bound.
-    function test_threeMoreLaunchersCostEachLaunchLittle_fourteenAgainstEleven() public onlyFork {
+    function test_sixMoreLaunchersCostEachLaunchLittle_seventeenAgainstEleven() public onlyFork {
         DeployCurb.Asset[] memory all = probe.assets();
-        assertEq(all.length, 14, "the premise moved: the list is not fourteen assets");
+        assertEq(all.length, 17, "the premise moved: the list is not seventeen assets");
         DeployCurb.Asset[] memory eleven = new DeployCurb.Asset[](11);
         uint256 k;
         for (uint256 i = 0; i < all.length; i++) {
             bytes32 l = keccak256(bytes(all[i].label));
             if (l == keccak256("USDC") || l == keccak256("VIRTUAL") || l == keccak256("AERO")) continue;
+            if (l == keccak256("MSTRc") || l == keccak256("SNDKc") || l == keccak256("TSLAc")) continue;
             eleven[k++] = all[i];
         }
-        assertEq(k, 11, "the premise moved: USDC, VIRTUAL and AERO are not all on the list");
+        assertEq(k, 11, "the premise moved: USDC, VIRTUAL, AERO, MSTRc, SNDKc and TSLAc are not all on the list");
+        uint256 added = all.length - k;
 
         uint256 snap = vm.snapshotState();
         uint256 g11 = _oneLaunchGas(eleven);
         vm.revertToState(snap);
-        uint256 g14 = _oneLaunchGas(all);
+        uint256 g17 = _oneLaunchGas(all);
         emit log_named_uint("gas: one launch() on the WETH factory, 11 launchers admitted", g11);
-        emit log_named_uint("gas: one launch() on the WETH factory, 14 launchers admitted", g14);
-        emit log_named_uint("gas: what the three added launchers cost each launch", g14 - g11);
+        emit log_named_uint("gas: one launch() on the WETH factory, 17 launchers admitted", g17);
+        emit log_named_uint("gas: what the six added launchers cost each launch", g17 - g11);
         // A FLOOR, NOT "MORE THAN": each added launcher is at least one cold
         // account the loop calls (2,600 gas, EIP-2929). This read assertGt
         // first, and a mutant measuring the fourteen twice still passed it -
         // the two runs differ by 28 gas of noise.
-        assertGe(g14 - g11, 3 * 2_600, "three more launchers cost a launch next to nothing: the loop over them was not measured cold");
-        assertLt(g14 - g11, 3 * 25_000, "an added launcher costs each launch more than 25,000 gas");
+        assertGe(g17 - g11, added * 2_600, "six more launchers cost a launch next to nothing: the loop over them was not measured cold");
+        assertLt(g17 - g11, added * 25_000, "an added launcher costs each launch more than 25,000 gas");
     }
 
     /// The run on `list`, then one launch on its WETH factory from a creator

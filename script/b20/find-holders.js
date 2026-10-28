@@ -17,11 +17,17 @@
 //     draining one in a test corrupts the venue the ETH route prices against,
 //     and a "holder" that is really a pool is not a holder.
 // A source that is somebody else's accounting is not a source.
+//
+// BLOCK=<n> READS AT THAT BLOCK instead of the head - the logs up to it and
+// every balance and pool at it - so the pinned block's holders can be found
+// straight from an archive endpoint that serves logs, with no fork node
+// between (added 29 October 2026, for MSTRc, SNDKc and TSLAc).
 require(require("path").join(__dirname, "..", "..", "web", "keccak.js"));
 const { keccak256 } = globalThis.CurbKeccak;
 
 const RPC = process.argv[2] || process.env.RPC || "http://127.0.0.1:8549";
 const BACK = Number(process.argv[3] || 1800);
+const AT = process.env.BLOCK ? "0x" + Number(process.env.BLOCK).toString(16) : "latest";
 /// Blocks per getLogs request. 1800 fits the upstream's 2,000-block limit for a
 /// quiet token; a busy one (cbBTC) is refused as "backend response too large"
 /// and needs a smaller page.
@@ -50,6 +56,12 @@ const ASSETS = {
   USDC: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
   VIRTUAL: "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b",
   AERO: "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
+  // AND THE THREE ADDED AFTER LAUNCH ON 29 OCTOBER 2026, B20 equities whose
+  // markets are Aerodrome Slipstream pools - which is why poolsOf() asks the
+  // CL factories too: their deepest "holder" is such a pool.
+  MSTRc: "0xb2000000000000000000004884b426556b92883d",
+  SNDKc: "0xb200000000000000000000397293cb8cda9a10c5",
+  TSLAc: "0xb2000000000000000000001e800a7f5189430cd0",
 };
 /// The scale each asset's balance is written in. It was assumed to be eight
 /// for everything, which was true while everything was an equity.
@@ -67,13 +79,22 @@ const NEED = { SPCXc: 150e8, GOOGLc: 150e8, AMZNc: 50e8, MSFTc: 25e8, AAPLc: 15e
                // three thresholds each, at DeployCurb's own numbers (the
                // 2026-10-15 list)
                cbBTC: 0.396e8, cbXRP: 24_450e6, cbZEC: 27.6e8,
-               USDC: 32_400e6, VIRTUAL: 48_300e18, AERO: 36_600e18 };
+               USDC: 32_400e6, VIRTUAL: 48_300e18, AERO: 36_600e18,
+               // three thresholds each, at the 29 October terms
+               MSTRc: 226.5e8, SNDKc: 23.73e8, TSLAc: 81e8 };
 
 const POOL_MANAGER = "0x498581ff718922c3f8e6a244956af099b2652b2b";
 const V3_FACTORY = "0x33128a8fc17869897dce68ed026d694621f6fdfd";
 const AERO_V2 = "0x420dd381b31aef6683db6b902084cb0ffece40da";
 const USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 const WETH = "0x4200000000000000000000000000000000000006";
+/// AERODROME'S THREE SLIPSTREAM PoolFactories (rwa-survey.js says why there
+/// are three), each asked at the tick spacings it reports. Only v2 was asked
+/// here, and the equities' deepest pools are Slipstream ones: SNDKc's Gauges
+/// V3 pool, 219.42 SNDKc at the pinned block, ranked first among its
+/// "holders" while it was not excluded.
+const AERO_CL = ["0x5e7bb104d84c7cb9b682aac2f3d509f5f406809a", "0xade65c38cd4849adba595a4323a8c7ddfe89716a",
+  "0xf8f2eb4940cfe7d13603dddd87f123820fc061ef"];
 
 const utf8Hex = (s) => Array.from(Buffer.from(s, "utf8")).map((b) => b.toString(16).padStart(2, "0")).join("");
 const sig = (s) => keccak256("0x" + utf8Hex(s)).slice(0, 10);
@@ -82,17 +103,26 @@ const padAddr = (a) => a.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 const padNum = (n) => BigInt(n).toString(16).padStart(64, "0");
 const TRANSFER = topic("Transfer(address,address,uint256)");
 const S = { balanceOf: sig("balanceOf(address)"), getPool: sig("getPool(address,address,uint24)"),
-            aeroPool: sig("getPool(address,address,bool)") };
+            aeroPool: sig("getPool(address,address,bool)"), clPool: sig("getPool(address,address,int24)"),
+            tickSpacings: sig("tickSpacings()") };
 
 let id = 0;
+/// A REFUSAL TO ANSWER IS ASKED AGAIN, after a pause. poolsOf() swallows a
+/// failed getPool, so a rate-limited one read as "no pool" and left that pool
+/// among the holders: SNDKc's own Slipstream pool ranked first that way.
 async function rpc(method, params) {
-  const r = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) });
-  const j = await r.json();
-  if (j.error) throw new Error(`${method}: ${j.error.message}`);
-  return j.result;
+  for (let tries = 0; ; tries++) {
+    const r = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) });
+    const j = r.status === 429 ? null : await r.json().catch(() => null);
+    const busy = !j || (j.error && /rate limit|too many|exceeded|429/i.test(j.error.message || ""));
+    if (busy && tries < 8) { await new Promise((ok) => setTimeout(ok, 1000 * (tries + 1))); continue; }
+    if (!j) throw new Error(`${method}: no answer after ${tries} retries`);
+    if (j.error) throw new Error(`${method}: ${j.error.message}`);
+    return j.result;
+  }
 }
-const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
+const call = (to, data) => rpc("eth_call", [{ to, data }, AT]);
 const addrOf = (h) => "0x" + (h || "").replace(/^0x/, "").slice(24, 64);
 const num = (h) => {
   const w = (h || "").replace(/^0x/, "").slice(0, 64);
@@ -115,12 +145,31 @@ async function poolsOf(asset) {
         if (!/^0x0{40}$/.test(p)) out.add(p.toLowerCase());
       } catch {}
     }
+    // NOT SWALLOWED: a getPool that fails here stops the run rather than
+    // leave a pool among the holders.
+    for (const f of AERO_CL) {
+      for (const ts of await clSpacings(f)) {
+        const p = addrOf(await call(f, S.clPool + padAddr(asset) + padAddr(pair) + padNum(ts)));
+        if (!/^0x0{40}$/.test(p)) out.add(p.toLowerCase());
+      }
+    }
   }
   return out;
 }
+/// A CL factory's tick spacings, read once; a factory that cannot say is an
+/// error, not an empty list - an empty list would exclude none of its pools.
+const spacings = {};
+async function clSpacings(f) {
+  if (spacings[f]) return spacings[f];
+  const w = (await call(f, S.tickSpacings)).replace(/^0x/, "").match(/.{64}/g) || [];
+  const n = Number(BigInt("0x" + (w[1] || "0")));
+  spacings[f] = w.slice(2, 2 + n).map((x) => Number(BigInt.asIntN(24, BigInt("0x" + x))));
+  if (!spacings[f].length) throw new Error(`the Slipstream factory ${f} named no tick spacings`);
+  return spacings[f];
+}
 
 (async () => {
-  const head = Number(await rpc("eth_blockNumber", []));
+  const head = AT === "latest" ? Number(await rpc("eth_blockNumber", [])) : Number(AT);
   console.log(`# rpc ${RPC}, head ${head}, scanning ${BACK} blocks back in ${PAGE}-block pages\n`);
 
   const only = (process.env.ONLY || "").split(",").filter(Boolean);

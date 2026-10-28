@@ -173,12 +173,13 @@ contract B20SafeERC20ForkTest is B20ForkTest {
     ///
     /// ONE POLICY AND ONE ADMIN ACROSS THE THIRTEEN EQUITIES IS AN ARGUMENT
     /// that they share an implementation. It is not a measurement that they
-    /// do, and this is measured instead - and seven of the fourteen are not
+    /// do, and this is measured instead - and seven of the seventeen are not
     /// equities at all: WETH, the three Coinbase-wrapped coins, and since
-    /// 2026-10-15 Circle's USDC and the plain ERC-20s VIRTUAL and AERO.
+    /// 2026-10-15 Circle's USDC and the plain ERC-20s VIRTUAL and AERO. The
+    /// ten equities include MSTRc, SNDKc and TSLAc since 2026-10-29.
     function test_nonZeroOverNonZeroApproveWorksOnEveryEnabledAsset() public onlyFork {
         DeployCurb.Asset[] memory shipped = new DepthProbe().assets();
-        assertEq(shipped.length, 14, "the deployment's asset list changed size - re-read this test");
+        assertEq(shipped.length, 17, "the deployment's asset list changed size - re-read this test");
         for (uint256 i = 0; i < shipped.length; i++) {
             address a = shipped[i].quote;
             string memory name = shipped[i].label;

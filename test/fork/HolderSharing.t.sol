@@ -161,12 +161,13 @@ abstract contract HolderSharingForkBase is B20ForkTest {
         return Asset(NVDAC, "NVDAc", 18.5e8, 50e8, 0x853F5f1B92b16714Fe6CDA67CAad0856B83C7ab9, 8);
     }
 
-    /// The fourteen quote assets the deployment enables (DeployCurb's list of
-    /// 2026-10-15), with the holders and thresholds B20MultiAsset measured at
-    /// the pinned block. The three added that day keep the indices after the
-    /// eleven, so every older test name still names the asset it did.
+    /// The seventeen quote assets the deployment enables (DeployCurb's list of
+    /// 2026-10-15, and the three added after launch on 2026-10-29), with the
+    /// holders and thresholds B20MultiAsset measured at the pinned block. Each
+    /// group added keeps the indices after the one before, so every older
+    /// test name still names the asset it did.
     function _assets() internal pure returns (Asset[] memory list) {
-        list = new Asset[](14);
+        list = new Asset[](17);
         list[0] = _weth();
         list[1] = _nvdac();
         list[2] = Asset(0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf, "cbBTC", 0.0487e8, 0.132e8,
@@ -193,6 +194,12 @@ abstract contract HolderSharingForkBase is B20ForkTest {
             0x582717501Dec047513EC258458da7834011076DE, 18);
         list[13] = Asset(0x940181a94A35A4569E4529A3CDfB74e38FD98631, "AERO", 4290e18, 11600e18,
             0xBaeD383EDE0e5d9d72430661f3285DAa77E9439F, 18);
+        list[14] = Asset(0xb2000000000000000000004884b426556b92883d, "MSTRc", 27.9e8, 75.5e8,
+            0xb5ef91ce939F2C390cff462bb231E74bb228deB4, 8);
+        list[15] = Asset(0xb200000000000000000000397293Cb8cda9a10c5, "SNDKc", 2.92e8, 7.91e8,
+            0xf8191D98ae98d2f7aBDFB63A9b0b812b93C873AA, 8);
+        list[16] = Asset(0xb2000000000000000000001e800a7f5189430cD0, "TSLAc", 9.96e8, 27e8,
+            0xb5ef91ce939F2C390cff462bb231E74bb228deB4, 8);
     }
 
     function _stack(Asset memory a) internal returns (Stack memory s) {
@@ -745,7 +752,7 @@ contract HolderSharingForkTest is HolderSharingForkBase {
     }
 
     // ================================================================
-    // 15. ALL FOURTEEN QUOTE ASSETS x {AT LAUNCH, LATER}
+    // 15. ALL SEVENTEEN QUOTE ASSETS x {AT LAUNCH, LATER}
     // ================================================================
 
     function _sharedLifecycle(Asset memory a, bool atLaunch) internal {
@@ -883,6 +890,30 @@ contract HolderSharingForkTest is HolderSharingForkBase {
 
     function test_allQuoteAssets_13_AERO_sharedLater() public onlyFork {
         _sharedLifecycle(_assets()[13], false);
+    }
+
+    function test_allQuoteAssets_14_MSTRc_sharedAtLaunch() public onlyFork {
+        _sharedLifecycle(_assets()[14], true);
+    }
+
+    function test_allQuoteAssets_14_MSTRc_sharedLater() public onlyFork {
+        _sharedLifecycle(_assets()[14], false);
+    }
+
+    function test_allQuoteAssets_15_SNDKc_sharedAtLaunch() public onlyFork {
+        _sharedLifecycle(_assets()[15], true);
+    }
+
+    function test_allQuoteAssets_15_SNDKc_sharedLater() public onlyFork {
+        _sharedLifecycle(_assets()[15], false);
+    }
+
+    function test_allQuoteAssets_16_TSLAc_sharedAtLaunch() public onlyFork {
+        _sharedLifecycle(_assets()[16], true);
+    }
+
+    function test_allQuoteAssets_16_TSLAc_sharedLater() public onlyFork {
+        _sharedLifecycle(_assets()[16], false);
     }
 
     // ================================================================

@@ -156,10 +156,12 @@ BEFORE YOU RUN ANYTHING - SIX DECISIONS
          admits can never exist, and every admitted launcher - none can be
          removed - adds gas to every launch on every factory and to every
          platform-recipient change. The list is capped at MAX_LAUNCHERS = 32 (fourteen used
-         today; measured on the fork on 15 October, each real launcher costs
-         a launch about 6,000 gas - 2,839,518 for a launch with eleven
-         admitted, 2,857,539 with fourteen, DeployCurbRun's
-         test_threeMoreLaunchersCostEachLaunchLittle_fourteenAgainstEleven),
+         at launch, seventeen once the three of 29 October are admitted;
+         measured on the fork, each real launcher costs a launch about 6,000
+         gas - 2,839,518 for a launch with eleven admitted, 2,857,539 with
+         fourteen on 15 October, 2,875,542 with seventeen on 29 October,
+         DeployCurbRun's
+         test_sixMoreLaunchersCostEachLaunchLittle_seventeenAgainstEleven),
          and the cap bounds a list of junk launchers at about 2M gas per launch; within the cap,
          a stolen key can still fill the remaining slots for good and leave
          no room for a real asset. So THE REGISTRY GOES TO THE POLICY SAFE.
@@ -442,8 +444,9 @@ AHEAD OF THE DAY
     WHY. A factory's phantom and threshold are immutable, a launcher can never
     be removed from the registry (32 at most), and quoteAssets() in
     script/DeployCurb.s.sol carries the prices of the day it was last
-    re-priced - 15 October 2026 for the fourteen listed now (WETH at
-    $2,426.06; PRE_MAINNET decision 1a). Signed later, every launch - $CURB
+    re-priced - 15 October 2026 for the fourteen the run deployed (WETH at
+    $2,426.06; PRE_MAINNET decision 1a), 29 October for MSTRc, SNDKc and
+    TSLAc, added after launch. Signed later, every launch - $CURB
     included - starts and graduates wherever those prices have drifted to,
     not at the decided ~$4,000 and ~$55,000, and every asset on the list is
     listed for good. So this step runs again days ahead of the day, and the
@@ -497,7 +500,7 @@ AHEAD OF THE DAY
                                            (test_theFixtureCarriesTheDeploymentsOwnThresholds,
                                            with one named lifecycle test per
                                            asset, by selector in a fixed
-                                           bytes4[13] array: resize it with
+                                           bytes4[16] array: resize it with
                                            every test_lifecycleOn<asset>()
                                            added or removed). Each fixture's
                                            holder must still hold what one
@@ -524,13 +527,18 @@ AHEAD OF THE DAY
                                            change it with the list;
            test/fork/B20SafeERC20.t.sol    test_nonZeroOverNonZeroApproveWorksOnEveryEnabledAsset
                                            pins the list's length
-                                           (assertEq(shipped.length, 14)): set
+                                           (assertEq(shipped.length, 17)): set
                                            the new count when an asset is
                                            added or dropped;
-           test/fork/DeployCurbRun.t.sol   test_threeMoreLaunchersCostEachLaunchLittle_fourteenAgainstEleven
-                                           pins the list at fourteen and
+           test/fork/DeployCurbRun.t.sol   test_sixMoreLaunchersCostEachLaunchLittle_seventeenAgainstEleven
+                                           pins the list at seventeen and
                                            names USDC, VIRTUAL and AERO as
-                                           the three added on 15 October;
+                                           the three added on 15 October and
+                                           MSTRc, SNDKc and TSLAc as the
+                                           three of 29 October;
+           test/fork/HolderSharing.t.sol   _assets() copies the whole list
+                                           (seventeen), one sharing lifecycle
+                                           per asset at launch and later;
            test/fork/DeployAssetStack.t.sol
                                            deploys WETH and NVDAc by label,
                                            then builds SPCXc as the asset
@@ -1664,15 +1672,19 @@ ADDING A QUOTE ASSET AFTER LAUNCH
      (measure-thresholds.js against live Base, cross-checked with
      Chainlink, ~$4,000 to ~$55,000), with its fixture in
      test/fork/B20MultiAsset.t.sol and its test_lifecycleOn<asset>() named
-     in that file's bytes4[13] array (made one longer), the list's length in
-     test/fork/B20SafeERC20.t.sol (assertEq(shipped.length, 14)) raised by
+     in that file's bytes4[16] array (made one longer), the list's length in
+     test/fork/B20SafeERC20.t.sol (assertEq(shipped.length, 17)) raised by
      one, and in test/fork/DeployCurbRun.t.sol (the launcher-gas test, which
-     measures the list against the eleven of before 15 October), its row in
-     web/docs.md's Paired assets table, and its Chainlink
+     measures the list against the eleven of before 15 October), its line in
+     test/fork/HolderSharing.t.sol's _assets() with its two sharing tests,
+     its row in web/docs.md's Paired assets table, and its Chainlink
      feed in web/prices.js USD_FEEDS and in
      services/sharer/deploy/sharer.example.json's sharing.feeds - the same
-     feed in both, which the preflight's dollar check asks. STEP 1 on that
-     commit, nothing skipped.
+     feed in both, which the preflight's dollar check asks (and the count of
+     those feeds in services/sharer/test/ops-edges.test.ts). An asset whose
+     market is Aerodrome's is priced there: measure-thresholds.js reads
+     Aerodrome's Gauges V3 pools beside Uniswap's (29 October 2026, MSTRc,
+     SNDKc and TSLAc). STEP 1 on that commit, nothing skipped.
   2. BUILD THE STACK, in the PREP 2 shell, on that commit, with the asset
      preflight - never a forge command typed by hand. In a new shell, first
        read -rs BASESCAN_API_KEY && export BASESCAN_API_KEY

@@ -102,6 +102,9 @@ it sets the graduation threshold. The choice is permanent.
 | MSFTc | Tokenized stock | 20.1 MSFTc |
 | AAPLc | Tokenized stock | 31.5 AAPLc |
 | METAc | Tokenized stock | 14.7 METAc |
+| MSTRc | Tokenized stock | 75.5 MSTRc |
+| SNDKc | Tokenized stock | 7.91 SNDKc |
+| TSLAc | Tokenized stock | 27 TSLAc |
 
 The thresholds were set in October 2026 prices so that every launch starts at about $4,000 and graduates at
 about $55,000, whatever it is paired with. Each is fixed in its own units, so in dollars they drift apart as prices

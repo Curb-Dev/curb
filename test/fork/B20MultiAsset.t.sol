@@ -330,10 +330,32 @@ contract B20MultiAssetTest is B20ForkTest {
             0xBaeD383EDE0e5d9d72430661f3285DAa77E9439F, 18);
     }
 
-    /// Every fixture above, by index rather than as one literal - thirteen
+    /// THE THREE ADDED AFTER LAUNCH ON 2026-10-29, B20 equities like the six
+    /// above. Holders are code-less addresses found in the Transfer logs
+    /// before the pin (script/b20/find-holders.js with BLOCK=51171034, the
+    /// logs from https://base.gateway.tenderly.co), read at the pin. Every
+    /// larger holder there was a contract, a pool among them. One lifecycle
+    /// spends about 2.11 thresholds (a tenth, then two, then the pool leg's
+    /// hundredth): MSTRc's holder held 844.62 against the 159.3 that costs,
+    /// SNDKc's 51.01 against 16.7, and TSLAc's - MSTRc's holder too - 291.13
+    /// against 57.0.
+    function _mstr() internal pure returns (Asset memory) {
+        return Asset(0xb2000000000000000000004884b426556b92883d, "MSTRc", 27.9e8, 75.5e8,
+            0xb5ef91ce939F2C390cff462bb231E74bb228deB4, 8);
+    }
+    function _sndk() internal pure returns (Asset memory) {
+        return Asset(0xb200000000000000000000397293Cb8cda9a10c5, "SNDKc", 2.92e8, 7.91e8,
+            0xf8191D98ae98d2f7aBDFB63A9b0b812b93C873AA, 8);
+    }
+    function _tsla() internal pure returns (Asset memory) {
+        return Asset(0xb2000000000000000000001e800a7f5189430cD0, "TSLAc", 9.96e8, 27e8,
+            0xb5ef91ce939F2C390cff462bb231E74bb228deB4, 8);
+    }
+
+    /// Every fixture above, by index rather than as one literal - sixteen
     /// struct temporaries in a single expression is more than the stack holds.
     function _fixtures() internal pure returns (Asset[] memory list) {
-        list = new Asset[](13);
+        list = new Asset[](16);
         list[0] = _weth();
         list[1] = _usdc();
         list[2] = _cbbtc();
@@ -347,14 +369,20 @@ contract B20MultiAssetTest is B20ForkTest {
         list[10] = _msft();
         list[11] = _aapl();
         list[12] = _meta();
+        list[13] = _mstr();
+        list[14] = _sndk();
+        list[15] = _tsla();
     }
 
     /// THE ASSETS E1 IS ABOUT. MULTI_RWA.txt 2.2 measured the equities' WETH
     /// markets as empty; WETH cannot have a WETH pool and the coins have deep
-    /// ones, so for them the assertion either cannot fail or must.
+    /// ones, so for them the assertion either cannot fail or must. The three
+    /// of 2026-10-29 have no Uniswap WETH pool at all at the pin (their
+    /// markets are Aerodrome's, against USDC).
     function _ethRouteShouldBeAbsent(address quote) internal pure returns (bool) {
         return quote == _spcx().quote || quote == _googl().quote || quote == _amzn().quote
-            || quote == _msft().quote || quote == _aapl().quote || quote == _meta().quote;
+            || quote == _msft().quote || quote == _aapl().quote || quote == _meta().quote
+            || quote == _mstr().quote || quote == _sndk().quote || quote == _tsla().quote;
     }
 
     /// One asset's whole stack, exactly as DeployCurb builds it.
@@ -732,7 +760,7 @@ contract B20MultiAssetTest is B20ForkTest {
     function test_theFixtureCarriesTheDeploymentsOwnThresholds() public onlyFork {
         DeployCurb.Asset[] memory shipped = new DepthProbe().assets();
         Asset[] memory mine = _fixtures();
-        bytes4[13] memory named = [
+        bytes4[16] memory named = [
             this.test_lifecycleOnWETH.selector,
             this.test_lifecycleOnUSDC.selector,
             this.test_lifecycleOnCbBTC.selector,
@@ -745,7 +773,10 @@ contract B20MultiAssetTest is B20ForkTest {
             this.test_lifecycleOnAMZNc.selector,
             this.test_lifecycleOnMSFTc.selector,
             this.test_lifecycleOnAAPLc.selector,
-            this.test_lifecycleOnMETAc.selector
+            this.test_lifecycleOnMETAc.selector,
+            this.test_lifecycleOnMSTRc.selector,
+            this.test_lifecycleOnSNDKc.selector,
+            this.test_lifecycleOnTSLAc.selector
         ];
         assertEq(named.length, mine.length, "a fixture has no named lifecycle test, or a test no fixture");
         address nvdac = 0xb20000000000000000000078ee7ce2fE4908108C;
@@ -951,6 +982,9 @@ contract B20MultiAssetTest is B20ForkTest {
     function test_lifecycleOnMSFTc() public onlyFork { _lifecycle(_msft()); }
     function test_lifecycleOnAAPLc() public onlyFork { _lifecycle(_aapl()); }
     function test_lifecycleOnMETAc() public onlyFork { _lifecycle(_meta()); }
+    function test_lifecycleOnMSTRc() public onlyFork { _lifecycle(_mstr()); }
+    function test_lifecycleOnSNDKc() public onlyFork { _lifecycle(_sndk()); }
+    function test_lifecycleOnTSLAc() public onlyFork { _lifecycle(_tsla()); }
     function test_lifecycleOnCbBTC() public onlyFork { _lifecycle(_cbbtc()); }
 
     /// THE DEPLOYMENT'S RECIPIENT CHECK TELLS ONE KEY FROM A CONTRACT - an

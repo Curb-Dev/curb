@@ -40,6 +40,19 @@ const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const V3_FACTORY = "0x33128a8fc17869897dce68ed026d694621f6fdfd";
 const WETH = "0x4200000000000000000000000000000000000006";
 const TIERS = [100, 500, 3000, 10000];
+// AERODROME SLIPSTREAM'S "GAUGES V3" PoolFactory, A SECOND PLACE TO READ A
+// PRICE (added 29 October 2026). MSTRc, SNDKc and TSLAc have Uniswap v3 pools
+// holding cents and their markets here, where the site's ETH route reaches
+// them (web/app.js AERO_PATHS): against Uniswap alone each would print "no
+// pool holding $1000+" (the most any of their pools held was SNDKc's $48.74 of
+// USDC, on 28 October). A Slipstream pool answers slot0() with the same
+// sqrtPriceX96 first and token0() the same way, so its price is read exactly
+// as a v3 pool's, keyed by tick spacing instead of fee.
+// THE DEPTH COLUMN STAYS UNISWAP'S. DeployCurb's fillable flag is the claim
+// requireDepthMatchesClaim puts to Uniswap's quoter, and that column is what
+// the flag is written from; an Aerodrome pool deep enough to fill a launch
+// says nothing about the route the flag is about.
+const AERO_CL = "0xf8f2eb4940cfe7d13603dddd87f123820fc061ef";
 
 // DECIMALS ARE CARRIED PER ASSET, not assumed. Every B20 equity is 8 and WETH
 // is 18, and a version of this that hard-coded 8 would have priced ETH ten
@@ -123,6 +136,23 @@ async function poolFor(a, b, fee) {
   const addr = "0x" + res.slice(-40);
   return /^0x0{40}$/.test(addr) ? null : addr;
 }
+async function aeroPoolFor(a, b, tickSpacing) {
+  // getPool(address,address,int24); every tick spacing it offers is positive
+  const res = await call(AERO_CL, "0x28af8d0b" + pad(a) + pad(b) + hexNum(tickSpacing));
+  const addr = "0x" + res.slice(-40);
+  return /^0x0{40}$/.test(addr) ? null : addr;
+}
+/// THE TICK SPACINGS THE FACTORY OFFERS, asked of it rather than typed: an
+/// int24[] from tickSpacings(), read once.
+let aeroSpacings = null;
+async function aeroTickSpacings() {
+  if (aeroSpacings) return aeroSpacings;
+  const w = (await call(AERO_CL, "0x9cbbbe86")).replace(/^0x/, "").match(/.{64}/g) || [];
+  const n = Number(BigInt("0x" + (w[1] || "0")));
+  aeroSpacings = w.slice(2, 2 + n).map((x) => Number(BigInt.asIntN(24, BigInt("0x" + x))));
+  if (!aeroSpacings.length) throw new Error("Aerodrome's Gauges V3 factory named no tick spacings");
+  return aeroSpacings;
+}
 const balanceOf = async (token, who) =>
   BigInt(await call(token, "0x70a08231" + pad(who)));
 
@@ -166,6 +196,15 @@ async function priceOf(addr, dec, wethUsd) {
       const quoteUsd = (Number(quoteHeld) / 10 ** qdec) * (qname === "USDC" ? 1 : wethUsd);
       if (quoteUsd < PRICE_FLOOR_USD) continue;
       candidates.push({ pool, quote, qdec, qname, fee, quoteUsd });
+    }
+    // AND AERODROME'S, under the same floor; "where" says which venue priced it.
+    for (const ts of await aeroTickSpacings()) {
+      const pool = await aeroPoolFor(addr, quote, ts);
+      if (!pool) continue;
+      const quoteHeld = await balanceOf(quote, pool);
+      const quoteUsd = (Number(quoteHeld) / 10 ** qdec) * (qname === "USDC" ? 1 : wethUsd);
+      if (quoteUsd < PRICE_FLOOR_USD) continue;
+      candidates.push({ pool, quote, qdec, qname, fee: "aero ts" + ts, quoteUsd });
     }
   }
   if (!candidates.length) return { price: null, why: "no pool holding $" + PRICE_FLOOR_USD + "+ to price against" };

@@ -54,9 +54,16 @@ not imply any endorsement, association or sponsorship. If one of these
 companies asks for its mark to come off, delete the file: the card falls back
 to its tile and nothing else changes.
 
-tslac/mstrc/sndkc/coinc are NOT here: those assets are not deployed, because no
-pool on Base holds enough of them to price a threshold against. See
-AUDIT_2026-09-23.txt.
+THE THREE ADDED ON 29 OCTOBER 2026 (MSTRc, SNDKc, TSLAc, admitted after
+launch) WERE DRAWN HERE TOO, letter badges in the same disc form, nothing
+fetched and none of them the company's mark:
+    mstrc.svg   an "M" in white on orange #FA660F
+    sndkc.svg   an "S" in white on #1A1A1A, ringed like virtual.svg
+    tslac.svg   a "T" in white on red #CC0000
+Every card on the create form's Stocks tab must show artwork that loads
+(e2e/app.spec.js), so a listed stock without a file fails the browser suite.
+
+coinc is NOT here: COINc is not listed. See AUDIT_2026-09-23.txt.
 
 AND TWO ARE RASTERS, BECAUSE NO ICON SET HAS THEM:
 

@@ -92,9 +92,10 @@ test('the example deployment config is a valid config', () => {
   const raw = JSON.parse(readFileSync(join(ROOT, 'deploy', 'sharer.example.json'), 'utf8'));
   const c = parseOpsConfig(raw);
   assert.equal(c.sharing.chainId, 8453n);
-  // the fourteen quote assets of 2026-10-15 less WETH, which ethUsdFeed
-  // prices: USDC, cbBTC, VIRTUAL, AERO, cbXRP, cbZEC and the seven stocks
-  assert.equal(Object.keys(c.sharing.feeds).length, 13);
+  // the seventeen quote assets less WETH, which ethUsdFeed prices: USDC,
+  // cbBTC, VIRTUAL, AERO, cbXRP, cbZEC and the ten stocks (MSTRc, SNDKc and
+  // TSLAc since 2026-10-29)
+  assert.equal(Object.keys(c.sharing.feeds).length, 16);
   for (const [q, f] of Object.entries(c.sharing.feeds)) assert.equal(f.ethUsd, c.ethUsdFeed, `${q}: its ETH/USD leg is the one WETH is priced by`);
   assert.equal(c.ipfs.minPinned, 2);
 });

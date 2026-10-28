@@ -108,18 +108,19 @@ test("a stack whose quote asset has no feed is a DECIDE line, and only that one:
   const d = deployRun([WETH, USDC, VIRTUAL, AERO]);
   const first = configFromRuns(example(), [d.run]);
   assert.ok(!first.decide.some((x) => /sharing\.feeds/.test(x)), first.decide.join('\n'));
-  // TSLAc, left off the list for want of a pool, admitted later: its stack
+  // COINc, on no list (TSLAc was this example until it was listed on
+  // 2026-10-29 and its feed joined the example), admitted later: its stack
   // comes with no feed, and the operator is told to add one (RUNBOOK 7.2 step 3)
-  const TSLAC = '0xb2000000000000000000001e800a7f5189430cd0';
-  const later = deployRun([TSLAC], { firstStack: 9 }).run;
+  const COINC = '0xb200000000000000000000c85a31389d71f3ecfb';
+  const later = deployRun([COINC], { firstStack: 9 }).run;
   later.transactions = later.transactions.filter((t: any) => ['FeeEscrow', 'FeePolicy.sol\\FeePolicy', 'PonsV2BuybackVault.sol\\PonsV2BuybackVault', 'CurbLaunchFactory'].includes(t.contractName));
   const r = configFromRuns(first.config, [d.run, later], { bump: true });
   const factory = later.transactions.find((t: any) => t.contractName === 'CurbLaunchFactory').contractAddress;
   const lines = r.decide.filter((x) => /sharing\.feeds/.test(x));
   assert.equal(lines.length, 1, r.decide.join('\n'));
-  assert.match(lines[0], new RegExp(`no Chainlink feed for the quote asset ${TSLAC} \\(the CurbLaunchFactory ${factory}\\).*RUNBOOK part 7\\.2 step 3`));
+  assert.match(lines[0], new RegExp(`no Chainlink feed for the quote asset ${COINC} \\(the CurbLaunchFactory ${factory}\\).*RUNBOOK part 7\\.2 step 3`));
   // once the feed is in, the same runs decide nothing about feeds
-  r.config.sharing.feeds[TSLAC] = { ethUsd: r.config.ethUsdFeed, quoteUsd: '0xfaf869185383a24f8cb00e27bda6b63b9905dcb4' };
+  r.config.sharing.feeds[COINC] = { ethUsd: r.config.ethUsdFeed, quoteUsd: '0x408e44f504a7371a345f03a73ddc96a4b48e8aa7' };
   const again = configFromRuns(r.config, [d.run, later]);
   assert.ok(!again.decide.some((x) => /sharing\.feeds/.test(x)), again.decide.join('\n'));
 });

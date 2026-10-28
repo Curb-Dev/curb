@@ -499,8 +499,9 @@ signer_check() { # wallet option, deployer
 # equity feeds keep US market hours, so a weekend's answer is Friday's close).
 #
 # IN BOTH DIRECTIONS. feed_table only refused a feed the keeper named and the
-# site did not, so an asset the site already prices (TSLAc, MSTRc and the other
-# equities prices.js holds ahead of any listing) passed section 6 listed with no
+# site did not, so an asset the site already prices (COINc, CRCLc and INTCc,
+# which prices.js holds ahead of any listing - TSLAc and MSTRc too until 29
+# October 2026) passed section 6 listed with no
 # keeper feed at all - and the keeper config generated from the example then
 # priced that asset's keeper fee at 0 ("A price is missing") and held its
 # epochs for the seven-day rule. Each line now says whether the keeper's copy
@@ -1762,15 +1763,19 @@ selftest() {
     "$(grep -c '^0x4200000000000000000000000000000000000006 0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70 keeper ETH / USD$' "$t/feeds")"
   # A LISTED ASSET, LOOKED UP (feed_of): the site's feed and the description it
   # expects when both copies name it; a stop when the keeper's copy does not -
-  # TSLAc, which web/prices.js prices ahead of any listing and the keeper's
-  # example does not name, is the repository's own case of it; and a stop when
-  # neither does.
+  # COINc, which web/prices.js prices ahead of any listing and the keeper's
+  # example does not name, is the repository's own case of it (TSLAc was,
+  # until it was listed on 29 October 2026 and the example named it too); and
+  # a stop when neither does.
   got="$(feed_of "$(cat "$t/feeds")" NVDAc 0xb20000000000000000000078ee7ce2fE4908108C)"
   check "a listed asset both copies name gives the site's feed and description (the control)" \
     "0x04689a41629776563e6822f76f2e57d148d28513 Coinbase NVDA" "$got"
-  got="$(feed_of "$(cat "$t/feeds")" TSLAc 0xb2000000000000000000001e800a7f5189430cd0)"
+  got="$(feed_of "$(cat "$t/feeds")" COINc 0xb200000000000000000000c85a31389d71f3ecfb)"
   check "a listed asset the site prices and the keeper's sharer.example.json does not stops, naming that file" "1" \
-    "$(grep -c '^PROBLEM TSLAc (0xb2000000000000000000001e800a7f5189430cd0) has no feed in services/sharer/deploy/sharer.example.json sharing.feeds' <<<"$got")"
+    "$(grep -c '^PROBLEM COINc (0xb200000000000000000000c85a31389d71f3ecfb) has no feed in services/sharer/deploy/sharer.example.json sharing.feeds' <<<"$got")"
+  got="$(feed_of "$(cat "$t/feeds")" TSLAc 0xb2000000000000000000001e800a7f5189430cD0)"
+  check "and TSLAc, listed on 29 October 2026, gives the feed both copies name" \
+    "0xfaf869185383a24f8cb00e27bda6b63b9905dcb4 Coinbase TSLA" "$got"
   sed '/"0xb20000000000000000000078ee7ce2fe4908108c": {/d' \
     "${SELF%/script/b20/*}/services/sharer/deploy/sharer.example.json" >"$t/sharer-short.json"
   feed_table "${SELF%/script/b20/*}/web/prices.js" "$t/sharer-short.json" >"$t/feeds-short" 2>&1 && got=agree || got=disagree

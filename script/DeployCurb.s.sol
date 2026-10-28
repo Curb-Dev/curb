@@ -262,7 +262,9 @@ contract DeployCurb is Script {
     /// THE ENABLED LIST AND THE THRESHOLDS - FOURTEEN ASSETS, CHOSEN AND PRICED
     /// 2026-10-15 (PRE_MAINNET decision 1a). The list was first decided on
     /// 2026-09-20 (F1) as seven equities, grew to eleven with WETH and three
-    /// Coinbase-wrapped coins, and to fourteen with USDC, VIRTUAL and AERO.
+    /// Coinbase-wrapped coins, and to fourteen with USDC, VIRTUAL and AERO -
+    /// the fourteen the run of 16 October deployed. Seventeen since 29
+    /// October: MSTRc, SNDKc and TSLAc, added after launch, one stack each.
     ///
     /// TWO FORCES PULL AGAINST EACH OTHER AND BOTH ARE MEASURED.
     ///   A BIGGER THRESHOLD MAKES THE GRADUATED POOL CHEAPER TO TRADE. D1
@@ -369,6 +371,10 @@ contract DeployCurb is Script {
     /// 2026-10-15, so no ETH route reaches them; once one has a market it is
     /// added after launch with script/DeployAssetStack.s.sol and the Safe's
     /// addLauncher (DEPLOY.txt, ADDING A QUOTE ASSET AFTER LAUNCH).
+    /// MSTRc AND TSLAc CAME IN THAT WAY ON 29 OCTOBER, with SNDKc: the site's
+    /// Aerodrome route (18 October) reaches their markets, which are
+    /// Aerodrome's. They are the last three lines of the list, priced that day
+    /// and measured there, not in the table above.
     ///
     /// THE PRICES BEFORE THESE were D1's of 2026-09-20 for the equities and the
     /// coins' of 2026-09-22/23 (WETH at $2,746.87), carried through the
@@ -487,11 +493,12 @@ contract DeployCurb is Script {
     }
 
     function quoteAssets() internal pure returns (Asset[] memory list) {
-        list = new Asset[](14);
+        list = new Asset[](17);
         // EVERY FIGURE BELOW WAS PRICED ON 2026-10-15 at Chainlink's answer on
         // live Base (block 52,646,580; cbZEC's at block 52,655,082, the same
         // day), and every depth is the largest Uniswap v3 pool's holding that
-        // day - the table above quoteAssets() says how.
+        // day - the table above quoteAssets() says how - but for the three
+        // added after launch at the end, priced on 28 October (they say how).
         // The dollars beside each pair are what it gives at that day's price.
         //
         // ---- COINS. ETH is the primary pair, decided 2026-09-22.
@@ -583,6 +590,38 @@ contract DeployCurb is Script {
         list[11] = Asset(0xB200000000000000000000Ab99cFa739E253872B, "MSFTc", 7.42e8, 20.1e8, false, 8);
         list[12] = Asset(0xb200000000000000000000C2e324d24d7eEcd1fb, "AAPLc", 11.6e8, 31.5e8, false, 8);
         list[13] = Asset(0xb2000000000000000000008bC8786B856E61707C, "METAc", 5.44e8, 14.7e8, false, 8);
+        // ---- ADDED AFTER LAUNCH, each built by script/DeployAssetStack.s.sol
+        // and admitted by the policy Safe, never by this script's own run
+        // (DEPLOY.txt, ADDING A QUOTE ASSET AFTER LAUNCH).
+        //
+        // MSTRc, SNDKc AND TSLAc, ADDED 29 OCTOBER 2026: three of the ten
+        // stocks brand.base.org/stocks lists, B20s of eight decimals under the
+        // equities' issuer policy. Their markets are Aerodrome Slipstream's
+        // Gauges V3 USDC pools at tick spacing 10, where the site's ETH route
+        // reaches them (web/app.js AERO_PATHS); their Uniswap v3 pools hold
+        // cents, so the flag the depth check puts to Uniswap's quoter is false
+        // for all three.
+        //
+        // PRICED AT CHAINLINK'S ANSWER on live Base, block 53,218,843 (22:37
+        // UTC on 28 October; the stock feeds answer through the night, 24/5),
+        // each feed read back by description() as the one web/prices.js names,
+        // and each CROSS-CHECKED against its Gauges V3 pool's own slot0 price
+        // (measure-thresholds.js, blocks 53,218,665 to 53,218,836): MSTRc
+        // 0.39% from its feed, SNDKc and TSLAc 0.07%. Buying with USDC on
+        // Aerodrome at the same hour moved each price by, at $2,000 and at
+        // $10,800:
+        //
+        // MSTRc at $143.405: 27.9 / 75.5, $4,001 to $54,954. 0.25% and 1.35%.
+        // SNDKc at $1,369.99: 2.92 / 7.91, $4,000 to $55,029. 0.74% and 3.7%.
+        // TSLAc at $401.65: 9.96 / 27.0, $4,000 to $55,087. 1.9% at $2,000,
+        // AND ITS POOL RUNS OUT just past $2,100 of USDC (5.28 TSLAc), a
+        // fifth of a threshold: no route can buy one threshold of it with
+        // ETH, so the create form's live check says THIN ETH ROUTE for it
+        // (app.js showQuoteLiquidity), the rule every asset meets - listed
+        // thin by the owner's choice, as the six above were.
+        list[14] = Asset(0xb2000000000000000000004884b426556b92883d, "MSTRc", 27.9e8, 75.5e8, false, 8);
+        list[15] = Asset(0xb200000000000000000000397293Cb8cda9a10c5, "SNDKc", 2.92e8, 7.91e8, false, 8);
+        list[16] = Asset(0xb2000000000000000000001e800a7f5189430cD0, "TSLAc", 9.96e8, 27e8, false, 8);
     }
 
     // THE POOL TIER IS A DECISION NOW, NOT THE DEMO'S LEFTOVER.

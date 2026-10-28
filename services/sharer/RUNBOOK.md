@@ -435,9 +435,10 @@ block once, in whatever windows the provider accepts). A provider limited to
 3. Check the `sharing.feeds`: the example carries the Chainlink USD feed of
    every quote asset on the list but WETH, which `ethUsdFeed` prices - the
    thirteen of 2026-10-15: USDC, cbBTC, VIRTUAL, AERO, cbXRP, cbZEC, NVDAc,
-   GOOGLc, SPCXc, AMZNc, MSFTc, AAPLc and METAc. Each was read back from
-   Base that day: `description()` names the pair, `decimals()` is 8 (ZEC /
-   USD's is 18), `latestRoundData()` answers, and the asset's own
+   GOOGLc, SPCXc, AMZNc, MSFTc, AAPLc and METAc, and since 2026-10-29 the
+   three added after launch, MSTRc, SNDKc and TSLAc (part 7.2). Each was read
+   back from Base the day it was added: `description()` names the pair,
+   `decimals()` is 8 (ZEC / USD's is 18), `latestRoundData()` answers, and the asset's own
    `decimals()` is the one the deployment sized it in (USDC and cbXRP 6,
    cbBTC, cbZEC and the stocks 8, VIRTUAL and AERO 18). `config-from-run`
    prints a `DECIDE:` line for every CurbLaunchFactory in the record whose
