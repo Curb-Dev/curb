@@ -1735,7 +1735,10 @@ ADDING A QUOTE ASSET AFTER LAUNCH
      deploy/sharer.json adds the exclusions and the launcher; the feed is
      added by hand. Until the Safe admits the factory, check names exactly
      one problem - config.launchers lists an address the registry never
-     admitted, the new factory - and nothing else may fail.
+     admitted, the new factory - and nothing else may fail; it then prints
+     no block to compare, so every host's copy is compared by sha256sum
+     with the one pushed (part 7.2 step 4), and the keeper stays stopped
+     until step 7.
   5. THE SITE AND THE BOOK, ONE COMMIT: the asset's block in ADDRESSES.txt
      and its record, the new factory in web/config.js factories, docs.md's
      Paired-asset addresses row; then check-publish-set.sh --addresses
@@ -1766,8 +1769,10 @@ ADDING A QUOTE ASSET AFTER LAUNCH
      failure. (Every value used to be compared with the run's, so after a
      legitimate change no export could pass and this step could never end
      ok.) check on every keeper host now
-     says config ok, and the keeper's event scan reports "A listed launcher
-     was admitted to the LaunchRegistry" (INFO) - an UNLISTED one pages.
+     says config ok and prints the same block (RUNBOOK part 7.3) before the
+     keeper is started again, and the keeper's event scan reports "A listed
+     launcher was admitted to the LaunchRegistry" (INFO) - an UNLISTED one
+     pages.
 
 ================================================================================
 IF SOMETHING GOES WRONG

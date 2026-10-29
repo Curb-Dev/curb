@@ -535,7 +535,8 @@ found at once.
    `config/sharer.json` (and to your fallback guardian server, part 10.2, if
    you run one).
 5. Run `check` (part 7) with each copy; each must say `config ok`. Then
-   compare them as part 7.3 says.
+   compare them as part 7.3 says. (A new quote asset is the exception: part
+   7.2 steps 4 and 5.)
 6. Restart: on the keeper PC `docker compose up -d`, the guardian operator
    restarts their container, and enable the `sharing-keeper` workflow again.
 
@@ -593,16 +594,22 @@ so they go everywhere **before** the first launch on that asset exists.
    `"<asset address>": { "ethUsd": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "quoteUsd": "<feed address>" }`.
    The developers add the same feed to `web/prices.js` and to
    `deploy/sharer.example.json` in the asset's own commit.
-4. Make the change everywhere as part 7.1 says (stop, wait, commit, copy to
-   the keeper host and the guardian, `check`, compare, restart). Until the
-   Safe admits the factory, `check` on every host says exactly one thing is
-   NOT OK - `config.launchers lists addresses the registry never admitted`,
-   naming the new factory - and nothing else may be.
-5. Only when every host prints the same new block (part 7.3) does the Safe
-   sign `addLauncher`. The keeper then reports "A listed launcher was
-   admitted to the LaunchRegistry" (INFO), and `check` says `config ok` on
-   every host. (Admitted before the config lists it, the keeper pages "An
-   UNLISTED LAUNCHER was admitted".)
+4. Make the change everywhere as part 7.1 steps 1 to 4 say (stop, wait,
+   commit, copy to the keeper host and the guardian), and leave the keeper
+   stopped. Until the Safe admits the factory, `check` on every host says
+   exactly one thing is NOT OK - `config.launchers lists addresses the
+   registry never admitted`, naming the new factory - and nothing else may
+   be. **It prints no block while that stands**: `--print-public-config`
+   prints only after `config ok`, so part 7.3 cannot be run yet. Compare the
+   files instead: every host's `config/sharer.json` has the same `sha256sum`
+   as the `deploy/sharer.json` pushed to `main`.
+5. Then the Safe signs `addLauncher`. `check` says `config ok` on every host
+   now: run part 7.3, and only when every host prints the same new block
+   restart as part 7.1 step 6 says. The keeper then reports "A listed
+   launcher was admitted to the LaunchRegistry" (INFO). (Admitted before the
+   config lists it, the keeper pages "An UNLISTED LAUNCHER was admitted".)
+   (Part 7.3 used to come before the Safe's call, where no host could print
+   its block.)
 6. After the keeper's next publish, `https://<your site>/sharing/8453/config-v<N>.json`
    exists for the new version and `config.json` equals it.
 
