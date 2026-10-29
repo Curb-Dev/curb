@@ -232,13 +232,18 @@ function chainName(id) {
   return "chain " + id;
 }
 
-// THE ASSET'S BADGE, as the token page draws it (app.js assetLogo): the file
-// named by its symbol, for the symbols there is a file for. A symbol is a
-// stranger's string, so it is only ever matched against this list and put into
-// textContent.
-const LOGOS = { weth: "weth.svg", cbbtc: "cbbtc.svg", cbxrp: "cbxrp.svg", cbzec: "cbzec.svg",
-  cbhype: "cbhype.png", cbmega: "cbmega.png", nvdac: "nvdac.svg", googlc: "googlc.svg", spcxc: "spcxc.svg",
-  amznc: "amznc.svg", msftc: "msftc.svg", aaplc: "aaplc.svg", metac: "metac.svg" };
+// THE ASSET'S BADGE, by app.js assetLogo's own rule: the file named by its
+// symbol, lowercased and stripped to letters and digits, an SVG but for the
+// two in ASSET_FILE. A symbol is a stranger's string, so only that stripped
+// slug reaches the URL, and a missing file falls back to the letters (assetRow).
+// IT WAS A FIXED LIST, which USDC, VIRTUAL and AERO (16 October) and MSTRc,
+// SNDKc and TSLAc (29 October) were each added to the site without: their
+// rows here showed letters while every other page showed the file.
+const ASSET_FILE = { cbhype: "cbhype.png", cbmega: "cbmega.png" };
+const logoFile = (sym) => {
+  const slug = String(sym || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return slug ? ASSET_FILE[slug] || slug + ".svg" : "";
+};
 const ASSET_VERSION = "4";   // app.js ASSET_VERSION: the same files, the same cache key
 
 // ---------------------------------------------------------------- the reads
@@ -429,7 +434,7 @@ function assetRow(a) {
   // escrow and the hook pay it out as ETH when it is claimed.
   const label = isWeth ? "ETH" : (a.sym || short(a.quote));
   const badge = el("span", "badge");
-  const file = LOGOS[(isWeth ? "weth" : a.sym).toLowerCase().replace(/[^a-z0-9]/g, "")];
+  const file = logoFile(isWeth ? "weth" : a.sym);
   if (file) {
     const img = el("img");
     img.alt = "";
