@@ -3813,7 +3813,17 @@ async function quoteLiquidityNote(pin, threshold) {
       for (const r of priced) {
         if (r.cost !== undefined && (cheapest === null || r.cost < cheapest)) { cheapest = r.cost; venue = r.venue; }
       }
-      if (cheapest !== null) return { costWeth: cheapest, enough: true, asked: true, venue };
+      // WHETHER UNISWAP REFUSED IT, beside the cheaper venue's figure: a sale
+      // paid in ETH and an ETH trade in the graduated pool go through Uniswap
+      // v3 alone, so a threshold only Aerodrome can supply is said with what
+      // that leaves (showQuoteLiquidity). No Uniswap path priced it and one
+      // refused, as the thin case below asks: a timeout alone said nothing
+      // about its pools.
+      if (cheapest !== null) {
+        const uni = priced.filter((r) => r.venue === "uniswap");
+        const uniRefused = !uni.some((r) => r.cost !== undefined) && uni.some((r) => r.unpriceable);
+        return { costWeth: cheapest, enough: true, asked: true, venue, uniRefused };
+      }
       // EVERY VENUE ASKED REFUSED is the thin case. A SILENT ONE is not: the
       // quoter refusing is the pools speaking, a timeout is nobody speaking,
       // and only the first is worth a warning about liquidity. Asked of each
@@ -3939,10 +3949,20 @@ function showQuoteLiquidity(el, ctx, threshold, res) {
       return;
     }
     if (res.enough) {
+      // ONLY THE BUY HAS AERODROME. A sale paid in ETH (routerQuote) and an ETH
+      // trade in the graduated pool (computePoolQuote) go through Uniswap v3
+      // alone, so where Uniswap's quoter refused a threshold they stop at what
+      // its pools can take - for MSTRc, SNDKc and TSLAc, from cents to $48 of
+      // USDC on 29 October 2026 - and are made in the asset past it. Said by
+      // that rule, for every asset, not by a list.
+      const exits = res.venue === "aerodrome" && res.uniRefused
+        ? " Uniswap v3 could not price that much, and a sale paid in ETH, or an ETH trade in the pool after " +
+          "graduation, goes through Uniswap v3 alone: past what its pools can take, those are made in " + sym + "."
+        : "";
       el.textContent =
         "A launch needs " + need + " " + sym + " to graduate, and buying that much with ETH here today " +
         "would cost about " + fmt(res.costWeth, 18, 4) + " WETH" + (res.venue === "aerodrome" ? " (on Aerodrome)" : "") +
-        " \u2014 so the market can supply it.";
+        " \u2014 so the market can supply it." + exits;
       return;
     }
     el.classList.add("warn", "unbounded");

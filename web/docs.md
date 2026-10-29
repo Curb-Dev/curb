@@ -28,10 +28,14 @@ or gives it to the launch's holders, for good.
    the most recently bought first, says how long ago each was bought, and re-orders about every 15 seconds; it
    reads the buys of roughly the last hour, and a launch with no buy seen in that time comes after, newest first. You can pay with ETH on every pair: the swap box starts on ETH, and
    its asset button switches to the pair's own asset if you hold that instead. Through the CURB router, a curve buy
-   with ETH is one confirmation on every pair, and a curve sale can pay you ETH on every pair too: the first time
-   you sell a token that way your wallet asks twice - once to let the router move that token, then the sale - and
-   after that once.
-   After graduation a pool trade takes or pays ETH in one transaction.
+   with ETH is one confirmation, and a curve sale can pay you ETH too: the first time you sell a token that way
+   your wallet asks twice - once to let the router move that token, then the sale - and after that once.
+   After graduation a pool trade takes or pays ETH in one transaction. On a pair that is not ETH, that ETH is
+   swapped through Uniswap v3, and only an ETH buy on the curve can go through Aerodrome instead (up to three
+   confirmations, see [Aerodrome route](#aerodrome-route)). So where Uniswap v3 holds too little of the pair's asset
+   for the amount, a sale for ETH and an ETH trade in the pool are refused before anything is sent: receive or pay
+   the asset itself. On MSTRc, SNDKc and TSLAc that is nearly every such trade - their Uniswap v3 pools held from
+   cents to $48 when they were listed - and their ETH buys go through Aerodrome.
 4. **Claim.** If you created a launch, connect the creator wallet and press **Claim** on its page; it sweeps
    what the curve still holds for you first, and claims what every launch paying that address in that asset owes
    it. If you hold a launch that shares its fees, your share is sent to you; **Claim** on
@@ -115,7 +119,8 @@ a launch on a thin asset may never reach its threshold. Paying ETH on a pair tha
 through Uniswap v3 or, for the ten tokenized stocks, cbXRP and cbZEC, on Aerodrome when that gives clearly more
 (see [Aerodrome route](#aerodrome-route)). Uniswap can be much thinner than an asset's main market: when you pick
 an asset, the launch form checks whether those routes can buy one threshold. Paying in the asset itself does not
-go through them.
+go through them. Selling for ETH, and trading a graduated launch's pool in ETH, go through Uniswap v3 alone: on
+MSTRc, SNDKc and TSLAc, whose Uniswap v3 pools hold almost nothing, those trades are made in the asset.
 
 Every tokenized stock here sits under the same issuer policy and the same admin: picking a different stock
 changes your price exposure, not who can restrict trading in it.
@@ -727,8 +732,9 @@ with no calldata is sent as it is.
 
 Paying ETH for a curve buy on the ten tokenized stocks, cbXRP or cbZEC can take a second route: the ETH is
 swapped into the paired asset on Aerodrome Slipstream (its "Gauges V3" deployment, where those assets' deepest
-pools are), and the curve is then bought with exactly what arrived. Nothing of CURB's is involved; the site pins
-Aerodrome's contracts the way it pins the CURB router:
+pools are), and the curve is then bought with exactly what arrived. It is for curve buys only: a sale for ETH and
+a pool trade after graduation swap through Uniswap v3. Nothing of CURB's is involved; the site pins Aerodrome's
+contracts the way it pins the CURB router:
 
 | Contract | Address on Base | Runtime code hash |
 |---|---|---|

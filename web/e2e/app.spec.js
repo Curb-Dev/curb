@@ -2939,6 +2939,8 @@ test("a quote asset too thin to fill a launch says so, and a deep one does not",
   // difference rather than the subject of this test. What matters is the
   // comparison the line makes, so that is what is checked.
   await expect(note).toContainText("to graduate");
+  // UNISWAP CAN SUPPLY IT HERE, so nothing is said about the ETH exits.
+  await expect(note).not.toContainText("Uniswap v3 alone");
 
   // WHY IT FELL BACK, reported rather than shrugged at. A transient RPC
   // failure and an asset answering with rubbish look identical on screen and
@@ -3013,6 +3015,10 @@ test("a quote asset too thin to fill a launch says so, and a deep one does not",
   // and the line says where the price came from.
   await expect(note).toContainText("(on Aerodrome)", { timeout: 20000 });
   await expect(page.locator("#quoteLiquidity.unbounded")).toHaveCount(0);
+  // AND WHAT ONLY AERODROME LEAVES: Uniswap v3 refused the threshold (the thin
+  // half below shows it), and a sale for ETH or an ETH pool trade has no
+  // Aerodrome leg.
+  await expect(note).toContainText("goes through Uniswap v3 alone: past what its pools can take, those are made in");
 
   // AERODROME SILENT WHILE UNISWAP REFUSES IS NOT THIN EITHER: Uniswap's
   // refusal is its pools speaking, Aerodrome's quoter not answering in time is

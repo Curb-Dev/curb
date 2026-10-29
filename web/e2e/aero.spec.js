@@ -1677,3 +1677,66 @@ test("A26 Buy with it fills what is held to the last unit, on an 18-decimal asse
   await expect(p.locator("#curveAmount")).toHaveValue("1.234567890123456789");
   await p.close();
 });
+
+// ================================================================== A27 only the buy has Aerodrome
+// MSTRc, LISTED ON 29 OCTOBER 2026 WITH ITS MARKET ON AERODROME: its Uniswap v3
+// pools hold cents, and nothing but the curve buy has an Aerodrome leg - a sale
+// for ETH goes through the CURB router's Uniswap path alone (routerQuote). The
+// create form says so beside the threshold, and the card refuses the sale in
+// words before the wallet is asked.
+test("A27 MSTRc: the create form says only the buy has Aerodrome, an ETH buy takes it, and an ETH sale is refused in words with nothing sent", async () => {
+  test.setTimeout(300_000);
+  const factory = await factoryFor(TWELVE.MSTRc);
+  expect(factory, "no factory prices in MSTRc").not.toBeNull();
+  const f = await newPage(OWNER);
+  await f.goto("/app.html?" + new URLSearchParams({ rpc: STATE.rpc, factory, lens: APP.lens }).toString());
+  await f.waitForFunction(() => !!window.CurbApp, null, { timeout: 8_000 });
+  await f.evaluate(() => window.CurbApp.connect());
+  const note = f.locator("#quoteLiquidity");
+  // ASKED AGAIN UNTIL IT IS ANSWERED: nothing else in the run has read MSTRc's
+  // pools, and the fork fetches their state from its upstream on the first
+  // quote - slower than the page's four seconds, which it rightly calls "did
+  // not answer in time" rather than thin.
+  await expect.poll(async () => {
+    await f.evaluate(() => window.CurbApp.refresh(true));
+    return (await note.textContent()) || "";
+  }, { timeout: 120_000, intervals: [2_000], message: "the depth line never priced MSTRc" }).toContain("(on Aerodrome)");
+  await expect(note).toContainText("goes through Uniswap v3 alone: past what its pools can take, those are made in");
+  await expect(f.locator("#quoteLiquidity.unbounded")).toHaveCount(0);
+  await f.close();
+
+  const token = await createOn(factory, "Aero Strategy", "AMS");
+  const buyer = await freshAccount("mstrc eth sale");
+  const p = await routedToken(token, buyer, routed());
+  // THE BUY: Uniswap cannot fill it, so Aerodrome, in three sends.
+  await ethBuy(p, "0.05", AERO_LINE);
+  expect(await whyNow(p)).toBe("one-step-cannot-fill");
+  let before = await sentCount(p);
+  await press(p, "Done. You paid");
+  const sent = await sentSince(p, before);
+  expect(sent.length, "the Aerodrome route is not three sends here").toBe(3);
+  expect(sent[0].to).toBe(AERO_ROUTER);
+  expect(await balanceOf(token, buyer) > 0n, "the buy delivered no tokens").toBe(true);
+
+  // THE SALE FOR ETH: refused at the quote, the button off, nothing sent.
+  await expect(p.locator("#tvPay")).toHaveValue("", { timeout: 30_000 });
+  before = await sentCount(p);
+  await cardSide(p, "sell");
+  await payWith(p, "eth");
+  await expect(p.locator("#tvGetAsset")).toHaveText("ETH");
+  await p.fill("#tvPay", "1000000");
+  // EVERY UNISWAP PATH REVERTS for MSTRc at this block (quoteV3's words; a pool
+  // that fills in part is the Chainlink check's "receive MSTRc instead").
+  await expect(p.locator("#tvQuote")).toContainText(
+    "No v3 route between ETH and MSTRc could be priced at this size. Trade with MSTRc directly instead.", { timeout: 30_000 });
+  await expect(p.locator("#tvAct")).toBeDisabled();
+  // AND FOR THE ASSET ITSELF, the same amount is priced and can be sent.
+  await payWith(p, "asset");
+  await expect(p.locator("#tvGetAsset")).toHaveText("MSTRc");
+  // THE CHIP CLEARS THE AMOUNT, so it is typed again.
+  await p.fill("#tvPay", "1000000");
+  await expect(p.locator("#tvQuote")).not.toContainText("MSTRc instead", { timeout: 30_000 });
+  await expect(p.locator("#tvAct")).toBeEnabled({ timeout: 30_000 });
+  expect(await sentCount(p), "something was sent for the refused sale").toBe(before);
+  await p.close();
+});
