@@ -8611,13 +8611,17 @@ async function arrivedFrom(pin, receipt) {
 }
 
 /// THE BUTTONS THAT GO WITH WHAT A SWAP LEFT HELD, carrying the amount and the
-/// asset, so they work even where the record could not be stored.
+/// asset, so they work even where the record could not be stored. Sell it back
+/// is a trade, drawn disabled for a visitor in the United States (region.js;
+/// sellHeldBack refuses it whatever is drawn). Buy with it sends nothing: it
+/// fills the card, whose own button is held.
 function heldButtons(asset, amount) {
   const a = escapeHtml(String(asset));
   const n = escapeHtml(amount.toString());
+  const shut = window.CurbRegion && window.CurbRegion.closed() ? " disabled" : "";
   return ` <button type="button" class="ghost" data-held-buy="${n}" data-held-asset="${a}">Buy with it</button>` +
     (aeroRows(asset)
-      ? ` <button type="button" class="ghost" data-held-sell="${n}" data-held-asset="${a}">Sell it back</button>` : "");
+      ? ` <button type="button" class="ghost" data-held-sell="${n}" data-held-asset="${a}"${shut}>Sell it back</button>` : "");
 }
 
 /// A REFUSAL'S OWN WORDS WITHOUT "Nothing was sent" - something was.
@@ -10132,7 +10136,14 @@ async function init() {
   $("poolAct").onclick = () => guard(poolAction);
   // HELD, WITH THE REASON BESIDE EACH, FOR A VISITOR IN THE UNITED STATES
   // (region.js): the buttons of the actions regionGate refuses.
-  if (window.CurbRegion) for (const id of ["create", "curveAct", "complete", "poolAct"]) window.CurbRegion.hold($(id), true);
+  // The form says it under its heading too, before anything is filled in: on
+  // a phone the summary and its button come after the whole form.
+  if (window.CurbRegion) {
+    for (const id of ["create", "curveAct", "complete", "poolAct"]) window.CurbRegion.hold($(id), true);
+    window.CurbRegion.say(document.querySelector("#create-launch .launchHead"));
+    // THE HELD ROW'S Sell it back is drawn held (heldButtons): drawn again once the answer is in.
+    document.addEventListener("curb:region", () => { renderHeld(); });
+  }
   // A LINK IS SHOWN AS IT WILL BE STORED as soon as the field is left:
   // "curb.fun" becomes https://curb.fun there, before Create. What cannot be
   // made into a link is left as typed, and Create says why.
