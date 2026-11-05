@@ -632,16 +632,20 @@ contract DeployCurb is Script {
         // SNDKc at $810.42: 4.94 / 13.4, $4,003 to $55,180. 4.6% and 13.7%.
         // TSLAc at $343.54: 11.6 / 31.5, $3,985 to $55,015. 2.3% and 5.2%.
         //
-        // ALL THREE ARE THINNER THAN ON 28 OCTOBER, and none is deep. Where
-        // each pool's price doubles, on USDC alone: MSTRc past $210,000
-        // (1,311 MSTRc, 15.7 thresholds); SNDKc past $38,800 (31.8 SNDKc, 2.4
-        // thresholds), with its in-range liquidity a 250th of what it was
-        // seven minutes earlier; TSLAc past $15,600 (42.4 TSLAc, 1.35
-        // thresholds), THE THINNEST. On 28 October TSLAc's pool ran out just
-        // past $2,100 of USDC (5.28 TSLAc), a fifth of a threshold, no route
-        // could buy one threshold of it with ETH, and the create form's live
-        // check said THIN ETH ROUTE for it (app.js showQuoteLiquidity). At
-        // this block the site's ETH route prices one whole threshold of each
+        // MSTRc AND SNDKc ARE THINNER THAN ON 28 OCTOBER, TSLAc DEEPER BUT
+        // DEARER AT $2,000, and none of the three is deep. On USDC alone,
+        // MSTRc's pool RUNS OUT just past $210,000 (1,311 MSTRc, 15.7
+        // thresholds; on 28 October just past $270,800, 1,661 MSTRc).
+        // SNDKc's price doubles past $38,800 (31.8 SNDKc, 2.4 thresholds) and
+        // the pool sells on beyond it, with its in-range liquidity a 250th of
+        // what it was seven minutes earlier (on 28 October it ran out just
+        // past $300,400, 170.9 SNDKc). TSLAc's pool RUNS OUT just past $15,600
+        // (42.4 TSLAc, 1.35 thresholds), THE THINNEST, all of it that USDC
+        // can buy. On 28 October TSLAc's pool ran out just past $2,100 of
+        // USDC (5.28 TSLAc), a fifth of a threshold, no route could buy one
+        // threshold of it with ETH, and the create form's live check said
+        // THIN ETH ROUTE for it (app.js showQuoteLiquidity). At this block
+        // the site's ETH route prices one whole threshold of each
         // on Aerodrome - 5.13 WETH for MSTRc, 5.62 for SNDKc, 5.09 for TSLAc
         // - so that check would say the market can supply it. A pool this
         // thin can fall back under the line as soon as liquidity leaves it,
