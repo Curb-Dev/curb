@@ -47,7 +47,7 @@ const TYPES = {
 
 /// THE HEADERS web/_headers GIVES EVERY PATH: the block under "/*", as
 /// [name, value] pairs. Only that one block is read: the others are /region and
-/// its two files, whose one header, Cache-Control: no-store, this server sends
+/// its three files, whose one header, Cache-Control: no-store, this server sends
 /// on every answer.
 function siteHeaders(text) {
   const out = [];
@@ -88,12 +88,13 @@ const CLEAN = {
   migrate: "migrate.html", terms: "terms.html", sharing: "sharing.html",
 };
 
-/// WHERE THE VISITOR IS, AS THE HOSTS ANSWER /region (vercel.json, _redirects):
-/// region-us.json when the request's x-vercel-ip-country names the United States
-/// or one of its territories, region.json for any other country or none. Written
-/// as Vercel compares it, code for code.
+/// WHERE THE VISITOR IS, AS VERCEL ANSWERS /region (vercel.json): region-us.json
+/// when the request's x-vercel-ip-country names the United States or one of its
+/// territories, region.json for any other country, region-unknown.json when the
+/// request names none. Written as Vercel compares it, code for code.
 const REGION_US = ["US", "PR", "GU", "VI", "AS", "MP", "UM"];
-const regionFile = (country) => (REGION_US.includes(String(country || "")) ? "region-us.json" : "region.json");
+const regionFile = (country) => (country === undefined ? "region-unknown.json"
+  : REGION_US.includes(String(country)) ? "region-us.json" : "region.json");
 
 function fileFor(pathname) {
   if (pathname === "/" || pathname === "") return "browse.html";

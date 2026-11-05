@@ -31,7 +31,9 @@
 # States and its territories, region.json for anywhere else. Netlify reads the
 # country from the visitor's address (Country=, ISO 3166-1 codes, no spaces);
 # vercel.json says the same with Vercel's x-vercel-ip-country header. The first
-# rule that matches is the one served. Cloudflare Pages reads no Country= and
+# rule that matches is the one served. A visitor Netlify places in no country
+# gets region.json: no line here can match an absent country, which vercel.json
+# answers with region-unknown.json. Cloudflare Pages reads no Country= and
 # ignores the first line, so there everyone gets region.json.
 /region  /region-us.json  200  Country=us,pr,gu,vi,as,mp,um
 /region  /region.json  200

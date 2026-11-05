@@ -1,16 +1,20 @@
 // TRADING AND LAUNCHING ARE NOT OFFERED TO VISITORS IN THE UNITED STATES.
 //
-// The pages that send read this one file (app.html, launch.html) and ask it
-// before each send it holds. The contracts are not changed by it and stay open
-// to anyone on Base: this is what the site offers, not what the chain allows.
+// Every page with the bar reads this one file, straight after config.js: the
+// bar says it on one line under itself (topbar.js), and the pages that send
+// (app.html, launch.html) ask it before each send it holds. The contracts are
+// not changed by it and stay open to anyone on Base: this is what the site
+// offers, not what the chain allows.
 //
 // WHERE THE VISITOR IS, THE HOST SAYS. /region is a same-origin file the host
 // picks by the visitor's country, so the pages stay static and the same for
 // everyone: Vercel by the x-vercel-ip-country header it adds to each request
 // (web/vercel.json), Netlify by its Country= condition (web/_redirects).
 // region-us.json for the United States and its territories (US, PR, GU, VI,
-// AS, MP, UM), region.json for anywhere else, each with Cache-Control:
-// no-store, so no browser or cache hands one visitor's answer to another.
+// AS, MP, UM), region.json for any other country, and on Vercel
+// region-unknown.json ({"trading": null}) for a request that came with no
+// country at all; each with Cache-Control: no-store, so no browser or cache
+// hands one visitor's answer to another.
 //
 // HELD: creating a launch (with or without a dev buy), buying and selling on a
 // curve, swapping in a pool, every step of the ETH routes (Aerodrome's
@@ -20,24 +24,31 @@
 // migrate kit, the docs.
 //
 // IT FAILS CLOSED WHERE AN ANSWER IS EXPECTED: on a host config.js lists in
-// regionHosts, an answer that cannot be read refuses each held send with a
-// try-again, and nothing reaches the wallet. A press asks again first, so one
-// failed read is not the last word. On any other host - an IPFS gateway, a
-// local server, Cloudflare Pages, which reads no country - nothing answers
-// /region, and the pages behave as the default answer (web/README.txt).
+// regionHosts, an answer that cannot be read, or one that places the visitor
+// in no country, refuses each held send, and nothing reaches the wallet. A
+// press asks again first, so one failed read is not the last word. Off those
+// hosts either answer holds nothing: an IPFS gateway or a plain static server
+// has no /region at all, Cloudflare Pages reads no country and answers
+// region.json to everyone (web/_redirects), and the test server answers by
+// the header a test sets (web/e2e/serve.js). See web/README.txt.
 (function () {
   "use strict";
 
   const WORDS = "Trading and launching aren't available in the United States.";
   const UNREAD = "This page couldn't check where you're visiting from, so nothing was sent. Try again in a moment.";
+  const UNPLACED = "This site couldn't tell which country you're visiting from, so nothing was sent.";
   // HOW LONG AN ANSWER IS WAITED FOR, at load and at a press.
   const WAIT_MS = 8000;
 
-  const listed = ((window.CURB_SITE && window.CURB_SITE.regionHosts) || []).map((h) => String(h).toLowerCase());
-  const expected = listed.includes(String(location.hostname).toLowerCase());
+  // A HOST NAME AS ONE, whatever its case, and with the trailing dot of a
+  // fully qualified "curbfun.xyz." dropped.
+  const hostName = (h) => String(h).toLowerCase().replace(/\.$/, "");
+  const listed = ((window.CURB_SITE && window.CURB_SITE.regionHosts) || []).map(hostName);
+  const expected = listed.includes(hostName(location.hostname));
 
-  /// "open", "closed", or "unread": a host that did not answer, or answered
-  /// anything but the file's own shape. null until the first answer lands.
+  /// "open", "closed", "unplaced" (the host read no country), or "unread": a
+  /// host that did not answer, or answered anything but the files' own shape.
+  /// null until the first answer lands.
   let state = null;
   let asking = null;
   const held = [];
@@ -47,7 +58,8 @@
     const timer = ctl ? setTimeout(() => ctl.abort(), WAIT_MS) : null;
     return fetch("/region", { cache: "no-store", credentials: "omit", signal: ctl ? ctl.signal : undefined })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => (j && typeof j.trading === "boolean" ? (j.trading ? "open" : "closed") : "unread"))
+      .then((j) => (!j ? "unread" : typeof j.trading === "boolean" ? (j.trading ? "open" : "closed")
+        : j.trading === null ? "unplaced" : "unread"))
       .catch(() => "unread")
       .then((a) => {
         if (timer) clearTimeout(timer);
@@ -59,7 +71,7 @@
   }
 
   /// The answer for this page: asked once at load, again only after one that
-  /// could not be read.
+  /// was neither "open" nor "closed".
   function answer() {
     if (!asking) asking = ask();
     return asking;
@@ -69,41 +81,56 @@
   /// that refuses it. Asked by the action before the wallet is asked anything.
   async function refusal() {
     let a = await answer();
-    if (a === "unread") { asking = null; a = await answer(); }
+    if (a === "unread" || a === "unplaced") { asking = null; a = await answer(); }
     if (a === "closed") return WORDS + " Nothing was sent.";
     if (a === "unread" && expected) return UNREAD;
+    if (a === "unplaced" && expected) return UNPLACED;
     return null;
   }
 
   function apply(h) {
     const b = h.button;
-    b.disabled = true;
-    // KEPT DISABLED, WHATEVER ENABLES IT. The pages enable their buttons in
-    // many places - after every action, whenever a quote is drawn - and none of
-    // them needs to know about this; the action's own refusal stands behind it.
-    if (!h.watch) {
-      h.watch = new MutationObserver(() => { if (!b.disabled) b.disabled = true; });
-      h.watch.observe(b, { attributes: true, attributeFilter: ["disabled"] });
+    if (b) {
+      b.disabled = true;
+      // KEPT DISABLED, WHATEVER ENABLES IT. The pages enable their buttons in
+      // many places - after every action, whenever a quote is drawn - and none
+      // of them needs to know about this; the action's own refusal stands
+      // behind it.
+      if (!h.watch) {
+        h.watch = new MutationObserver(() => { if (!b.disabled) b.disabled = true; });
+        h.watch.observe(b, { attributes: true, attributeFilter: ["disabled"] });
+      }
     }
-    if (h.noted && !h.note) {
+    if (h.at && !h.note) {
       h.note = document.createElement("p");
       h.note.className = "note regionNote";
       h.note.textContent = WORDS;
-      b.insertAdjacentElement("afterend", h.note);
+      h.at.insertAdjacentElement(h.where, h.note);
     }
+  }
+
+  function keep(h) {
+    held.push(h);
+    if (state === "closed") apply(h);
   }
 
   /// A BUTTON THAT TRADES OR LAUNCHES, held disabled once the answer is
   /// "closed"; with `noted`, the reason is written right after it.
   function hold(button, noted) {
     if (!button) return;
-    const h = { button, noted: !!noted, watch: null, note: null };
-    held.push(h);
-    if (state === "closed") apply(h);
+    keep({ button, at: noted ? button : null, where: "afterend", watch: null, note: null });
+  }
+
+  /// THE REASON ALONE, written at `at` (insertAdjacentElement's `where`,
+  /// "afterend" if none) once the answer is "closed": where a visitor reads
+  /// before reaching a held button.
+  function say(at, where) {
+    if (!at) return;
+    keep({ button: null, at, where: where || "afterend", watch: null, note: null });
   }
 
   window.CurbRegion = {
-    WORDS, answer, refusal, hold,
+    WORDS, answer, refusal, hold, say,
     /// Whether the answer in hand says the United States.
     closed: () => state === "closed",
   };
