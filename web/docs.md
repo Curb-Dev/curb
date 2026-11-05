@@ -293,10 +293,10 @@ up a contract's owner powers for good.
 chain go on as before, and a hidden launch's own page still opens.
 
 **What the site does not offer:** launching, trading or completing a launch's move to visitors in the United
-States and its territories. For them the launch form and the swap box say so and send nothing; reading every
-page, connecting a wallet, claims and holder sharing work as anywhere else. The site goes by the country its host
-reads from the visitor's connection. This is the site's choice only: the contracts on Base are open to anyone,
-and nothing on chain changes.
+States and its territories. For them every page says so under the bar, and the launch form and the swap box send
+nothing; reading every page, connecting a wallet, claims and holder sharing work as anywhere else. The site goes
+by the country its host reads from the visitor's connection, and where it reads none, it does not send those
+either. This is the site's choice only: the contracts on Base are open to anyone, and nothing on chain changes.
 
 **One limit of the pool:** in a graduated pool, a holder who trades through a range position of their own pays no
 tax on that side (see [Fees](#fees)).

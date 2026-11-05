@@ -202,31 +202,44 @@ NOT OFFERED IN THE UNITED STATES - web/region.js, /region
   and unwraps sent inside those. OPEN: every page, connecting, claims, holder
   sharing, Revoke, Unwrap to ETH, the migrate kit, the docs.
   THE HOST ANSWERS, THE PAGES STAY STATIC. /region is no file: the host
-  rewrites it by the visitor's country - Vercel with a `has` condition on the
-  x-vercel-ip-country header it adds (vercel.json; `missing` on the same
-  condition sends everyone else to the default, so the order of the two rules
-  does not matter), Netlify with Country= (_redirects) - to region-us.json
-  ({"trading": false}) or region.json ({"trading": true}). All three paths are
+  rewrites it by the visitor's country - Vercel with `has` and `missing`
+  conditions on the x-vercel-ip-country header it adds (vercel.json: the codes
+  to region-us.json, {"trading": false}; any other code to region.json,
+  {"trading": true}; no header at all to region-unknown.json, {"trading":
+  null}; the three conditions exclude each other, so their order does not
+  matter), Netlify with Country= (_redirects; it has no rule for an absent
+  country, so a visitor it places nowhere gets region.json). All four paths are
   sent with Cache-Control: no-store (vercel.json, _headers). web/e2e/serve.js
-  answers the same way from the request's x-vercel-ip-country, which the
+  answers as Vercel does from the request's x-vercel-ip-country, which the
   browser tests set themselves.
-  ONE GATE IN THE CLIENT. region.js asks /region as app.html and launch.html
-  load. Each held action asks CurbRegion.refusal() first, before the wallet is
+  ONE GATE IN THE CLIENT. region.js asks /region as each page with the bar
+  loads, and the bar says the sentence below on one line under itself
+  (topbar.js #cbRegion) once the answer is the United States. Each held
+  action asks CurbRegion.refusal() first, before the wallet is
   asked anything - app.js regionGate in createLaunch, curveAction, poolAction,
   sellHeldBack and completeGraduation, and launch.js complete() - and every
   send those make comes after it. Up front, the held buttons are disabled and
   kept so (CurbRegion.hold), with "Trading and launching aren't available in
-  the United States." beside them: the create form, the swap card (token.js
-  drawAction), the long page's three panels and launch.html's button.
+  the United States." beside them: the create form (and under its heading,
+  CurbRegion.say), the swap card (token.js drawAction), the long page's three
+  panels and launch.html's button. The held row's Sell it back is drawn
+  disabled (app.js heldButtons); its Buy with it only fills the card.
   FAILS CLOSED ON THE SITE'S OWN HOSTS. On a host config.js lists in
-  regionHosts (curbfun.xyz), an answer that cannot be read refuses each held
-  send with a try-again; a press asks again first. A page without region.js
-  sends nothing it would hold.
+  regionHosts (curbfun.xyz, www.curbfun.xyz and the production deployment's
+  curb-web-eight.vercel.app, each public, each reading through the site's own
+  endpoint), an answer that cannot be read refuses each held send with a
+  try-again, and region-unknown.json refuses it with "This site couldn't tell
+  which country you're visiting from"; a press asks again first. A page
+  without region.js sends nothing it would hold.
   LIMITS, SAID PLAINLY:
-    - A host with no geo serves no answer: an IPFS gateway, Cloudflare Pages
-      (its _redirects has no Country=, and the line is ignored), a plain local
-      server. There the default applies and nothing is held. Off the hosts in
-      regionHosts, an answer that cannot be read holds nothing either.
+    - Off the hosts in regionHosts, an answer that cannot be read, or places
+      the visitor nowhere, holds nothing. An IPFS gateway and a plain static
+      server have no /region at all; Cloudflare Pages ignores the Country=
+      line (its _redirects reads no country) and answers region.json to
+      everyone; Netlify answers region.json to a visitor it places nowhere.
+      Only a United States answer holds anything there.
+    - A new public name for the production deployment goes into regionHosts
+      the day it is added, or an unread answer there holds nothing.
     - The country is the one the host reads from the visitor's connection. A
       VPN or a proxy elsewhere reads as elsewhere.
     - The contracts take a transaction from anyone, from any interface.
@@ -250,10 +263,12 @@ NOT OFFERED IN THE UNITED STATES - web/region.js, /region
   (and x-vercel-cache). If the two ever cross, the fallback is Routing
   Middleware (a middleware.js in web/ that answers /region itself, which runs
   before the cache), at the cost of one invocation per page load.
-  web/e2e/region.spec.js tests it: the hosts' parity, the no-store, each held
-  action sending nothing for a US visitor while a visitor elsewhere reaches the
-  wallet, claims still open, and the fail-closed answer; aero.spec.js A27 the
-  Aerodrome route's steps.
+  web/e2e/region.spec.js tests it: the hosts' parity, the no-store in both
+  hosts' files, region.js on each listed host (a trailing dot included) and
+  off them, every page with the bar saying it, each held action sending
+  nothing for a US visitor while a visitor elsewhere reaches the wallet,
+  claims still open, and the fail-closed answers on app.html and launch.html;
+  aero.spec.js A27 the Aerodrome route's steps and the held row.
 
 THE WALLET STUB NOW SENDS FOR REAL
   web/wallet-stub.js gained `forward: true`: eth_sendTransaction and the receipt

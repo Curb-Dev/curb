@@ -74,8 +74,10 @@ WHAT STAYS OUT OF THE USER PART
 KEEP IT TRUE TO THE CODE
   Every rule on the page was checked against src/curb, src/vendor and
   script/DeployCurb.s.sol, and for what the site does against web/app.js,
-  web/token.js and web/browse.js. A sentence about what a page shows or offers
-  is a claim about that page: recheck it when the page changes.
+  web/token.js and web/browse.js - and for what it holds from visitors in the
+  United States against web/region.js and the hosts' rules beside it. A
+  sentence about what a page shows or offers is a claim about that page:
+  recheck it when the page changes.
 
   "The launch's page" is /token/0x..., app.html in its token view, which hides
   #launchPanel and everything in it. Checked 29 September 2026, that view:
@@ -196,6 +198,16 @@ FACTS docs.md AND terms.html MUST AGREE ON
     paused", before its own step 5 freezes holder sharing) and the post
     template. Until 18 October 2026 all three, and docs.md's Risks, said that
     nothing could be paused, which a freeze contradicts.
+  - NOT OFFERED IN THE UNITED STATES, 5 November 2026 (web/region.js): the
+    site does not offer launching or trading - completing a launch's move
+    included - to visitors in the United States and its territories; every
+    page says so under the bar, and the launch form and the swap box send
+    nothing; reading, claims and holder sharing stay open; the country is the
+    one the host reads from the connection, and where it reads none nothing is
+    sent either. It is a setting of the site, not a term of any launch, and the
+    contracts stay open to anyone. docs.md says it in "What CURB can and cannot
+    do" (with a line in the overview's note and one in the FAQ), terms.html in
+    one paragraph above its lede, outside the panel of what a launch fixes.
 
 
 WHAT CURB CAN AND CANNOT DO (docs.md's section of that name)

@@ -18,6 +18,9 @@
 <meta name="twitter:site" content="@curbfun" />
 <!-- THE DEPLOYMENT AND THE INCIDENT SWITCHES, before any script reads them. -->
 <script src="config.js"></script>
+<!-- WHERE THE VISITOR IS: the bar says under itself that trading and launching
+     are not offered in the United States (region.js). -->
+<script src="region.js"></script>
 <link rel="icon" href="curb-mark.svg" />
 <link rel="stylesheet" href="topbar.css" />
 <style>
@@ -47,6 +50,16 @@
 <main>
   <a class="back" href="/launchpad" data-carry>&larr; Back to the launch form</a>
   <h1>What a launch fixes, and what it cannot change afterwards</h1>
+  <!-- WHAT THIS SITE OFFERS, outside the panel: no launch fixes it, and the lede
+       below speaks only of what a launch does. -->
+  <p class="note">
+    <strong>This site does not offer launching or trading to visitors in the United States</strong>, its
+    territories included. For them every page says so under the bar, and the launch form and the swap box
+    send nothing; reading, claims and holder sharing work as anywhere else. The site goes by the country its
+    host reads from your connection, and where it reads none, it does not send those either. This is a
+    setting of this site, not a term of any launch: the contracts on Base are open to anyone, and nothing on
+    chain depends on it.
+  </p>
   <p class="lede">
     Everything below is decided when the launch transaction is mined. There is no
     function anywhere &mdash; not for the creator and not for us &mdash; that changes any of
@@ -55,13 +68,6 @@
     informs anyone.
   </p>
   <div class="panel">
-        <p class="note">
-          <strong>This site does not offer launching or trading to visitors in the United States</strong>, its
-          territories included. For them the launch form and the swap box say so and send nothing; reading,
-          claims and holder sharing work as anywhere else. The site goes by the country its host reads from your
-          connection. The contracts on Base are open to anyone: this is what this site offers, and nothing on
-          chain depends on it.
-        </p>
         <p class="note">
           <strong>Your dev buy happens inside the launch transaction.</strong> Without it there is a
           block between the launch and your own first trade in which anybody can be the first buyer of
