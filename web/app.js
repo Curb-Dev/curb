@@ -1011,6 +1011,19 @@ function wallet() {
   return injected();
 }
 
+/// NOT OFFERED IN THE UNITED STATES (region.js): creating a launch, a curve
+/// trade, a pool swap - each with every step of its ETH route and the
+/// approvals, wraps and unwraps it sends - selling back what a two-step buy
+/// left held, and completing a waiting launch's move. Each of those actions
+/// says so to beginAction, which asks here before the wallet is asked anything;
+/// claims, holder sharing, a revoke and Unwrap to ETH do not. Without region.js
+/// nothing it holds is sent.
+async function regionGate() {
+  const why = window.CurbRegion ? await window.CurbRegion.refusal()
+    : "This page couldn't check where you're visiting from, so nothing was sent. Try again in a moment.";
+  if (why) throw new Error(why);
+}
+
 /// EVERY ACTION IS PINNED TO WHAT IT WAS BUILT AGAINST.
 ///
 /// The first version sent through the wallet and then looked for the receipt on
@@ -1021,7 +1034,9 @@ function wallet() {
 /// beginAction reads the identity once and REFUSES a mismatch up front; the
 /// send re-reads chain and account immediately before dispatch, because
 /// everything in between takes round trips a user can switch networks during.
-async function beginAction(scope) {
+/// @param held  true for an action region.js holds (regionGate): a create, a
+///              curve trade, a pool swap, a sale back, a launch's move
+async function beginAction(scope, held) {
   // NOTHING WARM STANDS IN FOR A READ FROM HERE ON (multicall.js forget): what
   // is drawn after an action is read after it.
   if (Multi && Multi.forget) Multi.forget();
@@ -1052,6 +1067,10 @@ async function beginAction(scope) {
   // where that needs no more confirmations and has no lower minimum.
   pin.drawn = curveDrawn;
   if (!pin.from) throw new Error("Connect a wallet first.");
+  // AN ACTION region.js HOLDS ASKS IT HERE: after the snapshot, so what is
+  // pinned is still what was on screen at the press, and before the wallet is
+  // asked anything.
+  if (held) await regionGate();
 
   const walletChain = await eth.request({ method: "eth_chainId" });
   // ONCE config.js NAMES A DEPLOYMENT, ITS CHAIN AND NO OTHER (chainVerdict),
@@ -6690,7 +6709,7 @@ async function createLaunch() {
     throw new Error(`The symbol is ${symbol.length} characters. The maximum is ${SYMBOL_MAX}.`);
   }
   const tax = parseTax($("nTax").value);
-  const pin = await beginAction("create");
+  const pin = await beginAction("create", true);
   const creatorWallet = readCreatorWallet();
   // THE QUOTE REFUND GOES TO THE SENDER (createLaunchInner), held to the same rule.
   const refundWhy = unpayable(pin.from);
@@ -7735,7 +7754,7 @@ function showCreatedNotice() {
 }
 
 async function curveAction() {
-  const pin = await beginAction("trade");
+  const pin = await beginAction("trade", true);
   return withSendLock(pin, () => curveActionInner(pin));
 }
 
@@ -8955,7 +8974,7 @@ function buyWithHeld(carried, asset) {
 /// swap into WETH held by the router and unwrapWETH9 to this account, bounded
 /// below, simulated, and checked against Chainlink like any swap.
 async function sellHeldBack(slipText, carried) {
-  const pin = await beginAction("trade");
+  const pin = await beginAction("trade", true);
   return withSendLock(pin, () => sellHeldBackInner(pin, slipText, carried));
 }
 async function sellHeldBackInner(pin, slipText, carried) {
@@ -9351,7 +9370,7 @@ async function claimAll() {
 }
 
 async function completeGraduation() {
-  const pin = await beginAction("trade");
+  const pin = await beginAction("trade", true);
   return withSendLock(pin, () => completeGraduationInner(pin));
 }
 
@@ -9498,7 +9517,7 @@ async function noteStuck(pin) {
 }
 
 async function poolAction() {
-  const pin = await beginAction("trade");
+  const pin = await beginAction("trade", true);
   return withSendLock(pin, () => poolActionInner(pin));
 }
 
@@ -10111,6 +10130,9 @@ async function init() {
   if ($("unwrap")) $("unwrap").onclick = () => guard(unwrapWeth);
   if ($("claimAll")) $("claimAll").onclick = () => guard(claimAll);
   $("poolAct").onclick = () => guard(poolAction);
+  // HELD, WITH THE REASON BESIDE EACH, FOR A VISITOR IN THE UNITED STATES
+  // (region.js): the buttons of the actions regionGate refuses.
+  if (window.CurbRegion) for (const id of ["create", "curveAct", "complete", "poolAct"]) window.CurbRegion.hold($(id), true);
   // A LINK IS SHOWN AS IT WILL BE STORED as soon as the field is left:
   // "curb.fun" becomes https://curb.fun there, before Create. What cannot be
   // made into a link is left as typed, and Create says why.
