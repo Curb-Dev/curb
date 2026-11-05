@@ -53,8 +53,10 @@ done
 FORBIDDEN_FILES="tests.html wallet-setup.html wallet-stub.js REAL_WALLET_TEST.txt README.txt"
 FORBIDDEN_DIRS="e2e test-results playwright-report node_modules"
 # ALWAYS IN IT: the root's page and the 404, the config every page reads first,
-# the bar, the two rewritten pages, and the hosts' own files.
-REQUIRED="browse.html 404.html config.js topbar.js app.html sharing.html vercel.json _headers _redirects og.png"
+# the bar, the two rewritten pages, the hosts' own files, and the region gate
+# with its two answers (web/region.js: on the site's own hosts, a page without
+# them sends nothing the gate holds).
+REQUIRED="browse.html 404.html config.js topbar.js app.html sharing.html vercel.json _headers _redirects og.png region.js region.json region-us.json"
 
 fails=0
 fail() { echo "FAIL  $*"; fails=$((fails + 1)); }

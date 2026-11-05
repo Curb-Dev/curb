@@ -9,7 +9,9 @@
 // launches page, /token/0x... is app.html, each page has its name without
 // .html (CLEAN: /launchpad is app.html, /docs is docs.html...), the name with a
 // slash after it is sent on to the name, and an address that is no file gets
-// web/404.html with a 404.
+// web/404.html with a 404. /region is answered by the visitor's country, which
+// a test names in the request's x-vercel-ip-country header, as Vercel adds it
+// (regionFile).
 //
 // CURB_E2E_HEADERS=1 SENDS THE SITE'S RESPONSE HEADERS (web/_headers, the file
 // Netlify and Cloudflare Pages read; vercel.json carries the same values) on
@@ -44,8 +46,9 @@ const TYPES = {
 };
 
 /// THE HEADERS web/_headers GIVES EVERY PATH: the block under "/*", as
-/// [name, value] pairs. Only that one block is read, because it is the only one
-/// the file has; a second block would be a reason to read this again.
+/// [name, value] pairs. Only that one block is read: the others are /region and
+/// its two files, whose one header, Cache-Control: no-store, this server sends
+/// on every answer.
 function siteHeaders(text) {
   const out = [];
   let inAll = false;
@@ -85,6 +88,13 @@ const CLEAN = {
   migrate: "migrate.html", terms: "terms.html", sharing: "sharing.html",
 };
 
+/// WHERE THE VISITOR IS, AS THE HOSTS ANSWER /region (vercel.json, _redirects):
+/// region-us.json when the request's x-vercel-ip-country names the United States
+/// or one of its territories, region.json for any other country or none. Written
+/// as Vercel compares it, code for code.
+const REGION_US = ["US", "PR", "GU", "VI", "AS", "MP", "UM"];
+const regionFile = (country) => (REGION_US.includes(String(country || "")) ? "region-us.json" : "region.json");
+
 function fileFor(pathname) {
   if (pathname === "/" || pathname === "") return "browse.html";
   if (/^\/token\/0x[0-9a-fA-F]{40}\/?$/.test(pathname)) return "app.html";
@@ -113,7 +123,7 @@ function start() {
         res.end();
         return;
       }
-      const rel = fileFor(url.pathname);
+      const rel = url.pathname === "/region" ? regionFile(req.headers["x-vercel-ip-country"]) : fileFor(url.pathname);
       const file = path.resolve(ROOT, rel);
       // Nothing outside web/ is servable, whatever the path says.
       if (!file.startsWith(ROOT + path.sep)) {
@@ -151,4 +161,4 @@ function start() {
 const BUILDER_SUFFIX = fs.readFileSync(path.join(ROOT, "builder-code.js"), "utf8").match(/dataSuffix = "0x([0-9a-f]+)"/)[1];
 
 if (require.main === module) start();
-module.exports = { siteHeaders, testHeaders, fileFor, slashRedirect, CLEAN, testConfig, BUILDER_SUFFIX };
+module.exports = { siteHeaders, testHeaders, fileFor, slashRedirect, CLEAN, testConfig, BUILDER_SUFFIX, REGION_US, regionFile };
