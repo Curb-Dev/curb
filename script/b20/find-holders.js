@@ -80,8 +80,8 @@ const NEED = { SPCXc: 150e8, GOOGLc: 150e8, AMZNc: 50e8, MSFTc: 25e8, AAPLc: 15e
                // 2026-10-15 list)
                cbBTC: 0.396e8, cbXRP: 24_450e6, cbZEC: 27.6e8,
                USDC: 32_400e6, VIRTUAL: 48_300e18, AERO: 36_600e18,
-               // three thresholds each, at the 29 October terms
-               MSTRc: 226.5e8, SNDKc: 23.73e8, TSLAc: 81e8 };
+               // three thresholds each, at the terms re-priced on 5 November
+               MSTRc: 251.1e8, SNDKc: 40.2e8, TSLAc: 94.5e8 };
 
 const POOL_MANAGER = "0x498581ff718922c3f8e6a244956af099b2652b2b";
 const V3_FACTORY = "0x33128a8fc17869897dce68ed026d694621f6fdfd";

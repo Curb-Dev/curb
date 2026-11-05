@@ -48,7 +48,9 @@ const USD_FEEDS = {
   // LISTED SINCE 29 OCTOBER 2026, added after launch: the same three feeds
   // this table held ahead of any listing, read back on live Base that night
   // (description() as written, decimals() 8, answering $143.41, $1,369.99 and
-  // $401.65) and named again in services/sharer/deploy/sharer.example.json.
+  // $401.65; read again at the re-pricing of 5 November, answering $129.35,
+  // $810.42 and $343.54) and named again in
+  // services/sharer/deploy/sharer.example.json.
   "0xb2000000000000000000004884b426556b92883d": ["0xb3ce282cd188b35da0e38d8bc7d58e33173d202a", "Coinbase MSTR"],
   "0xb200000000000000000000397293cb8cda9a10c5": ["0x388b0dc46c0fb05a74bee0994fa5b02c6fcca2ea", "Coinbase SNDK"],
   "0xb2000000000000000000001e800a7f5189430cd0": ["0xfaf869185383a24f8cb00e27bda6b63b9905dcb4", "Coinbase TSLA"],

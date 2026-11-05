@@ -445,8 +445,9 @@ AHEAD OF THE DAY
     be removed from the registry (32 at most), and quoteAssets() in
     script/DeployCurb.s.sol carries the prices of the day it was last
     re-priced - 15 October 2026 for the fourteen the run deployed (WETH at
-    $2,426.06; PRE_MAINNET decision 1a), 29 October for MSTRc, SNDKc and
-    TSLAc, added after launch. Signed later, every launch - $CURB
+    $2,426.06; PRE_MAINNET decision 1a), 5 November for MSTRc, SNDKc and
+    TSLAc, added after launch (first priced on 28 October, re-priced when
+    all three had moved past the 5% band). Signed later, every launch - $CURB
     included - starts and graduates wherever those prices have drifted to,
     not at the decided ~$4,000 and ~$55,000, and every asset on the list is
     listed for good. So this step runs again days ahead of the day, and the

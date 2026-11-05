@@ -498,7 +498,7 @@ contract DeployCurb is Script {
         // live Base (block 52,646,580; cbZEC's at block 52,655,082, the same
         // day), and every depth is the largest Uniswap v3 pool's holding that
         // day - the table above quoteAssets() says how - but for the three
-        // added after launch at the end, priced on 28 October (they say how).
+        // added after launch at the end, re-priced on 5 November (they say how).
         // The dollars beside each pair are what it gives at that day's price.
         //
         // ---- COINS. ETH is the primary pair, decided 2026-09-22.
@@ -602,26 +602,54 @@ contract DeployCurb is Script {
         // cents, so the flag the depth check puts to Uniswap's quoter is false
         // for all three.
         //
-        // PRICED AT CHAINLINK'S ANSWER on live Base, block 53,218,843 (22:37
-        // UTC on 28 October; the stock feeds answer through the night, 24/5),
-        // each feed read back by description() as the one web/prices.js names,
-        // and each CROSS-CHECKED against its Gauges V3 pool's own slot0 price
-        // (measure-thresholds.js, blocks 53,218,665 to 53,218,836): MSTRc
-        // 0.39% from its feed, SNDKc and TSLAc 0.07%. Buying with USDC on
-        // Aerodrome at the same hour moved each price by, at $2,000 and at
-        // $10,800:
+        // RE-PRICED ON 5 NOVEMBER 2026, the night they are deployed, at
+        // Chainlink's answer on live Base, block 53,610,217 (21:00 UTC, the US
+        // close; the stock feeds answer through the night, 24/5). They were
+        // first priced on 28 October, at block 53,218,843: MSTR at $143.405,
+        // SNDK at $1,369.99 and TSLA at $401.65 gave 27.9 / 75.5, 2.92 / 7.91
+        // and 9.96 / 27.0. In the week between, MSTR fell 9.8%, TSLA 14.5% and
+        // SNDK 40.8%, which put every one of the three starts past the
+        // preflight's 5% band.
         //
-        // MSTRc at $143.405: 27.9 / 75.5, $4,001 to $54,954. 0.25% and 1.35%.
-        // SNDKc at $1,369.99: 2.92 / 7.91, $4,000 to $55,029. 0.74% and 3.7%.
-        // TSLAc at $401.65: 9.96 / 27.0, $4,000 to $55,087. 1.9% at $2,000,
-        // AND ITS POOL RUNS OUT just past $2,100 of USDC (5.28 TSLAc), a
-        // fifth of a threshold: no route can buy one threshold of it with
-        // ETH, so the create form's live check says THIN ETH ROUTE for it
-        // (app.js showQuoteLiquidity), the rule every asset meets - listed
-        // thin by the owner's choice, as the six above were.
-        list[14] = Asset(0xb2000000000000000000004884b426556b92883d, "MSTRc", 27.9e8, 75.5e8, false, 8);
-        list[15] = Asset(0xb200000000000000000000397293Cb8cda9a10c5, "SNDKc", 2.92e8, 7.91e8, false, 8);
-        list[16] = Asset(0xb2000000000000000000001e800a7f5189430cD0, "TSLAc", 9.96e8, 27e8, false, 8);
+        // SNDK'S FALL WAS CHECKED FOR A SPLIT BEFORE IT WAS PRICED. A token
+        // whose unit stopped being one share would need more than new
+        // figures. It has not: SNDKc's multiplier() and uiMultiplier() read
+        // 1e18 at both blocks, as MSTRc's and TSLAc's do, and its feed and its
+        // pool fell together over six sessions, sampled at least every six
+        // hours, never in one step at a split's ratio. A market move, one token
+        // still one share.
+        //
+        // Each feed read back by description() as the one web/prices.js names,
+        // and each CROSS-CHECKED against its Gauges V3 pool's own slot0 price
+        // at the same block: MSTRc 0.18% from its feed, SNDKc 0.51%, TSLAc
+        // 0.16%. Buying with USDC on Aerodrome at that block paid this much
+        // over the pool's slot0 price, at $2,000 and at $10,800 - the average
+        // price paid, net of the pool's 0.05% fee, from Aerodrome's quoter
+        // (quoteExactInput). The 28 October figures, measured the same way,
+        // were 0.25% and 1.35%, 0.74% and 3.7%, and 1.9% at $2,000.
+        //
+        // MSTRc at $129.346: 30.9 / 83.7, $3,997 to $54,975. 2.7% and 5.7%.
+        // SNDKc at $810.42: 4.94 / 13.4, $4,003 to $55,180. 4.6% and 13.7%.
+        // TSLAc at $343.54: 11.6 / 31.5, $3,985 to $55,015. 2.3% and 5.2%.
+        //
+        // ALL THREE ARE THINNER THAN ON 28 OCTOBER, and none is deep. Where
+        // each pool's price doubles, on USDC alone: MSTRc past $210,000
+        // (1,311 MSTRc, 15.7 thresholds); SNDKc past $38,800 (31.8 SNDKc, 2.4
+        // thresholds), with its in-range liquidity a 250th of what it was
+        // seven minutes earlier; TSLAc past $15,600 (42.4 TSLAc, 1.35
+        // thresholds), THE THINNEST. On 28 October TSLAc's pool ran out just
+        // past $2,100 of USDC (5.28 TSLAc), a fifth of a threshold, no route
+        // could buy one threshold of it with ETH, and the create form's live
+        // check said THIN ETH ROUTE for it (app.js showQuoteLiquidity). At
+        // this block the site's ETH route prices one whole threshold of each
+        // on Aerodrome - 5.13 WETH for MSTRc, 5.62 for SNDKc, 5.09 for TSLAc
+        // - so that check would say the market can supply it. A pool this
+        // thin can fall back under the line as soon as liquidity leaves it,
+        // and the check says THIN ETH ROUTE again when it does. Listed thin
+        // by the owner's choice, as the six above were.
+        list[14] = Asset(0xb2000000000000000000004884b426556b92883d, "MSTRc", 30.9e8, 83.7e8, false, 8);
+        list[15] = Asset(0xb200000000000000000000397293Cb8cda9a10c5, "SNDKc", 4.94e8, 13.4e8, false, 8);
+        list[16] = Asset(0xb2000000000000000000001e800a7f5189430cD0, "TSLAc", 11.6e8, 31.5e8, false, 8);
     }
 
     // THE POOL TIER IS A DECISION NOW, NOT THE DEMO'S LEFTOVER.

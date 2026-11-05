@@ -336,19 +336,19 @@ contract B20MultiAssetTest is B20ForkTest {
     /// logs from https://base.gateway.tenderly.co), read at the pin. Every
     /// larger holder there was a contract, a pool among them. One lifecycle
     /// spends about 2.11 thresholds (a tenth, then two, then the pool leg's
-    /// hundredth): MSTRc's holder held 844.62 against the 159.3 that costs,
-    /// SNDKc's 51.01 against 16.7, and TSLAc's - MSTRc's holder too - 291.13
-    /// against 57.0.
+    /// hundredth): at the terms re-priced on 2026-11-05, MSTRc's holder held
+    /// 844.62 against the 176.6 that costs, SNDKc's 51.01 against 28.3, and
+    /// TSLAc's - MSTRc's holder too - 291.13 against 66.5.
     function _mstr() internal pure returns (Asset memory) {
-        return Asset(0xb2000000000000000000004884b426556b92883d, "MSTRc", 27.9e8, 75.5e8,
+        return Asset(0xb2000000000000000000004884b426556b92883d, "MSTRc", 30.9e8, 83.7e8,
             0xb5ef91ce939F2C390cff462bb231E74bb228deB4, 8);
     }
     function _sndk() internal pure returns (Asset memory) {
-        return Asset(0xb200000000000000000000397293Cb8cda9a10c5, "SNDKc", 2.92e8, 7.91e8,
+        return Asset(0xb200000000000000000000397293Cb8cda9a10c5, "SNDKc", 4.94e8, 13.4e8,
             0xf8191D98ae98d2f7aBDFB63A9b0b812b93C873AA, 8);
     }
     function _tsla() internal pure returns (Asset memory) {
-        return Asset(0xb2000000000000000000001e800a7f5189430cD0, "TSLAc", 9.96e8, 27e8,
+        return Asset(0xb2000000000000000000001e800a7f5189430cD0, "TSLAc", 11.6e8, 31.5e8,
             0xb5ef91ce939F2C390cff462bb231E74bb228deB4, 8);
     }
 

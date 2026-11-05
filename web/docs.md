@@ -106,13 +106,13 @@ it sets the graduation threshold. The choice is permanent.
 | MSFTc | Tokenized stock | 20.1 MSFTc |
 | AAPLc | Tokenized stock | 31.5 AAPLc |
 | METAc | Tokenized stock | 14.7 METAc |
-| MSTRc | Tokenized stock | 75.5 MSTRc |
-| SNDKc | Tokenized stock | 7.91 SNDKc |
-| TSLAc | Tokenized stock | 27 TSLAc |
+| MSTRc | Tokenized stock | 83.7 MSTRc |
+| SNDKc | Tokenized stock | 13.4 SNDKc |
+| TSLAc | Tokenized stock | 31.5 TSLAc |
 
-The thresholds were set in October 2026 prices so that every launch starts at about $4,000 and graduates at
-about $55,000, whatever it is paired with. Each is fixed in its own units, so in dollars they drift apart as prices
-move.
+The thresholds were set in October 2026 prices, and MSTRc, SNDKc and TSLAc's in November 2026 prices, so that
+every launch starts at about $4,000 and graduates at about $55,000, whatever it is paired with. Each is fixed in its
+own units, so in dollars they drift apart as prices move.
 
 A launch is only as easy to trade as its paired asset: if the asset is hard to buy or sell, so is the launch, and
 a launch on a thin asset may never reach its threshold. Paying ETH on a pair that is not ETH buys the asset
