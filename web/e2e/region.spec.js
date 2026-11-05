@@ -29,6 +29,7 @@ const WETH = "0x4200000000000000000000000000000000000006";
 const WORDS = "Trading and launching aren't available in the United States.";
 const REFUSED = WORDS + " Nothing was sent.";
 const UNREAD = "This page couldn't check where you're visiting from, so nothing was sent. Try again in a moment.";
+const UNPLACED = "This site couldn't tell which country you're visiting from, so nothing was sent.";
 const US = ["US", "PR", "GU", "VI", "AS", "MP", "UM"];
 
 test.describe.configure({ mode: "serial" });
@@ -186,29 +187,37 @@ async function refusedOnCard(p) {
 
 // ================================================================== the hosts
 test("the hosts answer /region by the visitor's country, never cached, and vercel.json, _redirects and the test server agree", async ({ request }) => {
-  // THE TEST SERVER, AS A HOST: every code the gate holds, and others, and none.
+  // THE TEST SERVER, AS VERCEL: every code the gate holds, others, and none.
+  // (It sends no-store on every answer it gives, so whether the hosts keep one
+  // is read from their own files below, not from here.)
   for (const country of [null, ...US, "DE", "GB", "CA", "MX", "TR", "JP"]) {
     const res = await request.get("/region", country ? { headers: { "x-vercel-ip-country": country } } : {});
     expect(res.status(), "/region did not answer for " + country).toBe(200);
-    expect(res.headers()["cache-control"], "/region may be cached").toContain("no-store");
-    expect(await res.json(), "the answer for " + country).toEqual({ trading: !US.includes(country) });
+    expect(await res.json(), "the answer for " + country).toEqual({ trading: country === null ? null : !US.includes(country) });
   }
   const read = (f) => fs.readFileSync(path.join(WEB, f), "utf8");
   expect(JSON.parse(read("region.json"))).toEqual({ trading: true });
   expect(JSON.parse(read("region-us.json"))).toEqual({ trading: false });
+  expect(JSON.parse(read("region-unknown.json"))).toEqual({ trading: null });
   // NO FILE AT /region: Vercel serves a file before it applies a rewrite.
   expect(fs.existsSync(path.join(WEB, "region")), "a file at /region would be served to everyone").toBe(false);
   expect(REGION_US, "the test server holds other codes").toEqual(US);
   // THE HOSTS WHERE AN ANSWER IS EXPECTED, and so where none refuses: the site's own.
   const site = new Function("window", read("config.js") + "\nreturn window.CURB_SITE;")({});
-  expect(site.regionHosts, "config.js does not name the site's own hosts").toEqual(["curbfun.xyz", "www.curbfun.xyz"]);
+  // Every name the production deployment is public at: the domain, www, and
+  // the project's own .vercel.app alias, which reads through the same endpoint.
+  expect(site.regionHosts, "config.js does not name the site's own hosts")
+    .toEqual(["curbfun.xyz", "www.curbfun.xyz", "curb-web-eight.vercel.app"]);
 
-  // VERCEL: one rule for the codes, its exact opposite for everyone else.
+  // VERCEL: one rule for the codes, one for any other code, one for none -
+  // each excluding the others, so their order cannot matter.
   const vercel = JSON.parse(read("vercel.json"));
   const cond = { type: "header", key: "x-vercel-ip-country", value: { inc: US } };
+  const any = { type: "header", key: "x-vercel-ip-country" };
   expect(vercel.rewrites.filter((r) => r.source === "/region")).toEqual([
     { source: "/region", has: [cond], destination: "/region-us.json" },
-    { source: "/region", missing: [cond], destination: "/region.json" },
+    { source: "/region", has: [any], missing: [cond], destination: "/region.json" },
+    { source: "/region", missing: [any], destination: "/region-unknown.json" },
   ]);
   // NETLIFY: the codes first, the default after; the first match is served.
   const lines = read("_redirects").split(/\r?\n/).map((l) => l.trim().split(/\s+/).join(" "))
@@ -217,7 +226,7 @@ test("the hosts answer /region by the visitor's country, never cached, and verce
     "/region /region-us.json 200 Country=" + US.map((c) => c.toLowerCase()).join(","),
     "/region /region.json 200",
   ]);
-  // NO-STORE ON THE PATH ASKED AND ON THE TWO FILES, in both hosts' headers.
+  // NO-STORE ON THE PATH ASKED AND ON THE THREE FILES, in both hosts' headers.
   const blocks = {};
   let at = null;
   for (const raw of read("_headers").split(/\r?\n/)) {
@@ -226,22 +235,85 @@ test("the hosts answer /region by the visitor's country, never cached, and verce
     const c = raw.indexOf(":");
     blocks[at].push([raw.slice(0, c).trim(), raw.slice(c + 1).trim()]);
   }
-  for (const p of ["/region", "/region.json", "/region-us.json"]) {
+  for (const p of ["/region", "/region.json", "/region-us.json", "/region-unknown.json"]) {
     expect(vercel.headers, "vercel.json lets " + p + " be cached")
       .toContainEqual({ source: p, headers: [{ key: "Cache-Control", value: "no-store" }] });
     expect(blocks[p], "_headers lets " + p + " be cached").toEqual([["Cache-Control", "no-store"]]);
   }
 
-  // EVERY PAGE THAT SENDS WHAT THE GATE HOLDS LOADS IT, after config.js (its
-  // regionHosts) and before its own script; tests.html, which runs launch.js, too.
-  for (const [html, script] of [["app.html", "app.js"], ["launch.html", "launch.js"]]) {
+  // EVERY PAGE WITH THE BAR LOADS IT, after config.js (its regionHosts) and
+  // before the bar, which says it; a page that sends, before its own script
+  // too; tests.html, which runs launch.js, as well.
+  const scriptAt = (src, name) => src.search(new RegExp('<script src="/?' + name.replace(".", "\\.") + '"></script>'));
+  const barred = fs.readdirSync(WEB).filter((f) => f.endsWith(".html") && scriptAt(read(f), "topbar.js") > -1).sort();
+  expect(barred, "a page with the bar is not checked here").toEqual(["404.html", "app.html", "browse.html", "curb.html",
+    "docs.html", "launch.html", "migrate.html", "sharing.html", "terms.html"]);
+  for (const html of barred) {
     const src = read(html);
-    const at = (name) => src.search(new RegExp('<script src="/?' + name.replace(".", "\\.") + '"></script>'));
-    expect(at("region.js"), html + " does not load region.js").toBeGreaterThan(at("config.js"));
-    expect(at("config.js"), html + " does not load config.js").toBeGreaterThan(-1);
-    expect(at("region.js"), html + " loads region.js after " + script).toBeLessThan(at(script));
+    expect(scriptAt(src, "config.js"), html + " does not load config.js").toBeGreaterThan(-1);
+    expect(scriptAt(src, "region.js"), html + " does not load region.js after config.js").toBeGreaterThan(scriptAt(src, "config.js"));
+    expect(scriptAt(src, "region.js"), html + " loads region.js after the bar").toBeLessThan(scriptAt(src, "topbar.js"));
+  }
+  for (const [html, script] of [["app.html", "app.js"], ["launch.html", "launch.js"]]) {
+    expect(scriptAt(read(html), "region.js"), html + " loads region.js after " + script).toBeLessThan(scriptAt(read(html), script));
   }
   expect(read("tests.html")).toContain('<script src="region.js"></script>');
+});
+
+// ================================================================== the gate, by host
+/// region.js AS ONE OF THE SITE'S HOSTS RUNS IT: config.js as committed, the
+/// page at `hostname`, and /region answering `body` (or failing, for "fail") -
+/// or, for a list, each answer in turn, the last one from then on.
+function gateAt(hostname, body) {
+  const read = (f) => fs.readFileSync(path.join(WEB, f), "utf8");
+  const win = { CURB_SITE: new Function("window", read("config.js") + "\nreturn window.CURB_SITE;")({}) };
+  const answers = Array.isArray(body) ? [...body] : [body];
+  const fetchFn = () => {
+    const b = answers.length > 1 ? answers.shift() : answers[0];
+    return b === "fail" ? Promise.reject(new Error("blocked")) : Promise.resolve({ ok: true, json: async () => b });
+  };
+  const doc = { dispatchEvent() {} };
+  class Ev { constructor(type, init) { this.type = type; this.detail = init && init.detail; } }
+  new Function("window", "location", "fetch", "document", "CustomEvent", "MutationObserver", read("region.js"))(
+    win, { hostname }, fetchFn, doc, Ev, class {});
+  return win.CurbRegion;
+}
+test("region.js fails closed on each of the site's hosts, a trailing dot or capitals included, when /region cannot be read or places the visitor nowhere; elsewhere only the United States is held", async () => {
+  for (const host of ["curbfun.xyz", "www.curbfun.xyz", "curb-web-eight.vercel.app", "curbfun.xyz.", "WWW.CurbFun.XYZ"]) {
+    expect(await gateAt(host, "fail").refusal(), host + ": an unread answer let a send go").toBe(UNREAD);
+    expect(await gateAt(host, { trading: null }).refusal(), host + ": a visitor placed nowhere was let through").toBe(UNPLACED);
+    expect(await gateAt(host, { trading: "no" }).refusal(), host + ": an answer of another shape let a send go").toBe(UNREAD);
+    expect(await gateAt(host, { trading: false }).refusal(), host).toBe(REFUSED);
+    expect(await gateAt(host, { trading: true }).refusal(), host).toBe(null);
+    // A PRESS ASKS AGAIN FIRST: one answer that was neither is not the last word.
+    expect(await gateAt(host, ["fail", { trading: true }]).refusal(), host + ": an unread answer was not asked again").toBe(null);
+    expect(await gateAt(host, [{ trading: null }, { trading: true }]).refusal(), host + ": no country was not asked again").toBe(null);
+    expect(await gateAt(host, [{ trading: null }, { trading: false }]).refusal(), host).toBe(REFUSED);
+  }
+  for (const host of ["127.0.0.1", "curbfun.xyz.example", "ipfs.example", "other.vercel.app"]) {
+    expect(await gateAt(host, "fail").refusal(), host).toBe(null);
+    expect(await gateAt(host, { trading: null }).refusal(), host).toBe(null);
+    expect(await gateAt(host, { trading: false }).refusal(), host + ": the United States was let through").toBe(REFUSED);
+  }
+});
+
+// ================================================================== the bar
+test("from the United States every page with the bar says so under it; from elsewhere, or placed nowhere, none does", async () => {
+  const pages = ["/", "/launches", "/launchpad", "/curb", "/docs", "/migrate", "/sharing", "/terms", "/launch.html", "/no-such-page"];
+  for (const country of ["US", "VI", "DE", null]) {
+    const p = await browserRef.newPage();
+    if (country) await fromCountry(p, country);
+    for (const url of country === "US" ? pages : ["/", "/docs"]) {
+      await p.goto(url);
+      await expect.poll(() => regionState(p), { message: url + " never read /region" }).not.toBe("none");
+      await expect.poll(() => p.evaluate(() => window.CurbRegion.answer().then(() => true))).toBe(true);
+      if (country === "US" || country === "VI") {
+        await expect(p.locator("#cbRegion"), url).toBeVisible();
+        await expect(p.locator("#cbRegion"), url).toHaveText(WORDS);
+      } else await expect(p.locator("#cbRegion"), url).toBeHidden();
+    }
+    await p.close();
+  }
 });
 
 // ================================================================== launching
@@ -255,6 +327,12 @@ test("from the United States the launch form says so and a create sends nothing;
     await p.fill("#nName", "Region " + country);
     await p.fill("#nSymbol", "RG" + country);
     if (held) {
+      // SAID BEFORE ANYTHING IS FILLED IN: under the bar and under the form's
+      // heading, as well as beside the button at the foot of the summary.
+      await expect(p.locator("#cbRegion")).toBeVisible();
+      await expect(p.locator("#cbRegion")).toHaveText(WORDS);
+      await expect(p.locator("#create-launch .launchHead + p.regionNote")).toBeVisible();
+      await expect(p.locator("#create-launch .launchHead + p.regionNote")).toHaveText(WORDS);
       await expect(p.locator("#create + p.regionNote")).toHaveText(WORDS);
       await expect(p.locator("#create")).toBeDisabled();
       // AND IT STAYS SO, whatever enables it: the end of every action gives
@@ -295,6 +373,11 @@ test("from the United States a curve buy and a curve sale send nothing, the card
   await openToken(p, token);
   await expect(p.locator("#tvStatus")).toHaveText("Selling");
   await cardHeld(p);
+  // THE LONG PAGE'S CURVE AND MOVE BUTTONS, which the card presses, held too.
+  for (const id of ["#curveAct", "#complete"]) {
+    await expect(p.locator(id + " + p.regionNote")).toHaveText(WORDS);
+    await expect(p.locator(id)).toBeDisabled();
+  }
   // (a) A BUY.
   await quoted(p, "buy", "0.01");
   await cardHeld(p);
@@ -410,7 +493,7 @@ test("from the United States completing a waiting launch's move sends nothing, o
 });
 
 // ================================================================== failing closed
-test("on the site's own host an answer that cannot be read refuses with a try-again and sends nothing, and the next press asks again; elsewhere it holds nothing", async () => {
+test("on the site's own host an answer that cannot be read, or places the visitor nowhere, refuses and sends nothing, and the next press asks again; elsewhere it holds nothing; without region.js neither page sends", async () => {
   const factory = await factoryFor(WETH);
   const listing = (hosts) => (q) => q.route(/\/config\.js(\?.*)?$/, (route) => route.fulfill({
     status: 200, contentType: "text/javascript; charset=utf-8",
@@ -428,6 +511,7 @@ test("on the site's own host an answer that cannot be read refuses with a try-ag
   await idle(p);
   expect(await sendsAsked(p), "a create went out with no answer").toBe(0);
   await p.unroute(/\/region(\?.*)?$/);
+  await fromCountry(p, "DE");
   await p.click("#create");
   await expect(p.locator("#msg")).toContainText("you declined", { timeout: 30_000 });
   expect(await sendsAsked(p), "the press after the answer came never reached the wallet").toBe(1);
@@ -454,4 +538,33 @@ test("on the site's own host an answer that cannot be read refuses with a try-ag
   await idle(n);
   expect(await sendsAsked(n)).toBe(0);
   await n.close();
+
+  // (d) THE SITE'S OWN HOST, A VISITOR IT PLACES NOWHERE (no country header,
+  // which Vercel answers with region-unknown.json): refused, nothing sent.
+  const u = await newPage(OWNER, { before: listing(["127.0.0.1"]) });
+  await openForm(u, factory);
+  await u.fill("#nName", "Region Nowhere");
+  await u.fill("#nSymbol", "RNW");
+  await u.click("#create");
+  await expect(u.locator("#msg")).toContainText(UNPLACED, { timeout: 30_000 });
+  await idle(u);
+  expect(await sendsAsked(u), "a create went out for a visitor placed nowhere").toBe(0);
+  await u.close();
+
+  // (e) launch.html WITHOUT region.js sends no move either.
+  const l = await newPage(OWNER, { before: async (q) => {
+    await q.route(/\/region\.js(\?.*)?$/, (route) => route.fulfill({ status: 404, body: "" }));
+    await q.addInitScript({ content: "localStorage.setItem('curb.launch.addrs', " +
+      JSON.stringify(JSON.stringify({ lens: STATE.lens, token: STATE.token, rpc: STATE.rpc })) + ");" });
+  } });
+  await l.goto("/launch.html");
+  await l.waitForFunction(() => !!window.CurbLaunch, null, { timeout: 8_000 });
+  expect(await regionState(l)).toBe("none");
+  await expect(l.locator("#statusText")).toHaveText("Waiting", { timeout: 20_000 });
+  await expect(l.locator("#wallet")).toContainText("Connected:", { timeout: 20_000 });
+  await expect(l.locator("#complete")).toBeEnabled();
+  await l.click("#complete");
+  await expect(l.locator("#msg")).toContainText(UNREAD, { timeout: 30_000 });
+  expect(await sendsAsked(l), "launch.html sent the move without region.js").toBe(0);
+  await l.close();
 });

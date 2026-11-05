@@ -1688,7 +1688,7 @@ const forceCard = (q) => q.evaluate(() => {
   document.getElementById("msg").textContent = "";
   b.click();
 });
-test("A27 from the United States no step of the Aerodrome route is sent: not step 1, not Buy with it, not Sell it back", async () => {
+test("A27 from the United States no step of the Aerodrome route is sent: not step 1, not Buy with it, not Sell it back, which is drawn disabled", async () => {
   test.setTimeout(480_000);
   const token = await spaceLaunch();
   const buyer = await freshAccount("region held");
@@ -1729,9 +1729,20 @@ test("A27 from the United States no step of the Aerodrome route is sent: not ste
   const tried = () => q.evaluate(() => window.__tried.length);
   const idle = () => expect.poll(() => q.evaluate(() => window.CurbApp.state.busy), { timeout: 60_000 }).toBe(false);
   await expect(q.locator("#tvHeld")).toContainText("Sell it back", { timeout: 30_000 });
-  // SELL IT BACK.
+  // SELL IT BACK is drawn disabled - and drawn so again when the answer lands
+  // after the row (app.js redraws it on curb:region); Buy with it, which only
+  // fills the card, is not.
+  const sellBack = q.locator("#tvHeld button[data-held-sell]");
+  await expect(sellBack).toBeDisabled();
+  await expect(q.locator("#tvHeld button[data-held-buy]")).toBeEnabled();
+  await q.evaluate(() => {
+    document.querySelector("#tvHeld button[data-held-sell]").disabled = false;
+    document.dispatchEvent(new CustomEvent("curb:region", { detail: { state: "closed" } }));
+  });
+  await expect(sellBack).toBeDisabled({ timeout: 10_000 });
+  // PRESSED THOUGH IT IS HELD, it sends nothing.
   await clearMsg(q);
-  await q.locator("#tvHeld button[data-held-sell]").click();
+  await q.evaluate(() => { const b = document.querySelector("#tvHeld button[data-held-sell]"); b.disabled = false; b.click(); });
   await expect(q.locator("#msg")).toContainText(REGION_REFUSED, { timeout: 30_000 });
   await idle();
   expect(await tried(), "the sale back was sent").toBe(0);
