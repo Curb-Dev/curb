@@ -134,3 +134,38 @@ test('the verify panel on a file of at most 512 accounts is the check it always 
   assert.equal(bad.ok, false);
   assert.ok(bad.problems.some((p: string) => /s0 100001 is not/.test(p)));
 });
+
+test("a root published in any block of its second is found, the fourth or fifth of five as well as the first", async () => {
+  // FIVE BLOCKS TO A SECOND, as Base since 5 November 2026 (block 53,556,127).
+  const ts = (n: number) => 1_000_000 + Math.floor(n / 5);
+  const head = 5000;
+  const word = (x: bigint | number) => BigInt(x).toString(16).padStart(64, '0');
+  const event = (uri: string, payableAt: number) => {
+    const bytes = Buffer.from(uri, 'utf8').toString('hex');
+    return '0x' + [word(1), word(0), word(0), word(0), word(0), word(0), word(0), word(9 * 32), word(payableAt), word(bytes.length / 2)].join('') + bytes.padEnd(Math.ceil(bytes.length / 64) * 64, '0');
+  };
+  const epochTopic = '0x' + word(3);
+  for (const pub of [2000, 2001, 2003, 2004]) {
+    const payableAt = ts(pub) + 3600;
+    // THE SAME EPOCH PUBLISHED AGAIN TEN BLOCKS LATER (after a veto) IS ANOTHER ROOT'S.
+    const logs = [
+      { address: D, topics: ['0x00', epochTopic], data: event('ipfs://mine', payableAt), blockNumber: '0x' + pub.toString(16), transactionHash: '0x' + word(pub) },
+      { address: D, topics: ['0x00', epochTopic], data: event('ipfs://later', payableAt + 2), blockNumber: '0x' + (pub + 10).toString(16), transactionHash: '0x' + word(pub + 10) },
+    ];
+    const r = {
+      rpc: async (method: string, params: any[]) => {
+        if (method === 'eth_getBlockByNumber') return { number: params[0], timestamp: '0x' + ts(Number(BigInt(params[0]))).toString(16) };
+        if (method === 'eth_getLogs') {
+          const f = params[0];
+          return logs.filter((l) => l.address === f.address && l.topics[1] === f.topics[1] &&
+            BigInt(l.blockNumber) >= BigInt(f.fromBlock) && BigInt(l.blockNumber) <= BigInt(f.toBlock));
+        }
+        throw new Error('unexpected ' + method);
+      },
+    };
+    const { Sh } = site(new Map());
+    const got = await Sh.publishedEvent(r, D, { payableAt, toBlock: 100n, epoch: 3 }, head);
+    assert.equal(got && got.uri, 'ipfs://mine', `the root published in block ${pub}`);
+    assert.equal(got.block, pub);
+  }
+});

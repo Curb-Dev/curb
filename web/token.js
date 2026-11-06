@@ -75,7 +75,10 @@ const TOPIC = {
 // How far back the history is read, and in what windows. A launchpad's pages
 // are mostly about launches of the last few weeks; older ones are drawn from
 // this far back and say so.
-const MAX_LOOKBACK = 2_000_000;      // blocks: about 46 days at Base's 2 s
+// A launch whose creation is known is read from it where the history index
+// starts there (historyStart); MAX_LOOKBACK bounds what is read from the chain
+// alone, and the backwards search for a creation whose time is not known.
+const MAX_LOOKBACK = 2_000_000;      // blocks: about 4.6 days at Base's 0.2 s (46 at its 2 s, before 5 November 2026)
 const WINDOW = 50_000;
 const WINDOW_MIN = 500;
 const TIMESTAMPS_MAX = 300;          // distinct blocks timed for the chart
@@ -1266,16 +1269,18 @@ async function forkFloor() {
   return forkFloorRead;
 }
 
-/// The block the launch was created in, searched backwards from now in
+/// The block the launch was created in: found from its time where that is
+/// known (creationNear), at any age; otherwise searched backwards from now in
 /// windows that grow - a launch of today is found in the first - and null when
 /// it is older than MAX_LOOKBACK. The windows grow no wider than the endpoint
 /// was seen to take, and its refusals are sorted as getLogs sorts them.
 async function creationBlock(latest, v, headRead) {
   const factory = S().chainCfg.factory;
   if (!isAddr(factory)) return null;
-  const floor = Math.max(0, latest - MAX_LOOKBACK, await forkFloor());
-  const near = await creationNear(latest, floor, factory, v, headRead);
+  const fork = await forkFloor();
+  const near = await creationNear(latest, fork, factory, v, headRead);
   if (near !== null) return near;
+  const floor = Math.max(0, latest - MAX_LOOKBACK, fork);
   let end = latest;
   let size = withinCap(2000);
   let busy = 0;
@@ -1305,15 +1310,41 @@ async function creationBlock(latest, v, headRead) {
   return null;
 }
 
+/// THE FIRST BLOCK STAMPED `at` OR LATER in [lo, hi], whose stamps are loTs
+/// and hiTs: null when even hi's is earlier. Found from the blocks' own
+/// stamps (`tsOf` reads one), never from a block time - Base made a block
+/// every 2 s until 5 November 2026 (block 53,556,127) and every 0.2 s since.
+/// Each step reads the block where a steady pace between the two ends puts
+/// `at`, which is a handful of reads where the pace holds; and after a step
+/// that did not halve the range, the middle one, so a pace that changes costs
+/// at most about twice a bisection.
+async function firstBlockAt(at, lo, loTs, hi, hiTs, tsOf) {
+  if (!(hiTs >= at)) return null;
+  if (loTs >= at) return lo;
+  let halve = false;
+  while (hi - lo > 1) {
+    const width = hi - lo;
+    const paced = lo + Math.floor((at - loTs) / (hiTs - loTs) * width);
+    const mid = Math.min(hi - 1, Math.max(lo + 1, halve ? lo + Math.floor(width / 2) : paced));
+    const t = await tsOf(mid);
+    if (t >= at) { hi = mid; hiTs = t; } else { lo = mid; loTs = t; }
+    halve = !halve && (hi - lo) * 2 > width;
+  }
+  return hi;
+}
+
 /// THE CREATION BLOCK FROM THE LAUNCH'S OWN TIME, in a few reads: the
 /// registry records when it registered the launch (launchOf's launchedAt,
-/// word 11 of its record), and Base makes a block every 2 seconds, so the
-/// block is about (now - then) / 2 below the head. One window around that
-/// guess is asked; a guess that misses (a fork, whose blocks keep no such
-/// pace) gives null and the backwards search runs as before. $CURB's page,
-/// one day old, spent 39 windows of searching on it (17 October 2026).
-/// The time is the one app.js read from the same record (its view's
-/// launchedAt) where it has it, and the head the one scanHistory asked for.
+/// word 11 of its record), which is the creation block's own timestamp, so
+/// the block is one of those stamped that second - the first of them found
+/// from the blocks' stamps (firstBlockAt), no lower than the fork's first
+/// block on a fork, and one window of logs from there. The block used to be guessed at
+/// (now - then) / 2 below the head, a block every 2 s; at Base's 0.2 s the
+/// guess missed, and $CURB's page searched backwards through some 1,300
+/// windows before its trades (6 November 2026). A miss gives null and the
+/// backwards search runs. The time is the one app.js read from the same
+/// record (its view's launchedAt) where it has it, and the head the one
+/// scanHistory asked for.
 async function creationNear(latest, floor, factory, v, headRead) {
   let busyOut = null;
   try {
@@ -1327,18 +1358,15 @@ async function creationNear(latest, floor, factory, v, headRead) {
     const head = await (headRead || rpc("eth_getBlockByNumber", [hex(latest), false]));
     const now = head ? parseInt(head.timestamp, 16) : NaN;
     if (!(now >= at)) return null;
-    const guess = latest - Math.floor((now - at) / 2);
-    // A READ REFUSED NOW (a 429, a timeout) IS ASKED AGAIN WITH THE SAME
-    // WINDOW after a pause, LOG_TRIES times, as getLogs asks one - and then
-    // the error is the pass's (busyOut, below), not a reason to search
-    // somewhere else: the narrow window refused once used to send the page
-    // off to the backwards search, which asked for other blocks.
-    const created = async (start, end) => {
+    // A READ REFUSED NOW (a 429, a timeout) IS ASKED AGAIN AS IT WAS after a
+    // pause, LOG_TRIES times, as getLogs asks one - and then the error is the
+    // pass's (busyOut, below), not a reason to search somewhere else: a
+    // window refused once used to send the page off to the backwards search,
+    // which asked for other blocks.
+    const again = async (ask) => {
       for (let busy = 0; ;) {
         try {
-          const logs = await rpc("eth_getLogs", [{ address: factory, topics: [TOPIC.launchCreated, "0x" + pad(T.token)],
-            fromBlock: hex(start), toBlock: hex(end) }]);
-          return Array.isArray(logs) && logs.length ? parseInt(logs[0].blockNumber, 16) : null;
+          return await ask();
         } catch (e) {
           if (logKind(e) !== "busy") throw e;
           if (++busy > LOG_TRIES) { busyOut = e; throw e; }
@@ -1346,26 +1374,54 @@ async function creationNear(latest, floor, factory, v, headRead) {
         }
       }
     };
-    // THE GUESS AND TWO BLOCKS EITHER SIDE, FIRST: on Base the guess is the
-    // block - launchedAt is the creation block's own timestamp, and a block
-    // comes every 2 seconds exactly - and five blocks are a small read where
-    // the window below took Tenderly 0.4 s. A miss asks the window.
-    const s0 = Math.max(floor, guess - 2), e0 = Math.min(latest, guess + 2);
-    if (s0 <= e0) {
-      const b = await created(s0, e0);
-      if (b !== null) return b;
+    const tsOf = (n) => again(() => rpc("eth_getBlockByNumber", [hex(n), false])).then((b) => {
+      const t = b ? parseInt(b.timestamp, 16) : NaN;
+      if (!Number.isFinite(t)) throw new Error("block " + n + " has no timestamp");
+      return t;
+    });
+    // A RANGE THAT HOLDS THE LAUNCH'S SECOND, from the head back: a block a
+    // second at first, and twice as far each time the block read is still
+    // as late as the launch. The oldest block read is then no more than
+    // twice as far back as the launch, and an endpoint that keeps no old
+    // headers still answers - publicnode refuses Base's first blocks as
+    // archive reads, so a search from block 0 found nothing there.
+    let hi = latest, hiTs = now, lo, loTs;
+    for (let d = Math.max(1, now - at); ; d *= 2) {
+      lo = Math.max(floor, latest - d);
+      loTs = await tsOf(lo);
+      if (loTs < at || lo === floor) break;
+      hi = lo;
+      hiTs = loTs;
     }
-    // A WINDOW OF EXACTLY THE SPAN, the guess in its middle: guess +/- span/2
-    // is one block more, and a 1,000-block ceiling refused it.
-    const span = withinCap(1000);
-    const start = Math.max(floor, guess - Math.floor((span - 1) / 2));
-    const end = Math.min(latest, start + span - 1);
-    if (start > end) return null;
-    return await created(start, end);
+    const first = await firstBlockAt(at, lo, loTs, hi, hiTs, tsOf);
+    if (first === null) return null;
+    // FROM THE FIRST BLOCK OF THE SECOND: the launch is in one of that
+    // second's blocks, five at Base's 0.2 s. Ten blocks first, which an
+    // endpoint taking no more than ten still answers; then a window as wide
+    // as the endpoint takes, for a chain that puts more in a second.
+    const created = async (span) => {
+      const logs = await again(() => rpc("eth_getLogs", [{ address: factory, topics: [TOPIC.launchCreated, "0x" + pad(T.token)],
+        fromBlock: hex(first), toBlock: hex(Math.min(latest, first + span - 1)) }]));
+      return Array.isArray(logs) && logs.length ? parseInt(logs[0].blockNumber, 16) : null;
+    };
+    const near = await created(withinCap(10));
+    return near !== null || withinCap(1000) <= withinCap(10) ? near : await created(withinCap(1000));
   } catch (e) {
     if (busyOut) throw busyOut;
     return null;
   }
+}
+
+/// WHERE A FIRST PASS STARTS THE HISTORY, and whether that is the launch's
+/// own start: its creation block where that is no older than MAX_LOOKBACK
+/// (`floor`) or the history index starts there; otherwise `floor`, and the
+/// page says it counts from there. The creation is found by time at any age
+/// (creationNear), and a page with no index to start from - a link's
+/// endpoint, a file that could not be fetched - would read every block since
+/// it from the chain: for $CURB, over a million at Base's 0.2 s.
+function historyStart(born, floor, file) {
+  const whole = born !== null && (born >= floor || !!(file && file.from <= born));
+  return { from: whole ? born : floor, partial: !whole };
 }
 
 /// THE HISTORY INDEX: the launch's logs up to a recent block, as the keeper
@@ -1554,16 +1610,14 @@ async function scanHistory(figures) {
     }
     if (!T.hist) {
       const born = await creationBlock(latest, v, headRead);
-      const from = born !== null ? born : Math.max(0, latest - MAX_LOOKBACK, await forkFloor());
-      T.hist = { from, partial: born === null, fromDate: "", trades: [], transfers: [], creatorEarned: 0n,
+      const got = early && born !== null ? await early.file : null;
+      const { from, partial } = historyStart(born, Math.max(0, latest - MAX_LOOKBACK, await forkFloor()), got);
+      T.hist = { from, partial, fromDate: "", trades: [], transfers: [], creatorEarned: 0n,
         sweeps: 0, poolFees: 0, times: new Map(), poolId: "" };
       T.scannedTo = from - 1;
       T.index = undefined;
       T.indexUsed = false;
-      if (early) {
-        const got = born === null ? null : await early.file;
-        T.index = got && got.from <= from ? got : null;
-      }
+      if (early) T.index = !partial && got && got.from <= from ? got : null;
     }
     const h = T.hist;
     // THE CLOCK, AND THE LAUNCH'S BIRTH ONCE, together. The birth's time is

@@ -484,9 +484,31 @@ async function deployBlock(r, a, headNumber, lookback = 2_000_000) {
   }
 }
 
+/// THE LAST BLOCK IN [b, hi] STAMPED THE SAME SECOND AS b: steps that double
+/// until a later second is met, then bisection between the two
+/// (services/sharer indexer.ts lastBlockOfSecond).
+async function lastBlockOfSecond(r, b, hi) {
+  const tsOf = async (n) => parseInt((await r.rpc("eth_getBlockByNumber", [hex(n), false])).timestamp, 16);
+  const ts = await tsOf(b);
+  let good = b, bad = -1;
+  for (let step = 1; bad < 0; step *= 2) {
+    if (good >= hi) return hi;
+    const n = Math.min(hi, good + step);
+    if (await tsOf(n) === ts) good = n; else bad = n;
+  }
+  while (bad - good > 1) {
+    const mid = Math.floor((good + bad) / 2);
+    if (await tsOf(mid) === ts) good = mid; else bad = mid;
+  }
+  return good;
+}
+
 /// The RootPublished event of one root: it names the file's URI. The root was
 /// published VETO_WINDOW before its payableAt, so its block is found by time,
-/// and only that block's logs are asked for.
+/// and only the logs of that second's blocks are asked for. A SECOND HOLDS
+/// SEVERAL BLOCKS: Base has made one every 0.2 s since 5 November 2026 (block
+/// 53,556,127), and the two blocks after the second's first missed a root
+/// published in its fourth or fifth.
 async function publishedEvent(r, d, root, headNumber) {
   if (!root.payableAt && !root.epoch) return null;
   // payableAt of an active root is kept (only pending's flag is cleared), so
@@ -495,8 +517,9 @@ async function publishedEvent(r, d, root, headNumber) {
   const lo = Number(root.toBlock) + 1;
   if (!(at > 0) || lo > headNumber) return null;
   const b = await blockAtTime(r, at, lo, headNumber);
+  const end = await lastBlockOfSecond(r, b, headNumber);
   const logs = await r.rpc("eth_getLogs", [{ address: d, topics: [TOPIC.rootPublished, "0x" + padNum(root.epoch)],
-    fromBlock: hex(Math.max(lo, b - 2)), toBlock: hex(Math.min(headNumber, b + 2)) }]);
+    fromBlock: hex(Math.max(lo, b - 2)), toBlock: hex(Math.max(end, Math.min(headNumber, b + 2))) }]);
   if (!logs || !logs.length) return null;
   const l = logs[logs.length - 1];
   return { uri: decodeEventUri(l.data), block: parseInt(l.blockNumber, 16), tx: l.transactionHash };
