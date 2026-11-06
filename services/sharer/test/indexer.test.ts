@@ -99,6 +99,32 @@ test('findLaunchBlock bisects to the first block at or after launchedAt and need
   await assert.rejects(findLaunchBlock(r, R, T0, 999999n, 0n, 1000n), /no block up to 1000/);
 });
 
+test('findLaunchBlock finds a launch in any block of its second, on a chain making five blocks a second', async () => {
+  // BASE SINCE 5 NOVEMBER 2026: 2 s blocks to 400, then five to each second.
+  const ts = (b: bigint) => (b <= 400n ? 5000n + 2n * b : 5800n + (b - 400n) / 5n);
+  const R = A(0x7e91);
+  const reg = (c: MockChain, token: string, block: bigint) =>
+    c.addLog({ address: R, topics: [TOPICS.LaunchRegistered, topic(token), topic(A(1)), topic(A(2))], data: '0x', block, logIndex: 0n, txHash: keccak256(toHex(`${token}${block}`)) });
+  // 700 IS THE FIRST BLOCK OF ITS SECOND (700-704); EVERY ONE OF THEM, AND
+  // THE LAST BLOCK, WHICH ENDS THE RANGE INSIDE ITS SECOND.
+  for (const at of [700n, 701n, 703n, 704n, 1000n]) {
+    const c = new MockChain();
+    for (let b = 0n; b <= 1000n; b++) c.setBlock(b, ts(b));
+    reg(c, T0, at);
+    reg(c, A(0x70cf), at - 1n); // another token's launch just before
+    reg(c, T0, at + 5n); // and this token's name in the next second, which is not its launch
+    const r = new ChainReader(c.rpc());
+    assert.equal(await findLaunchBlock(r, R, T0, ts(at), 0n, 1000n), at, `the launch in block ${at}`);
+    assert.ok(c.count('eth_getBlockByNumber') <= 20, `${c.count('eth_getBlockByNumber')} headers for a launch in block ${at}`);
+  }
+  // TWO REGISTRATIONS OF THE TOKEN IN ONE SECOND ARE NO ANSWER.
+  const c = new MockChain();
+  for (let b = 0n; b <= 1000n; b++) c.setBlock(b, ts(b));
+  reg(c, T0, 701n);
+  reg(c, T0, 703n);
+  await assert.rejects(findLaunchBlock(new ChainReader(c.rpc()), R, T0, ts(701n), 0n, 1000n), /2 LaunchRegistered/);
+});
+
 test('replayTransfers refuses a Transfer-topic log that is not ERC-20 shaped', async () => {
   const c = new MockChain();
   c.addLog({ address: T0, topics: [TOPICS.Transfer, topic(A(0)), topic(A(1))], data: '0x' + w(5n), block: 2n, logIndex: 0n, txHash: '0x' + '1'.repeat(64) });

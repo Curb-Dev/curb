@@ -409,6 +409,26 @@ export async function paidBy(rpc: Rpc, distributor: string): Promise<HolderShari
   return { distributor: distributor.toLowerCase(), paidQuote, paidToken };
 }
 
+/** THE FIRST BLOCK STAMPED `ts` OR LATER, up to `hi` (stamped `hiTs`; `hi`
+ *  itself when even it is earlier), by bisection on the blocks' own
+ *  timestamps. A launch's history starts there. It was estimated from a
+ *  block every 2 s, and Base has made one every 0.2 s since 5 November 2026
+ *  (block 53,556,127): the estimate started a new launch's file up to ten
+ *  times too late, and a file is only ever read on from its end. */
+export async function firstBlockAt(rpc: Rpc, ts: bigint, hi: bigint, hiTs: bigint): Promise<bigint> {
+  if (hiTs < ts) return hi;
+  let a = 0n;
+  let b = hi;
+  while (a < b) {
+    const mid = (a + b) / 2n;
+    const blk = (await rpc.request({ method: 'eth_getBlockByNumber', params: ['0x' + mid.toString(16), false] })) as { timestamp?: string } | null;
+    if (!blk || typeof blk.timestamp !== 'string') throw new Error(`the endpoint has no block ${mid}`);
+    if (BigInt(blk.timestamp) >= ts) b = mid;
+    else a = mid + 1n;
+  }
+  return a;
+}
+
 export interface IndexDeps {
   rpc: Rpc;
   chainId: number;
@@ -458,12 +478,10 @@ export async function indexAll(d: IndexDeps): Promise<{ launches: number; writte
       const launchedAt = numAt(rec, 11);
       const path = `sharing/${d.chainId}/history/${token}.json`;
       const old = parseFile(await d.read(path), d.chainId, token, curve);
-      // FROM THE BLOCK AFTER THE FILE, or from a little before the launch:
-      // Base makes a block every 2 seconds, so its creation is about
-      // (now - launchedAt) / 2 below the safe block; nothing of a launch is
-      // older than its creation, so starting early costs nothing but a window.
-      const born = to - (toTs > launchedAt ? (toTs - launchedAt) / 2n : 0n) - 2_000n;
-      const from = old ? BigInt(old.to) + 1n : born < 0n ? 0n : born;
+      // FROM THE BLOCK AFTER THE FILE, or from the launch's first second:
+      // nothing of a launch is older than its creation, whose block is
+      // stamped launchedAt (firstBlockAt). Only a new file asks for it.
+      const from = old ? BigInt(old.to) + 1n : await firstBlockAt(d.rpc, launchedAt, to, toTs);
       // ONLY ONE THIS LAUNCH'S FILE IS AT: another curve's entry says nothing of it.
       const was = checked[token.toLowerCase()];
       if (was && was.curve !== curve.toLowerCase()) delete checked[token.toLowerCase()];

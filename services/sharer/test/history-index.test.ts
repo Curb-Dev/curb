@@ -30,16 +30,21 @@ const state = (status: number, curve = CURVE, pool: string[] = Array(5).fill(w(0
 const TOTAL_PAID0 = toFunctionSelector('totalPaid0()'), TOTAL_PAID1 = toFunctionSelector('totalPaid1()');
 
 /** A chain with one launch (or the ones given): launchedAt at block 1,000
- *  (2 s blocks from t=0), the safe head where the test puts it, and the logs
- *  it is given. `paid` is each holder distributor's totalPaid0 and totalPaid1. */
-function chain(o: { safe: number; logs: IndexLog[]; launches?: { token: string; curve: string; state?: string }[]; paid?: Record<string, [bigint, bigint]> }) {
+ *  (2 s blocks from t=0, or the clock `ts` gives each block), the safe head
+ *  where the test puts it, and the logs it is given. `paid` is each holder
+ *  distributor's totalPaid0 and totalPaid1. */
+function chain(o: { safe: number; logs: IndexLog[]; launches?: { token: string; curve: string; state?: string }[]; paid?: Record<string, [bigint, bigint]>; ts?: (n: number) => number; launchedAt?: number }) {
   const launches = o.launches ?? [{ token: TOKEN, curve: CURVE }];
   const calls: { method: string; params: any[] }[] = [];
+  const ts = o.ts ?? ((n: number) => n * 2);
   const rpc: Rpc = {
     label: 'a',
     async request({ method, params = [] }) {
       calls.push({ method, params: params as any[] });
-      if (method === 'eth_getBlockByNumber') return { number: hex(o.safe), timestamp: hex(o.safe * 2) };
+      if (method === 'eth_getBlockByNumber') {
+        const n = (params as any[])[0] === 'safe' ? o.safe : Number(BigInt((params as any[])[0]));
+        return n > o.safe ? null : { number: hex(n), timestamp: hex(ts(n)) };
+      }
       if (method === 'eth_call') {
         const { to, data } = (params as any[])[0];
         if (to === REGISTRY && data.startsWith('0x27cca59f')) return '0x' + w(BigInt(launches.length)); // launchCount
@@ -48,7 +53,7 @@ function chain(o: { safe: number; logs: IndexLog[]; launches?: { token: string; 
         if (paid && data === TOTAL_PAID0) return '0x' + w(paid[0]);
         if (paid && data === TOTAL_PAID1) return '0x' + w(paid[1]);
         const of = launches.find((l) => data.endsWith(w(l.token)));
-        if (to === REGISTRY) return '0x' + [w(of!.curve), w('0x01'), w('0x02'), w('0x03'), w(0n), w(0n), w(0n), w('0x04'), w(100n), w(50n), w('0x05'), w(2000n)].join(''); // launchOf: launchedAt t=2000 -> block 1000
+        if (to === REGISTRY) return '0x' + [w(of!.curve), w('0x01'), w('0x02'), w('0x03'), w(0n), w(0n), w(0n), w('0x04'), w(100n), w(50n), w('0x05'), w(BigInt(o.launchedAt ?? 2000))].join(''); // launchOf: launchedAt t=2000 -> block 1000
         if (to === LENS) return of!.state ?? state(1, of!.curve); // Selling
         if (to === QUOTE && data === DECIMALS) return '0x' + w(6n);
         throw new Error('unexpected call ' + to + ' ' + data.slice(0, 10));
@@ -148,6 +153,27 @@ test('the first run reads from before the launch to the safe block; the next onl
   assert.equal(r4.written, 1);
   assert.equal(s.file(PATH).to, far);
   assert.equal(s.file(PATH).curveLogs.length, 3);
+});
+
+test("a new launch's file starts at its first second, found from the blocks' own times, on a chain that went from 2 s blocks to five a second", async () => {
+  // 2 s BLOCKS TO 1,000 (t=2,000), THEN FIVE TO EACH SECOND, as Base from
+  // block 53,556,127. The launch is the fourth block of its second, and the
+  // run comes an hour after it: a block every 2 s put its start 13,000
+  // blocks late, past its first trades.
+  const ts = (n: number) => (n <= 1000 ? n * 2 : 2000 + Math.floor((n - 1000) / 5));
+  const launchBlock = 1000 + 5 * 40_000 + 3;
+  const launchedAt = ts(launchBlock);
+  const safe = launchBlock + 5 * 3600;
+  const logs = [log(CURVE, TOPIC.curveBuy, launchBlock, 4), log(TOKEN, TOPIC.transfer, launchBlock, 5), log(CURVE, TOPIC.curveBuy, launchBlock + 2, 0)];
+  const s = store();
+  const c = chain({ safe, logs, ts, launchedAt });
+  await indexAll({ rpc: c.rpc, chainId: 8453, registry: REGISTRY, lens: LENS, read: s.read, write: s.write, log: () => {} });
+  const f = s.file(PATH);
+  assert.equal(f.from, launchBlock - 3, 'the file starts at the first block of the launch\'s second');
+  assert.equal(f.curveLogs.length, 2, 'both trades of the first second are in the file');
+  assert.equal(f.transfers.length, 1);
+  const heads = c.calls.filter((x) => x.method === 'eth_getBlockByNumber').length;
+  assert.ok(heads <= 2 + Math.ceil(Math.log2(safe)), `${heads} headers to find a launch's first block`);
 });
 
 test("a file of another launch at the path is read again from the launch's start", async () => {

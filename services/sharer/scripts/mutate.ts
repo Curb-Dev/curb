@@ -36,6 +36,9 @@ const I = 'src/chain/indexer.ts';
 const P = 'src/epoch.ts';
 const ST = 'src/state.ts';
 const SS = 'src/state-store.ts';
+const H = 'scripts/index-history.ts';
+const WS = '../../web/sharing.js';
+const WT = '../../web/token.js';
 const off = (cond: string) => [cond, 'if (false)'] as const;
 
 export const MUTANTS: Mutant[] = [
@@ -232,6 +235,24 @@ export const MUTANTS: Mutant[] = [
   m('I15 launchedAt reachable', I, 'if ((await r.block(hi)).timestamp < launchedAt) throw', 'if (false) throw', 'findLaunchBlock'),
   m('I16 first block at or after', I, 'if ((await r.block(mid)).timestamp >= launchedAt) b = mid;', 'if ((await r.block(mid)).timestamp > launchedAt) b = mid;', 'findLaunchBlock', 'bisection'),
   m('I17 registry log confirms', I, 'if (logs.length !== 1) throw', 'if (false) throw', 'findLaunchBlock', 'bisection'),
+  // A SECOND HOLDS SEVERAL BLOCKS (Base, five since 5 November 2026)
+  m('I17a the whole second is read', I, '[TOPICS.LaunchRegistered, topic] }, a, z);', '[TOPICS.LaunchRegistered, topic] }, a, a);', 'five blocks a second'),
+  m('I17b the log names the block', I, 'return BigInt(logs[0].blockNumber);', 'return a;', 'five blocks a second'),
+  m('I17c doubling steps through the second', I, 'if ((await r.block(n)).timestamp === ts) good = n;', 'if (false) good = n;', 'five blocks a second'),
+  m("I17d bisection to the second's end", I, 'if ((await r.block(mid)).timestamp === ts) good = mid;', 'if (false) good = mid;', 'five blocks a second'),
+  m("H1 a new file starts at the launch's first second", H, ': await firstBlockAt(d.rpc, launchedAt, to, toTs);', ': to - (toTs > launchedAt ? (toTs - launchedAt) / 2n : 0n) - 2_000n;', 'went from 2 s blocks'),
+  m('H2 first block at or after', H, 'if (BigInt(blk.timestamp) >= ts) b = mid;', 'if (BigInt(blk.timestamp) > ts) b = mid;', 'went from 2 s blocks'),
+  m('W1 the site reads the root\'s whole second', WS, 'toBlock: hex(Math.max(end, Math.min(headNumber, b + 2))) }]);', 'toBlock: hex(Math.min(headNumber, b + 2)) }]);', 'fourth or fifth'),
+  m('W2 the site doubles through the second', WS, 'if (await tsOf(n) === ts) good = n; else bad = n;', 'bad = n;', 'fourth or fifth'),
+  m('W3 the site bisects to the second\'s end', WS, 'if (await tsOf(mid) === ts) good = mid; else bad = mid;', 'bad = mid;', 'fourth or fifth'),
+  m("T1 the page finds the first block at or after", WT, "if (t >= at) { hi = mid; hiTs = t; }", "if (t > at) { hi = mid; hiTs = t; }", "token page"),
+  m("T2 the page halves after a poor step", WT, "halve = !halve && (hi - lo) * 2 > width;", "halve = false;", "bounded number of reads"),
+  m("T3 the page asks ten blocks first", WT, "const near = await created(withinCap(10));", "const near = null;", "ten blocks"),
+  m("T4 the page reads the whole second", WT, "toBlock: hex(Math.min(latest, first + span - 1)) }]));", "toBlock: hex(first) }]));", "fourth block"),
+  m("T5 a recent launch is read whole", WT, "const whole = born !== null && (born >= floor || ", "const whole = born !== null && (", "historyStart"),
+  m("T6 an old launch is read whole from its index", WT, "|| !!(file && file.from <= born));", "|| false);", "historyStart"),
+  m("T7 the page starts near the head", WT, "for (let d = Math.max(1, now - at); ; d *= 2) {", "for (let d = Infinity; ; d *= 2) {", "keeps no old headers"),
+  m("T8 the page stops at the launch", WT, "if (loTs < at || lo === floor) break;", "if (lo === floor) break;", "keeps no old headers"),
   m('I18 ERC-20 shaped', I, "if (l.topics.length !== 3 || !/^0x[0-9a-fA-F]{64}$/.test(l.data)) throw", 'if (false) throw', 'ERC-20 shaped'),
   m('I19 an answer is a word', I, 'if (!ok || data.length < 66) return null;', 'if (!ok) return null;', 'probeAccounts'),
   m('I20 an answer is an address', I, '  if (v >> 160n) return null;\n', '', 'probeAccounts'),

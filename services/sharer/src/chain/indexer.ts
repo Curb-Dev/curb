@@ -180,10 +180,14 @@ export function launchExclusions(m: LaunchMeta, otherDistributors: Address[]): {
 
 // ------------------------------------------------------------- the launch block
 
-/** The block the launch was registered in: the first block whose timestamp
- *  is at or after `launchedAt` (the registry stamps block.timestamp), found by
- *  bisection in [lo, hi] and confirmed by the registry's LaunchRegistered log
- *  for this token in that block. */
+/** The block the launch was registered in. The registry stamps
+ *  block.timestamp, so it is one of the blocks that share the timestamp of
+ *  the first block at or after `launchedAt` - found by bisection in [lo, hi] -
+ *  and the registry's one LaunchRegistered log for this token among them
+ *  names it. SEVERAL BLOCKS SHARE A SECOND: Base made a block every 2 s until
+ *  5 November 2026 (block 53,556,127) and every 0.2 s since, five to a
+ *  timestamp, and the launch is the first of its second only one time in
+ *  five. Only that first block was asked once. */
 export async function findLaunchBlock(r: ChainReader, registry: Address, token: Address, launchedAt: bigint, lo: bigint, hi: bigint): Promise<bigint> {
   if ((await r.block(hi)).timestamp < launchedAt) throw new IndexerError(`no block up to ${hi} is as late as launchedAt ${launchedAt}`);
   let a = lo;
@@ -193,10 +197,32 @@ export async function findLaunchBlock(r: ChainReader, registry: Address, token: 
     if ((await r.block(mid)).timestamp >= launchedAt) b = mid;
     else a = mid + 1n;
   }
+  const z = await lastBlockOfSecond(r, a, hi);
   const topic = '0x' + token.slice(2).toLowerCase().padStart(64, '0');
-  const logs = await r.logs({ address: registry, topics: [TOPICS.LaunchRegistered, topic] }, a, a);
-  if (logs.length !== 1) throw new IndexerError(`block ${a} (launchedAt ${launchedAt}) has ${logs.length} LaunchRegistered logs for ${token}`);
-  return a;
+  const logs = await r.logs({ address: registry, topics: [TOPICS.LaunchRegistered, topic] }, a, z);
+  if (logs.length !== 1) throw new IndexerError(`blocks ${a}-${z} (launchedAt ${launchedAt}) have ${logs.length} LaunchRegistered logs for ${token}`);
+  return BigInt(logs[0].blockNumber);
+}
+
+/** The last block in [a, hi] with block a's timestamp: steps that double
+ *  until a later second is met, then bisection between the two - a few
+ *  headers for Base's five blocks a second, however many a chain makes. */
+export async function lastBlockOfSecond(r: ChainReader, a: bigint, hi: bigint): Promise<bigint> {
+  const ts = (await r.block(a)).timestamp;
+  let good = a;
+  let bad = -1n;
+  for (let step = 1n; bad < 0n; step *= 2n) {
+    if (good >= hi) return hi;
+    const n = good + step > hi ? hi : good + step;
+    if ((await r.block(n)).timestamp === ts) good = n;
+    else bad = n;
+  }
+  while (bad - good > 1n) {
+    const mid = (good + bad) / 2n;
+    if ((await r.block(mid)).timestamp === ts) good = mid;
+    else bad = mid;
+  }
+  return good;
 }
 
 // ------------------------------------------------------------- transfers
