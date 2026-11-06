@@ -1678,13 +1678,97 @@ test("A26 Buy with it fills what is held to the last unit, on an 18-decimal asse
   await p.close();
 });
 
-// ================================================================== A27 only the buy has Aerodrome
+// ================================================================== A27 not offered in the United States
+/// THE VISITOR'S COUNTRY, on the one request that asks it (region.spec.js).
+const fromCountry = (q, code) => q.route(/\/region(\?.*)?$/, (route) =>
+  route.continue({ headers: { ...route.request().headers(), "x-vercel-ip-country": code } }));
+const REGION_REFUSED = "Trading and launching aren't available in the United States. Nothing was sent.";
+/// THE CARD PRESSED THOUGH IT IS HELD: it and the long page's button it presses
+/// enabled and clicked in one tick, before the hold disables them again.
+const forceCard = (q) => q.evaluate(() => {
+  const b = document.getElementById("tvAct");
+  b.dataset.act = "trade";
+  for (const id of ["tvAct", "curveAct"]) document.getElementById(id).disabled = false;
+  document.getElementById("msg").textContent = "";
+  b.click();
+});
+test("A27 from the United States no step of the Aerodrome route is sent: not step 1, not Buy with it, not Sell it back, which is drawn disabled", async () => {
+  test.setTimeout(480_000);
+  const token = await spaceLaunch();
+  const buyer = await freshAccount("region held");
+  const R = routed();
+  R.uni = scaleOut(95);
+  /// The page, from the United States: every send it is asked for kept and declined.
+  const armed = async (x) => {
+    await x.evaluate(() => {
+      window.__tried = [];
+      window.ethereum.cfg.onSend = (tx) => window.__tried.push(tx);
+      window.ethereum.cfg.sendError = Object.assign(new Error("User rejected the request."), { code: 4001 });
+    });
+    await expect(x.locator("#tvActNote")).toHaveText("Trading and launching aren't available in the United States.", { timeout: 20_000 });
+    return x;
+  };
+  // STEP 1, from an account holding nothing a swap left: an ETH buy the card
+  // prices on Aerodrome, with nothing else in its way.
+  const first = await armed(await routedToken(token, await freshAccount("region step one"), R,
+    { before: (y) => fromCountry(y, "US") }));
+  await ethBuy(first, "0.1", AERO_LINE);
+  await expect(first.locator("#tvAct")).toBeDisabled();
+  await forceCard(first);
+  await expect(first.locator("#msg")).toContainText(REGION_REFUSED, { timeout: 30_000 });
+  await expect.poll(() => first.evaluate(() => window.CurbApp.state.busy), { timeout: 60_000 }).toBe(false);
+  expect(await first.evaluate(() => window.__tried.length), "step 1 was sent").toBe(0);
+  await first.close();
+
+  // A SWAP LEFT HELD, made from elsewhere; then the same browser, whose record
+  // it is, reloaded from the United States.
+  const q = await routedToken(token, buyer, R);
+  const held = await heldBySwap(q, buyer);
+  await fromCountry(q, "US");
+  await q.reload();
+  await expect(q.locator("#tokenView")).toBeVisible({ timeout: 15_000 });
+  await expect(q.locator("#tvStatus")).not.toHaveText("—", { timeout: 30_000 });
+  await q.evaluate(() => window.CurbApp.connect());
+  await armed(q);
+  const tried = () => q.evaluate(() => window.__tried.length);
+  const idle = () => expect.poll(() => q.evaluate(() => window.CurbApp.state.busy), { timeout: 60_000 }).toBe(false);
+  await expect(q.locator("#tvHeld")).toContainText("Sell it back", { timeout: 30_000 });
+  // SELL IT BACK is drawn disabled - and drawn so again when the answer lands
+  // after the row (app.js redraws it on curb:region); Buy with it, which only
+  // fills the card, is not.
+  const sellBack = q.locator("#tvHeld button[data-held-sell]");
+  await expect(sellBack).toBeDisabled();
+  await expect(q.locator("#tvHeld button[data-held-buy]")).toBeEnabled();
+  await q.evaluate(() => {
+    document.querySelector("#tvHeld button[data-held-sell]").disabled = false;
+    document.dispatchEvent(new CustomEvent("curb:region", { detail: { state: "closed" } }));
+  });
+  await expect(sellBack).toBeDisabled({ timeout: 10_000 });
+  // PRESSED THOUGH IT IS HELD, it sends nothing.
+  await clearMsg(q);
+  await q.evaluate(() => { const b = document.querySelector("#tvHeld button[data-held-sell]"); b.disabled = false; b.click(); });
+  await expect(q.locator("#msg")).toContainText(REGION_REFUSED, { timeout: 30_000 });
+  await idle();
+  expect(await tried(), "the sale back was sent").toBe(0);
+  // BUY WITH IT: the card fills with what is held, and its press sends nothing.
+  await q.locator("#tvHeld button[data-held-buy]").click();
+  await expect(q.locator("#tvPayAsset")).toHaveText("SPCXc");
+  await expect(q.locator("#tvGet")).not.toHaveText("0", { timeout: 30_000 });
+  await forceCard(q);
+  await expect(q.locator("#msg")).toContainText(REGION_REFUSED, { timeout: 30_000 });
+  await idle();
+  expect(await tried(), "the buy with what is held was sent").toBe(0);
+  expect(await balanceOf(SPCXC, buyer), "what the swap left held moved").toBe(held);
+  await q.close();
+});
+
+// ================================================================== A28 only the buy has Aerodrome
 // MSTRc, LISTED ON 29 OCTOBER 2026 WITH ITS MARKET ON AERODROME: its Uniswap v3
 // pools hold cents, and nothing but the curve buy has an Aerodrome leg - a sale
 // for ETH goes through the CURB router's Uniswap path alone (routerQuote). The
 // create form says so beside the threshold, and the card refuses the sale in
 // words before the wallet is asked.
-test("A27 MSTRc: the create form says only the buy has Aerodrome, an ETH buy takes it, and an ETH sale is refused in words with nothing sent", async () => {
+test("A28 MSTRc: the create form says only the buy has Aerodrome, an ETH buy takes it, and an ETH sale is refused in words with nothing sent", async () => {
   test.setTimeout(300_000);
   const factory = await factoryFor(TWELVE.MSTRc);
   expect(factory, "no factory prices in MSTRc").not.toBeNull();

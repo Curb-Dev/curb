@@ -9,7 +9,8 @@ a trading tax of 1% to 5%; the platform takes a share of it (0.50% at deployment
 or gives it to the launch's holders, for good.
 
 > **Note:** Nothing here is financial advice. A launch token can lose all of its value. Read the
-> [terms](/terms) before you launch or trade.
+> [terms](/terms) before you launch or trade. This site does not offer launching or trading to visitors in the
+> United States (see [What CURB can and cannot do](#what-curb-can-and-cannot-do)).
 
 ---
 
@@ -80,8 +81,8 @@ back in the same transaction. When you pay with ETH, it comes back as ETH on an 
 on other pairs.
 
 **Waiting.** If the move into the pool does not complete by itself, the launch shows as Waiting. It cannot be
-traded until someone presses **Complete the move** on its page. Anyone can; it costs only gas. On Launches, a
-waiting launch's card has a **Graduate it** button that goes straight there.
+traded until someone presses **Complete the move** on its page. The contract lets anyone do it; it costs only
+gas. On Launches, a waiting launch's card has a **Graduate it** button that goes straight there.
 
 ---
 
@@ -299,6 +300,12 @@ up a contract's owner powers for good.
 **What the site can do:** hide a launch or a paired asset from its own pages. Trading, claims and payouts on
 chain go on as before, and a hidden launch's own page still opens.
 
+**What the site does not offer:** launching, trading or completing a launch's move to visitors in the United
+States and its territories. For them every page says so under the bar, and the launch form and the swap box send
+nothing; reading every page, connecting a wallet, claims and holder sharing work as anywhere else. The site goes
+by the country its host reads from the visitor's connection, and where it reads none, it does not send those
+either. This is the site's choice only: the contracts on Base are open to anyone, and nothing on chain changes.
+
 **One limit of the pool:** in a graduated pool, a holder who trades through a range position of their own pays no
 tax on that side (see [Fees](#fees)).
 
@@ -354,7 +361,8 @@ The message at the top of the screen says why. The usual reasons:
 - a Uniswap pool on the route cannot take the whole amount;
 - the price or route changed between the quote and the press;
 - the issuer of a tokenized stock has restricted your address;
-- your balance is too small.
+- your balance is too small;
+- you are visiting from the United States, where the site does not offer trading.
 
 ### Why did my wallet ask me to confirm twice?
 

@@ -374,6 +374,12 @@ async function complete() {
 
   const done = (kind, html) => { setBusy(false); $("complete").disabled = !account; show(kind, html); };
 
+  // NOT OFFERED IN THE UNITED STATES (region.js): asked once the provider is
+  // pinned and before it is asked anything. Without region.js nothing is sent.
+  const region = window.CurbRegion ? await window.CurbRegion.refusal()
+    : "This page couldn't check where you're visiting from, so nothing was sent. Try again in a moment.";
+  if (region) return done("err", escapeHtml(region));
+
   // The lock's name needs a chain, so this one read happens before it. Nothing
   // is decided on it - every check that matters is repeated inside the lock.
   let lockChain;
@@ -731,6 +737,8 @@ $("connect").onclick = async () => {
 };
 $("refresh").onclick = () => refresh();
 $("complete").onclick = complete;
+// HELD, WITH THE REASON BESIDE IT, FOR A VISITOR IN THE UNITED STATES (region.js).
+if (window.CurbRegion) window.CurbRegion.hold($("complete"), true);
 
 for (const id of ["lens", "token", "rpc"]) {
   $(id).addEventListener("change", () => {

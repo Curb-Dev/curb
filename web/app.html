@@ -38,6 +38,9 @@
 <!-- THE DEPLOYMENT AND THE INCIDENT SWITCHES, before any script reads them
      (topbar.js, app.js). -->
 <script src="/config.js"></script>
+<!-- WHERE THE VISITOR IS, asked as the page loads: trading and launching are
+     not offered in the United States (region.js). -->
+<script src="/region.js"></script>
 <script src="/multicall.js"></script>
 <!-- FROM THE SITE'S ROOT, NOT RELATIVE: this file is also served at
      /token/0x..., where the browser's preloader fetches what it sees
@@ -715,7 +718,7 @@
       <p class="note" id="owedNote"></p>
     </div>
     <p class="note">
-      <strong>Anyone can create a launch.</strong> There is no owner and no allowlist. The creator - the wallet
+      <strong>The contract lets anyone create a launch.</strong> There is no owner and no allowlist. The creator - the wallet
       named in the form, or whoever sends the transaction if none is - receives that launch's creator fees and
       its locked LP position.
     </p>
@@ -1009,7 +1012,7 @@
 
     <div id="waitBox" hidden style="margin-top:28px; border-top:1px solid var(--line); padding-top:28px">
       <h2>Complete the move into the pool</h2>
-            <p class="note">Trading is shut until this is sent. Anyone can send it.</p>
+            <p class="note">Trading is shut until this is sent. The contract lets anyone send it.</p>
       <div style="margin-top:28px"><button id="complete">Complete the move</button></div>
       <!-- SHOWN ONLY WHEN COMPLETING WOULD REVERT. The usual cause is an issuer
            blocklist on the fee escrow; Graduator.rescueCurveFees is the exit,

@@ -28,3 +28,14 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+# WHERE THE VISITOR IS (web/region.js): an answer that depends on who asks is
+# never kept, by a browser or by a cache between - the path asked and the
+# three files it is answered from. vercel.json sends the same on the same four.
+/region
+  Cache-Control: no-store
+/region.json
+  Cache-Control: no-store
+/region-us.json
+  Cache-Control: no-store
+/region-unknown.json
+  Cache-Control: no-store

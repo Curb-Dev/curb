@@ -46,6 +46,14 @@
 //                    site is the domain allowlist on Reown's dashboard, which must
 //                    be set before the id goes in (an empty list allows every site).
 //                    Read the licence first: web/vendor/walletconnect/LICENSE.md.
+//   regionHosts      the hosts that answer /region by the visitor's country
+//                    (web/vercel.json): every name the production deployment is
+//                    public at, its .vercel.app alias included. Trading and
+//                    launching are not offered to visitors in the United States
+//                    (web/region.js): on these hosts a send region.js holds is
+//                    refused when the answer cannot be read or places the visitor
+//                    in no country; on any other host such an answer holds nothing
+//                    (an IPFS gateway or a plain local server has no /region to give).
 //
 // ONCE lens IS SET, NOTHING IS SENT ON ANY CHAIN BUT chainId, AND THE WALLET IS
 // OFFERED A SWITCH TO chainId ONLY (topbar.js chainRefusal and switchChain,
@@ -107,4 +115,5 @@ window.CURB_SITE = {
   hiddenLaunches: [],
   // Reown project "Curb", domain allowlist https://curbfun.xyz (22 October 2026).
   walletConnectProjectId: "787903628162d134681e13e3518a017d",
+  regionHosts: ["curbfun.xyz", "www.curbfun.xyz", "curb-web-eight.vercel.app"],
 };

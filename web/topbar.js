@@ -277,6 +277,23 @@ host.append(el("div", { class: "cbInner" }, [brand, nav, actions]));
 // nothing in it is ever markup.
 if (SITE.banner) host.append(el("div", { class: "cbBanner", id: "cbBanner", role: "status", text: SITE.banner }));
 
+// NOT OFFERED IN THE UNITED STATES (region.js, which every page with the bar
+// loads after config.js): said on one line under the bar, on every page, once
+// the host's answer places the visitor there - before any link into the
+// launch form or a token's page is followed. The held buttons say it again
+// beside themselves, and refuse.
+const regionLine = el("div", { class: "cbBanner", id: "cbRegion", role: "status", hidden: true });
+host.append(regionLine);
+if (window.CurbRegion) {
+  const sayRegion = () => {
+    const closed = window.CurbRegion.closed();
+    regionLine.hidden = !closed;
+    regionLine.textContent = closed ? window.CurbRegion.WORDS : "";
+  };
+  sayRegion();
+  document.addEventListener("curb:region", sayRegion);
+}
+
 // THE ENDPOINT A PAGE READS, SAID WHENEVER IT IS NOT THE SITE'S OWN (config.js
 // rpc). A link's ?rpc=, or a pair the person saved, decides every number a page
 // shows, and an endpoint can answer anything it likes while the address bar

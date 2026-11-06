@@ -855,6 +855,15 @@ function drawAction(v, unpriced, r) {
   const st = S();
   note.textContent = "";
   if (!v) { b.disabled = true; b.textContent = "Reading this launch…"; return; }
+  // NOT OFFERED IN THE UNITED STATES (region.js): the card still reads and
+  // quotes, and says beside its button why the button does nothing.
+  if (window.CurbRegion && window.CurbRegion.closed()) {
+    b.disabled = true;
+    delete b.dataset.act;
+    b.textContent = v.status === 2 ? "Complete the move" : (T.mode === "buy" ? "Buy $" : "Sell $") + tokenSym();
+    note.textContent = window.CurbRegion.WORDS;
+    return;
+  }
   if (st.busy) { b.disabled = true; b.textContent = "Working…"; return; }
   if (!st.account) { b.disabled = false; b.textContent = "Connect wallet"; b.dataset.act = "connect"; return; }
   if (v.status === 2) {
@@ -2064,6 +2073,10 @@ function start() {
   document.addEventListener("curb:drawn", redraw);
   document.addEventListener("curb:actionDone", actionDone);
   document.addEventListener("curb:refreshed", () => { afterAction(); redraw(); });
+  // FOR A VISITOR IN THE UNITED STATES the card's button stays held, whatever
+  // enables it, and the card says why once the answer is in (region.js).
+  if (window.CurbRegion) window.CurbRegion.hold($("tvAct"), false);
+  document.addEventListener("curb:region", (e) => { if (e.detail && e.detail.state === "closed") requote(); });
   if (window.CurbBar) window.CurbBar.onAccount(() => redraw());
   // A LIGHT HEARTBEAT: the price and the trade list move while the page is
   // open, and nothing else would redraw them.

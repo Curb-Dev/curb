@@ -188,6 +188,88 @@ HOLDER SHARING - web/sharing.js, web/sharing-token.js, /sharing
   that calculator, publishes them with the deployment's publisher key, and
   serves their files to the page.
 
+NOT OFFERED IN THE UNITED STATES - web/region.js, /region
+  CURB entered Base's Stocks Maxxing competition (base.org/stocksmaxxing),
+  which leaves out projects that enable trading for U.S. users. So the site
+  does not offer trading or launching to visitors in the United States and
+  its territories (US, PR, GU, VI, AS, MP, UM). The contracts are unchanged
+  and open to anyone on Base; this is what the site offers, and docs.md and
+  terms.html say so.
+  HELD for such a visitor: creating a launch (with or without a dev buy), curve
+  buys and sells, pool swaps, every step of the ETH routes - the CURB router's,
+  the UniversalRouter two-step's, Aerodrome's, and Sell it back - completing a
+  waiting launch's move (app.html and launch.html), and the approvals, wraps
+  and unwraps sent inside those. OPEN: every page, connecting, claims, holder
+  sharing, Revoke, Unwrap to ETH, the migrate kit, the docs.
+  THE HOST ANSWERS, THE PAGES STAY STATIC. /region is no file: the host
+  rewrites it by the visitor's country - Vercel with `has` and `missing`
+  conditions on the x-vercel-ip-country header it adds (vercel.json: the codes
+  to region-us.json, {"trading": false}; any other code to region.json,
+  {"trading": true}; no header at all to region-unknown.json, {"trading":
+  null}; the three conditions exclude each other, so their order does not
+  matter), Netlify with Country= (_redirects; it has no rule for an absent
+  country, so a visitor it places nowhere gets region.json). All four paths are
+  sent with Cache-Control: no-store (vercel.json, _headers). web/e2e/serve.js
+  answers as Vercel does from the request's x-vercel-ip-country, which the
+  browser tests set themselves.
+  ONE GATE IN THE CLIENT. region.js asks /region as each page with the bar
+  loads, and the bar says the sentence below on one line under itself
+  (topbar.js #cbRegion) once the answer is the United States. Each held
+  action asks CurbRegion.refusal() first, before the wallet is
+  asked anything - app.js regionGate in createLaunch, curveAction, poolAction,
+  sellHeldBack and completeGraduation, and launch.js complete() - and every
+  send those make comes after it. Up front, the held buttons are disabled and
+  kept so (CurbRegion.hold), with "Trading and launching aren't available in
+  the United States." beside them: the create form (and under its heading,
+  CurbRegion.say), the swap card (token.js drawAction), the long page's three
+  panels and launch.html's button. The held row's Sell it back is drawn
+  disabled (app.js heldButtons); its Buy with it only fills the card.
+  FAILS CLOSED ON THE SITE'S OWN HOSTS. On a host config.js lists in
+  regionHosts (curbfun.xyz, www.curbfun.xyz and the production deployment's
+  curb-web-eight.vercel.app, each public, each reading through the site's own
+  endpoint), an answer that cannot be read refuses each held send with a
+  try-again, and region-unknown.json refuses it with "This site couldn't tell
+  which country you're visiting from"; a press asks again first. A page
+  without region.js sends nothing it would hold.
+  LIMITS, SAID PLAINLY:
+    - Off the hosts in regionHosts, an answer that cannot be read, or places
+      the visitor nowhere, holds nothing. An IPFS gateway and a plain static
+      server have no /region at all; Cloudflare Pages ignores the Country=
+      line (its _redirects reads no country) and answers region.json to
+      everyone; Netlify answers region.json to a visitor it places nowhere.
+      Only a United States answer holds anything there.
+    - A new public name for the production deployment goes into regionHosts
+      the day it is added, or an unread answer there holds nothing.
+    - The country is the one the host reads from the visitor's connection. A
+      VPN or a proxy elsewhere reads as elsewhere.
+    - The contracts take a transaction from anyone, from any interface.
+  VERCEL'S DOCUMENTATION, read 5 November 2026: rewrites take `has` and
+  `missing` conditions of type header, and a value object with `inc` (one of
+  a list) - vercel.com/docs/project-configuration/vercel-json#rewrites, whose
+  own example rewrites by x-vercel-ip-country; a rewrite's source must not be a
+  file, because the filesystem is checked first (same page) - hence /region
+  with no file of that name; x-vercel-ip-country is the ISO 3166-1 alpha-2 code
+  of the request's public IP (vercel.com/docs/headers/request-headers); `has`
+  does not work under `vercel dev`, only when deployed. The CDN's cache key
+  is the request URL with the host and deployment
+  (vercel.com/docs/caching/cdn-cache/purge), and static files are always
+  cached; the page does not say whether a rewritten static file is keyed by
+  the address asked or the file served. Vercel's own country example (a
+  rewrite to another path, recommended there for country-specific content)
+  only works if it is the file served; vercel.com/docs/routing-middleware
+  recommends exactly these `has` rules over middleware, which it says runs
+  before the cache. AFTER EACH DEPLOY, check it: ask /region from a United States
+  address and from one elsewhere, a few times each, and compare the answers
+  (and x-vercel-cache). If the two ever cross, the fallback is Routing
+  Middleware (a middleware.js in web/ that answers /region itself, which runs
+  before the cache), at the cost of one invocation per page load.
+  web/e2e/region.spec.js tests it: the hosts' parity, the no-store in both
+  hosts' files, region.js on each listed host (a trailing dot included) and
+  off them, every page with the bar saying it, each held action sending
+  nothing for a US visitor while a visitor elsewhere reaches the wallet,
+  claims still open, and the fail-closed answers on app.html and launch.html;
+  aero.spec.js A27 the Aerodrome route's steps and the held row.
+
 THE WALLET STUB NOW SENDS FOR REAL
   web/wallet-stub.js gained `forward: true`: eth_sendTransaction and the receipt
   call go straight to the node, which holds the key and signs. A hash coming

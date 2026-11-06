@@ -27,6 +27,16 @@
 # The keeper's epoch files, served from the data repository (RUNBOOK 4.3). The
 # chain number comes first, so /sharing itself never matches.
 /sharing/:chain/*  https://raw.githubusercontent.com/Curb-Dev/curb-sharing-data/main/sharing/:chain/:splat  200
+# WHERE THE VISITOR IS (web/region.js): /region is region-us.json for the United
+# States and its territories, region.json for anywhere else. Netlify reads the
+# country from the visitor's address (Country=, ISO 3166-1 codes, no spaces);
+# vercel.json says the same with Vercel's x-vercel-ip-country header. The first
+# rule that matches is the one served. A visitor Netlify places in no country
+# gets region.json: no line here can match an absent country, which vercel.json
+# answers with region-unknown.json. Cloudflare Pages reads no Country= and
+# ignores the first line, so there everyone gets region.json.
+/region  /region-us.json  200  Country=us,pr,gu,vi,as,mp,um
+/region  /region.json  200
 # THE TEST PAGES ARE NEVER SERVED. They take ?rpc= and talk to a wallet, and they
 # sit in web/ beside the site because the browser tests serve web/ whole. Vercel
 # never uploads them (web/.vercelignore); Netlify uploads the folder as it is, so
