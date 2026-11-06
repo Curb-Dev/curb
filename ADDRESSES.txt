@@ -344,6 +344,60 @@ PER QUOTE ASSET - ONE STACK EACH
   its record, deployments/base-mainnet/asset-<label>.json, named under it,
   and the Safe's addLauncher transaction and block.
 
+  THE THREE OF 6 NOVEMBER 2026, MSTRc, SNDKc AND TSLAc, in
+  DeployCurb.quoteAssets() order: one script/DeployAssetStack.s.sol run each
+  (DEPLOY.txt, ADDING A QUOTE ASSET AFTER LAUNCH, steps 2 and 3), from commit
+  9e26e526e0cdb26bf2fbac368296b36eb54bbf07, sent by the deployer above,
+  nonces 83 to 94, four CREATEs a stack, every receipt status 1. Each line
+  read back off its factory as above, and equal to the record; each record is
+  byte for byte the run's broadcast file. The dollar line is the asset
+  preflight's, at the Chainlink answer it read (the feed's answer at the block
+  before the stack's first transaction). The registry admits none of the
+  three until the Safe's call (DEPLOY.txt step 6), and launcherCount() stays
+  14 until then.
+
+  MSTRc   quote 0xb2000000000000000000004884b426556b92883d   phantom 3090000000   threshold 8370000000
+    CurbLaunchFactory   0x1F4C53c4a053957771D6105Ae89836e187352920
+    FeeEscrow           0x5a01294Be52C1C924CD7Ae95933059A1e0617E00
+    FeePolicy           0x9199CfF338bFE352A2c5e94B06fB7d0A74BcB204
+    PonsV2BuybackVault  0xde63ADf90086944728D302c3e909791989b93635
+    record              deployments/base-mainnet/asset-MSTRc.json
+    blocks              54057637 to 54057675, 2026-11-06 21:51:43 to 21:51:50 UTC
+    txs                 FeeEscrow           0xd0eec6cf43f23f78be2c1cf55c5e475b45c355785324d07b74547867578b040c
+                        FeePolicy           0x5888f34172bd68dcfe0124c7d4c416eb540145dcf13f3bf3307d8b262d654e17
+                        PonsV2BuybackVault  0x76ae5dbfa1436d8c35c463db4710e2c3f11486116cf27ec4c431de37355b607c
+                        CurbLaunchFactory   0xf4648e43e8102221e854c9357eff1091895017139d3a317405a5d90dcb2da5b3
+    priced at           Coinbase MSTR $128.815: starts at $3,980, graduates at $54,749
+    Safe addLauncher    not yet. data 0x3c4e094c0000000000000000000000001f4c53c4a053957771d6105ae89836e187352920
+
+  SNDKc   quote 0xb200000000000000000000397293Cb8cda9a10c5   phantom 494000000   threshold 1340000000
+    CurbLaunchFactory   0xA621783ADb6BD00b434389B830ca4ba9435F4920
+    FeeEscrow           0x323e4E77e6Fa034C7Db91faB717f69D24010aca5
+    FeePolicy           0x05B5Aea7DC71DeFACfBCBb3b6494E01099EBB132
+    PonsV2BuybackVault  0xE3e998430cB8675910265e0587E9306A4C4Ba32b
+    record              deployments/base-mainnet/asset-SNDKc.json
+    blocks              54059558 to 54059578, 2026-11-06 21:58:07 to 21:58:11 UTC
+    txs                 FeeEscrow           0xa4269a1c4e609ef88ea08733e4858ea60aeb86df4da4b18497a130be39c33ea1
+                        FeePolicy           0xa521d5593979b33e4c84c2b9c81a5f30082871364c8dcc97d3a4f8497f741ab9
+                        PonsV2BuybackVault  0xe21540b7a5a8c768a75933b9d38da49894213b67a28be23064f97cd870230e12
+                        CurbLaunchFactory   0xee13e26425427ffaf9846e2ef2a566ed80bbdb28d6c5e65f6e0353c4a3e19603
+    priced at           Coinbase SNDK $836.949: starts at $4,135, graduates at $56,986
+    Safe addLauncher    not yet. data 0x3c4e094c000000000000000000000000a621783adb6bd00b434389b830ca4ba9435f4920
+
+  TSLAc   quote 0xb2000000000000000000001e800a7f5189430cD0   phantom 1160000000   threshold 3150000000
+    CurbLaunchFactory   0x7187630659d1CbE88c936748222fBc0e724D8686
+    FeeEscrow           0x3E3C48b79054B08eB8127B8F8D72e5f8Af09cA5F
+    FeePolicy           0x9b1d39cC29848E846c916Adf09009EFdCdAf40bB
+    PonsV2BuybackVault  0x8a13bD061f958cE236f8Ddc082e4779Ec04dABf4
+    record              deployments/base-mainnet/asset-TSLAc.json
+    blocks              54060865 to 54060904, 2026-11-06 22:02:28 to 22:02:36 UTC
+    txs                 FeeEscrow           0x26f538223a45feb8d231ace1d5648f637e9d8036f093c1d627cf517f99d2bb70
+                        FeePolicy           0x34f9a1b175c802683f1b510c5cb03478be15a8fe23f2fcde35690a774b10d231
+                        PonsV2BuybackVault  0xbc512d1d668cd55b3ee9b899ef07855968730ef71f3816aa57e91c29ff338cd2
+                        CurbLaunchFactory   0x7aea55d8680b5c755f14c8e0689e487f529a82374dc2706f54a34b54e8b420de
+    priced at           Coinbase TSLA $359.09: starts at $4,165, graduates at $57,504
+    Safe addLauncher    not yet. data 0x3c4e094c0000000000000000000000007187630659d1cbe88c936748222fbc0e724d8686
+
 
 ================================================================================
 EXPLORER VERIFICATION
@@ -372,6 +426,15 @@ EXPLORER VERIFICATION
       Three symbols used to be named here; the list is fourteen now and naming
       them twice is how the two fall out of step.
       All 56, exact (14 of each kind).
+  [x] the three stacks of 6 November 2026, MSTRc, SNDKc and TSLAc: all 12,
+      exact (Sourcify's contract API for chain 8453, read back the same
+      night: match, creationMatch and runtimeMatch all exact_match, solc
+      0.8.30). The factories, escrows and policies were exact matches already
+      when first read, verified within a minute of their creation. The three
+      vaults were partial matches Sourcify held from another submission
+      (V2BuybackVault, solc 0.8.35); forge verify-contract --verifier sourcify
+      --skip-is-verified-check from 9e26e526 replaced them with exact ones,
+      as on 16 October. Basescan and Blockscout not read for these.
   ONCE THE FIRST LAUNCH GRADUATES (DEPLOY.txt, IMMEDIATELY AFTER, 4) - one of
   each per-launch contract, so the explorer matches every later copy:
   [x] CurbLaunchToken ($CURB's, exact)
@@ -509,7 +572,9 @@ WHAT TO CHECK ONCE, ON CHAIN, BEFORE ANYONE LAUNCHES
     bash script/b20/size-gate.sh --deployed <rpc> <address> FeeEscrow
     bash script/b20/size-gate.sh --deployed <rpc> <address> FeePolicy
     bash script/b20/size-gate.sh --deployed <rpc> <address> PonsV2BuybackVault
-  [x] every escrow, policy and buyback vault prints ok
+  [x] every escrow, policy and buyback vault prints ok - the nine of
+      6 November 2026 too, from 9e26e526 (DEPLOY.txt, ADDING A QUOTE ASSET,
+      step 3)
   [x] and the same for the curve and the token of the first launch made -
       $CURB's, from the section above (PonsV2BondingCurve, CurbLaunchToken)
   For any other contract it prints whether the code there is what this build
