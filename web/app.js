@@ -575,9 +575,11 @@ let mixedEndpoint = false;
 /// one record of the deployment, which the site bar and the settings loader
 /// read too. Until deploy day fills them in there is no lens, so nothing is
 /// entered and this page says nothing extra about a link - an empty table is
-/// the honest state rather than an unfinished feature. A factory admitted
-/// later is added to config.js's list in the same change, or every page on it
-/// warns.
+/// the honest state rather than an unfinished feature. A later asset's
+/// factory goes into config.js's list BEFORE the Safe admits it (DEPLOY.txt,
+/// ADDING A QUOTE ASSET, steps 5 and 6): one admitted but not listed has
+/// every page on it warn and every send to it refused, while one listed but
+/// not yet admitted is only not offered.
 ///
 /// LOWERCASE, AND COMPARED THAT WAY. An address that differs only in case is
 /// the same contract, and a warning that fired on capitalisation would be

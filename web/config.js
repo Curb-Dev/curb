@@ -31,8 +31,11 @@
 //                    refusals, as for any other endpoint.
 //   lens             the LaunchLens address
 //   registry         the LaunchRegistry address, as ADDRESSES.txt lists it
-//   factories        every factory the registry admits, as ADDRESSES.txt lists them
-//                    (a factory admitted later is added here in the same change)
+//   factories        every factory the registry admits, as ADDRESSES.txt lists them,
+//                    and one about to be admitted: a later asset's factory is added
+//                    here before the Safe's addLauncher (DEPLOY.txt, ADDING A QUOTE
+//                    ASSET, steps 5 and 6). Until the registry admits it the create
+//                    form does not offer it - it offers only what both name.
 //   explorer         where an address or a transaction is shown
 //   featured         launch token addresses a ?featured= link may put in the
 //                    front page's featured card; one naming any other is ignored
