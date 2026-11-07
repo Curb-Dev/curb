@@ -183,7 +183,8 @@ export const MUTANTS: Mutant[] = [
   m('L14 log address asked for', L, "if (!addresses.has(String(l.address).toLowerCase())) throw", 'if (false) throw', 'answers are checked'),
   m('L15 removed log', L, 'if (l.removed === true) throw', 'if (false) throw', 'answers are checked'),
   m('L16 repeated log', L, 'if (BigInt(out[i].blockNumber) === BigInt(out[i - 1].blockNumber) && BigInt(out[i].logIndex) === BigInt(out[i - 1].logIndex)) {', 'if (false) {', 'answers are checked'),
-  m('L17 answer is a list', L, "if (!Array.isArray(logs)) throw new Error('eth_getLogs answered something that is not a list');", '', 'answers are checked'),
+  m('L17 answer is a list', L, 'if (!Array.isArray(logs)) throw new Error(`${who}: eth_getLogs answered something that is not a list`);', '', 'answers are checked'),
+  m('L18 the refusing provider not named', L, "const who = `provider ${rpc.label ?? 'rpc'}`;", "const who = 'provider';", 'names the provider by its label'),
 
   // ---------------------------------------------------------------- reader
   m('R1 429 and 5xx are transient', R, "if (cur.status === 429 || (typeof cur.status === 'number' && cur.status >= 500) || cur.code === 429) return true;", '', 'reader:'),

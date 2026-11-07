@@ -128,10 +128,15 @@ const hex = (n: bigint): string => '0x' + n.toString(16);
 
 /** Every log matching `filter` with fromBlock <= block <= toBlock, in
  *  (block, logIndex) order. Each answer is checked: inside the window asked
- *  for, from an address asked for, not removed, no (block, logIndex) twice. */
+ *  for, from an address asked for, not removed, no (block, logIndex) twice.
+ *
+ *  EVERY ERROR NAMES THE PROVIDER by its label ("provider b: ..."), never by
+ *  its URL (which may hold a key): a host runs two or more, and a refusal
+ *  that does not say whose it is cannot be acted on. */
 export async function getLogsAdaptive(rpc: Rpc, filter: LogFilter, fromBlock: bigint, toBlock: bigint, win: LogWindow = new LogWindow()): Promise<RawLog[]> {
   const o = win.opts;
   const out: RawLog[] = [];
+  const who = `provider ${rpc.label ?? 'rpc'}`;
   const addresses = new Set((Array.isArray(filter.address) ? filter.address : [filter.address]).map((a) => a.toLowerCase()));
   let cursor = fromBlock;
   let busy = 0;
@@ -145,14 +150,14 @@ export async function getLogsAdaptive(rpc: Rpc, filter: LogFilter, fromBlock: bi
       if (kind === 'busy') {
         // REFUSED NOW, NOT REFUSED THIS RANGE: the same window after a pause.
         busy += 1;
-        if (busy > o.tries) throw new LogWindowError(`eth_getLogs refused ${busy} times in a row: ${(e as Error).message}`, kind, e);
+        if (busy > o.tries) throw new LogWindowError(`${who}: eth_getLogs refused ${busy} times in a row (blocks ${cursor}..${end}): ${(e as Error).message}`, kind, e);
         await o.sleep(o.backoffMs * 2 ** (busy - 1));
         continue;
       }
       // A RANGE OR RESULT LIMIT: ask for less, down to a floor, and remember
       // the ceiling so the next window does not ask for too much again.
       const span = Number(end - cursor + 1n);
-      if (span <= o.min) throw new LogWindowError(`eth_getLogs refused a ${span}-block window (${kind}): ${(e as Error).message}`, kind, e);
+      if (span <= o.min) throw new LogWindowError(`${who}: eth_getLogs refused a ${span}-block window (${kind}, blocks ${cursor}..${end}): ${(e as Error).message}`, kind, e);
       win.window = Math.max(o.min, Math.floor(span / 2));
       win.cap = win.window;
       win.capIsSize = kind === 'size';
@@ -160,12 +165,12 @@ export async function getLogsAdaptive(rpc: Rpc, filter: LogFilter, fromBlock: bi
       continue;
     }
     busy = 0;
-    if (!Array.isArray(logs)) throw new Error('eth_getLogs answered something that is not a list');
+    if (!Array.isArray(logs)) throw new Error(`${who}: eth_getLogs answered something that is not a list`);
     for (const l of logs as RawLog[]) {
       const b = BigInt(l.blockNumber);
-      if (b < cursor || b > end) throw new Error(`eth_getLogs answered a log of block ${b} for the window ${cursor}..${end}`);
-      if (!addresses.has(String(l.address).toLowerCase())) throw new Error(`eth_getLogs answered a log of ${l.address}, which was not asked for`);
-      if (l.removed === true) throw new Error('eth_getLogs answered a removed log');
+      if (b < cursor || b > end) throw new Error(`${who}: eth_getLogs answered a log of block ${b} for the window ${cursor}..${end}`);
+      if (!addresses.has(String(l.address).toLowerCase())) throw new Error(`${who}: eth_getLogs answered a log of ${l.address}, which was not asked for`);
+      if (l.removed === true) throw new Error(`${who}: eth_getLogs answered a removed log`);
       out.push(l);
     }
     cursor = end + 1n;
@@ -187,7 +192,7 @@ export async function getLogsAdaptive(rpc: Rpc, filter: LogFilter, fromBlock: bi
   });
   for (let i = 1; i < out.length; i++) {
     if (BigInt(out[i].blockNumber) === BigInt(out[i - 1].blockNumber) && BigInt(out[i].logIndex) === BigInt(out[i - 1].logIndex)) {
-      throw new Error(`eth_getLogs answered two logs at block ${BigInt(out[i].blockNumber)} index ${BigInt(out[i].logIndex)}`);
+      throw new Error(`${who}: eth_getLogs answered two logs at block ${BigInt(out[i].blockNumber)} index ${BigInt(out[i].logIndex)}`);
     }
   }
   return out;

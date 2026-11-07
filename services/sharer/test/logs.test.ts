@@ -182,3 +182,32 @@ test('answers are checked: outside the window, another address, removed, repeate
   await assert.rejects(run(bad((l) => [l, l])), /two logs/);
   await assert.rejects(run({ request: async () => ({}) }), /not a list/);
 });
+
+test('every eth_getLogs error names the provider by its label, never its URL', async () => {
+  // The guardian's heartbeat from 18 October 2026 said only "eth_getLogs
+  // refused 5 times in a row: You reached free plan rate limit, please
+  // upgrade to paid plan" - not which of its two providers refused.
+  const url = 'https://base.example-rpc.test/v2/SECRET-KEY-0123456789';
+  // a budget: a reader that never gives up fails this test instead of hanging the file
+  const refusing = (e: Error) => {
+    let n = 0;
+    return { label: 'b', request: async () => { throw ++n > 50 ? new Error('test budget: too many eth_getLogs calls') : e; } };
+  };
+  const named = (re: RegExp) => (e: any) => re.test(e.message) && /^provider b: /.test(e.message) && !e.message.includes(url) && !e.message.includes('SECRET');
+  await assert.rejects(
+    getLogsAdaptive(refusing(new RpcError('You reached free plan rate limit, please upgrade to paid plan', { code: -32000 })), { address: TOKEN }, 1n, 10n, new LogWindow({ tries: 1, ...noSleep })),
+    (e: any) => e instanceof LogWindowError && e.kind === 'busy' && named(/refused 2 times in a row \(blocks 1\.\.10\): You reached free plan rate limit/)(e),
+  );
+  await assert.rejects(
+    getLogsAdaptive(refusing(new RpcError('ranges over 10000 blocks are not supported on free plan', { code: 35, status: 400 })), { address: TOKEN }, 1n, 10n, new LogWindow({ initial: 1, ...noSleep })),
+    (e: any) => e instanceof LogWindowError && e.kind === 'range' && named(/refused a 1-block window \(range, blocks 1\.\.1\)/)(e),
+  );
+  await assert.rejects(getLogsAdaptive({ label: 'b', request: async () => ({}) }, { address: TOKEN }, 1n, 10n, new LogWindow({ initial: 100, ...noSleep })), named(/not a list/));
+  // the HTTP transport labels its endpoint as the runner names it (a, b, ...)
+  let calls = 0;
+  const http = (await import('../src/chain/rpc.ts')).httpRpc(url, {
+    label: 'b',
+    fetch: (async () => (++calls > 50 ? new Response('test budget', { status: 429 }) : new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32005, message: 'query returned more than 10000 results' } })))) as any,
+  });
+  await assert.rejects(getLogsAdaptive(http, { address: TOKEN }, 1n, 1n, new LogWindow({ initial: 1, ...noSleep })), named(/refused a 1-block window \(size/));
+});
