@@ -318,13 +318,16 @@ test('A8: the link grammar in deployment.json and curb.md is exactly prefill.js\
 });
 
 test('A10: following INCIDENT.txt - an asset hidden in config.js and deployment.json alike, TSLAc, NVDAc (the guide\'s example) or both - keeps A1 and A8 green; hidden in one file only, A1 names it', () => {
-  /** The real files with `symbols` hidden in config.js, in deployment.json, or both. */
+  // FROM A COPY WITH NOTHING HIDDEN: the real files may already hide these
+  // two, and an incident in progress must not turn this test red either.
+  const base = unhidden(SITE, D);
+  /** `symbols` hidden in config.js, in deployment.json, or both. */
   const hide = (symbols: string[], where: 'both' | 'config' | 'deployment' = 'both') => {
-    const factories = D.assets.filter((a: any) => symbols.includes(a.symbol)).map((a: any) => a.factory);
+    const factories = base.d.assets.filter((a: any) => symbols.includes(a.symbol)).map((a: any) => a.factory);
     assert.equal(factories.length, symbols.length, symbols.join());
     return {
-      site: where === 'deployment' ? SITE : { ...SITE, hiddenFactories: [...(SITE.hiddenFactories || []), ...factories] },
-      d: where === 'config' ? D : { ...D, assets: D.assets.map((a: any) => (symbols.includes(a.symbol) ? { ...a, hidden: true } : a)) },
+      site: where === 'deployment' ? base.site : { ...base.site, hiddenFactories: factories },
+      d: where === 'config' ? base.d : { ...base.d, assets: base.d.assets.map((a: any) => (symbols.includes(a.symbol) ? { ...a, hidden: true } : a)) },
     };
   };
   for (const symbols of [['TSLAc'], ['NVDAc'], ['TSLAc', 'NVDAc']]) {
