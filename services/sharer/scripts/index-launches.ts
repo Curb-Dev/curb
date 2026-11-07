@@ -7,12 +7,15 @@
 // they paid their holders" - without an endpoint, a key or a POST, so an agent
 // that can only read a URL can use it (web/agents/curb.md says how).
 //
-// READ AT ONE BLOCK: the safe block's lens.launchPage, 50 launches a call, until
-// a short page. The name, the symbol and the tax of each launch never change, so
-// they are read once and kept from the last file while the launch's curve is
-// the same; each quote asset's symbol and decimals likewise. The activity and
-// the holder payouts come from stats.json, which scripts/index-history.ts writes
-// in the run before this one.
+// READ AT ONE BLOCK (asOf): the safe block's lens.launchPage, 50 launches a
+// call, until a short page. The name, the symbol and the tax of each launch
+// never change, so they are read once and kept from the last file while the
+// launch's curve is the same (and cleaned again each run, so a stricter
+// cleanText reaches what was written before); each quote asset's symbol and
+// decimals likewise. The activity, the holder payouts and the totals come from
+// stats.json, which scripts/index-history.ts writes in the step before this
+// one - and only when a number changed: statsAsOf is its generatedAt, the block
+// those numbers were counted at, which is not asOf.
 //
 // WRITTEN ONLY WHEN SOMETHING CHANGED, or when the file's asOf is six hours old
 // by the chain's own clock (REFRESH_AFTER_S): so while the job runs every 15
@@ -23,17 +26,26 @@
 // the decimals given beside them. No dollar figure is written: an agent that
 // wants one reads the asset's Chainlink feed itself (web/agents/deployment.json).
 // Left out on purpose: the creator wallet, and the token's description, links
-// and image. Names and symbols are strangers' text: control, bidi and
-// zero-width characters are taken out and they are cut short (cleanText), and
-// textCleaned says so.
+// and image. Names and symbols are strangers' text: every invisible character
+// (controls, format characters - bidi, zero-width, tag characters - variation
+// selectors, blank fillers) is taken out and they are cut short (cleanText),
+// and textCleaned says so.
+//
+// WHAT CANNOT BE READ IS NOT GUESSED. A page of launches, stats.json, or the
+// paired asset of a hidden factory that cannot be read fails the run before
+// anything is written: the last file stands, whole, until a run reads them.
+// A file without those launches would say they are gone; one without the
+// counts would say there was no activity; one without the hidden asset would
+// put launches CURB pulled back in front of agents.
 //
 //   node scripts/index-launches.ts            read and write
 //   node scripts/index-launches.ts --dry DIR  read, and write the file under DIR
 //
 // Reads CURB_SHARER_CONFIG (deploy/sharer.json: registry, lens, site.base,
 // dataRepo, sharing.chainId), the secret rpc_urls (the first URL is used) and
-// data_repo_token, as index-history.ts does, and the hidden lists from
-// ../../web/config.js.
+// data_repo_token, as index-history.ts does, the hidden lists from
+// ../../web/config.js, and each factory's paired asset from
+// ../../web/agents/deployment.json.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -44,7 +56,7 @@ import { httpRpc, type Rpc } from '../src/chain/rpc.ts';
 import { loadOpsConfig } from '../src/ops/config.ts';
 import { DataRepo } from '../src/ops/github.ts';
 import { readRpcUrls, readSecret } from '../src/ops/secrets.ts';
-import { parseStats, statsPath, STATUS, type AssetTotals, type LaunchStats } from './index-history.ts';
+import { parseStats, statsPath, STATS_SCHEMA, STATUS, type AssetTotals, type LaunchStats } from './index-history.ts';
 
 export const LAUNCHES_SCHEMA = 'curb.launches/1';
 export const launchesPath = (chainId: number): string => `sharing/${chainId}/launches.json`;
@@ -74,8 +86,8 @@ export interface LaunchEntry {
   curve: string;
   name: string;
   symbol: string;
-  /** Whether control, bidi or zero-width characters were taken out of the
-   *  name or the symbol, or either was cut short. */
+  /** Whether invisible characters (cleanText) were taken out of the name or
+   *  the symbol, or either was cut short. */
   textCleaned: boolean;
   page: string;
   /** config.js hides it, or every launch on its asset (hiddenFactories). */
@@ -102,19 +114,35 @@ export interface LaunchEntry {
 export interface LaunchesFile {
   schema: string;
   chainId: number;
-  /** The safe block every chain read was made at, and its timestamp. */
+  /** The safe block every chain read was made at, and its timestamp: status,
+   *  progress, the distributor, and (kept from the first read) name, symbol
+   *  and tax. */
   asOf: { block: number; timestamp: number };
+  /** stats.json's generatedAt: the block activity, the holder payouts and
+   *  platform.byQuote were counted at. Null with no stats.json. */
+  statsAsOf: { block: number; timestamp: number } | null;
   lens: string;
   count: number;
   launches: LaunchEntry[];
   platform: { launches: number; graduated: number; sharing: number; byQuote: Record<string, AssetTotals> };
 }
 
-/** Strangers' text, made safe to show: C0 and C1 controls, zero-width and
- *  bidi controls, line and paragraph separators and the BOM taken out, then
- *  cut at `max` code points. `cleaned` says whether anything changed. */
+/** WHAT NOBODY SEES BUT A MODEL STILL READS, by Unicode category rather than a
+ *  hand list: controls (Cc), format characters (Cf: bidi controls, zero-width
+ *  characters, the BOM, U+00AD, U+061C, U+2060-2064 and the tag characters
+ *  U+E0000-E007F, which can spell a hidden instruction), surrogates (Cs),
+ *  private use (Co), unassigned code points (Cn), line and paragraph
+ *  separators (Zl, Zp); and the marks and letters that render as nothing -
+ *  the combining grapheme joiner U+034F, the Hangul fillers U+115F, U+1160,
+ *  U+3164 and U+FFA0, the Khmer inherent vowels U+17B4-17B5, the Mongolian
+ *  selectors U+180B-180F, the blank Braille cell U+2800 and the variation
+ *  selectors U+FE00-FE0F and U+E0100-E01EF. */
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}\u{034f}\u{115f}\u{1160}\u{17b4}\u{17b5}\u{180b}-\u{180f}\u{2800}\u{3164}\u{ffa0}\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}]/gu;
+
+/** Strangers' text, made safe to show: every INVISIBLE character taken out,
+ *  then cut at `max` code points. `cleaned` says whether anything changed. */
 export function cleanText(s: string, max: number): { text: string; cleaned: boolean } {
-  const stripped = String(s).replace(/[\u0000-\u001f\u007f-\u009f\u{200b}-\u{200f}\u{2028}\u{2029}\u{202a}-\u{202e}\u{2066}-\u{2069}\u{feff}]/gu, '');
+  const stripped = String(s).replace(INVISIBLE, '');
   const cps = [...stripped];
   const text = cps.slice(0, max).join('');
   return { text, cleaned: text !== s };
@@ -210,12 +238,17 @@ export function entryOf(v: LensView, fixed: Fixed, quote: { symbol: string; deci
   };
 }
 
-/** THE FILE, from its entries (in the registry's order) and stats.json's totals. */
-export function buildLaunches(o: { chainId: number; lens: string; asOf: { block: number; timestamp: number }; entries: LaunchEntry[]; totals: Record<string, AssetTotals> }): LaunchesFile {
+/** THE FILE, from its entries (in the registry's order) and stats.json's
+ *  totals and block. */
+export function buildLaunches(o: {
+  chainId: number; lens: string; asOf: { block: number; timestamp: number }; statsAsOf: { block: number; timestamp: number } | null;
+  entries: LaunchEntry[]; totals: Record<string, AssetTotals>;
+}): LaunchesFile {
   return {
     schema: LAUNCHES_SCHEMA,
     chainId: o.chainId,
     asOf: o.asOf,
+    statsAsOf: o.statsAsOf,
     lens: o.lens.toLowerCase(),
     count: o.entries.length,
     launches: o.entries,
@@ -237,20 +270,42 @@ export function shouldWrite(last: LaunchesFile | null, next: LaunchesFile): bool
   return next.asOf.timestamp - last.asOf.timestamp >= REFRESH_AFTER_S;
 }
 
-/** stats.json's totals read back as they are (only well-formed entries). */
-function parseTotals(bytes: Uint8Array | null, chainId: number): Record<string, AssetTotals> {
-  if (!bytes) return {};
+/** stats.json's totals read back as they are (only well-formed entries), and
+ *  its generatedAt; nothing of a file that is not curb.stats/1 for this chain. */
+export function parseStatsHead(bytes: Uint8Array | null, chainId: number): { totals: Record<string, AssetTotals>; asOf: { block: number; timestamp: number } | null } {
+  const none = { totals: {}, asOf: null };
+  if (!bytes) return none;
   try {
     const j = JSON.parse(Buffer.from(bytes).toString('utf8'));
-    if (!j || j.schema !== 'curb.stats/1' || j.chainId !== chainId || !j.totals || typeof j.totals !== 'object') return {};
-    const out: Record<string, AssetTotals> = {};
-    for (const [k, t] of Object.entries(j.totals as Record<string, AssetTotals>)) {
-      if (/^0x[0-9a-f]{40}$/.test(k) && t && typeof t === 'object' && Number.isSafeInteger(t.decimals) && Number.isSafeInteger(t.launches)) out[k] = t;
+    if (!j || j.schema !== STATS_SCHEMA || j.chainId !== chainId) return none;
+    const g = j.generatedAt;
+    const asOf = g && Number.isSafeInteger(g.block) && Number.isSafeInteger(g.timestamp) ? { block: g.block, timestamp: g.timestamp } : null;
+    const totals: Record<string, AssetTotals> = {};
+    if (j.totals && typeof j.totals === 'object') {
+      for (const [k, t] of Object.entries(j.totals as Record<string, AssetTotals>)) {
+        if (/^0x[0-9a-f]{40}$/.test(k) && t && typeof t === 'object' && Number.isSafeInteger(t.decimals) && Number.isSafeInteger(t.launches)) totals[k] = t;
+      }
     }
-    return out;
+    return { totals, asOf };
   } catch {
-    return {};
+    return none;
   }
+}
+
+/** Each factory's paired asset, as web/agents/deployment.json names them
+ *  (check-agent-deployment.js holds that file to the chain): factory -> token,
+ *  both lower case. Nothing from a file that is not curb.deployment/1. */
+export function factoryQuotesFrom(src: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  try {
+    const d = JSON.parse(src);
+    if (!d || d.schema !== 'curb.deployment/1' || !Array.isArray(d.assets)) return out;
+    for (const a of d.assets) {
+      const f = String(a && a.factory).toLowerCase(), t = String(a && a.token).toLowerCase();
+      if (/^0x[0-9a-f]{40}$/.test(f) && /^0x[0-9a-f]{40}$/.test(t)) out[f] = t;
+    }
+  } catch { /* none: each hidden factory is read from the chain */ }
+  return out;
 }
 
 export interface LaunchesDeps {
@@ -261,6 +316,9 @@ export interface LaunchesDeps {
   siteBase: string;
   hiddenLaunches: string[];
   hiddenFactories: string[];
+  /** Each factory's paired asset (factoryQuotesFrom deployment.json), so a
+   *  hidden factory's asset needs no read; one it lacks is read from the chain. */
+  factoryQuotes?: Record<string, string>;
   read(path: string): Promise<Uint8Array | null>;
   write(path: string, bytes: Uint8Array, message: string): Promise<void>;
   log(line: string): void;
@@ -279,30 +337,46 @@ export async function indexLaunches(d: LaunchesDeps): Promise<{ launches: number
     String(await d.rpc.request({ method: 'eth_call', params: [{ to, data }, at] }));
   let failed = 0;
 
+  // THE HIDDEN ASSETS: each hidden factory's paired asset, from deployment.json
+  // or read once a run. A READ THAT FAILS FAILS THE RUN, before anything is
+  // written: guessed, the asset would be left out and its launches published
+  // as shown - during the incident they were hidden for (the site, too, leaves
+  // out a launch it cannot place while a factory is hidden: topbar.js
+  // launchStatus). A factory that answers no asset (no code: a mistyped
+  // address) hides nothing, as on the site.
+  // HIDDEN BY ASSET, not by the launch's factory as the site tells it (by fee
+  // escrow): the same while each asset has one factory, as today
+  // (test/site-agents.test.ts A1); were two
+  // to share one, this would hide both factories' launches - the safe side.
+  const hiddenQuotes = new Set<string>();
+  for (const f of d.hiddenFactories.map((a) => a.toLowerCase())) {
+    const known = d.factoryQuotes && d.factoryQuotes[f];
+    if (known) { hiddenQuotes.add(known); continue; }
+    let raw: string;
+    try {
+      raw = await call(f, SEL.quoteToken);
+    } catch (e) {
+      throw new Error(`hidden factory ${f}: its paired asset could not be read, so nothing is written: ${(e as Error).message}`);
+    }
+    if (/^0x[0-9a-fA-F]{64,}$/.test(raw)) hiddenQuotes.add(('0x' + wordAt(raw, 0).slice(24)).toLowerCase());
+    else d.log(`hidden factory ${f} answers no quoteToken(): it hides nothing`);
+  }
+  const hiddenLaunches = new Set(d.hiddenLaunches.map((a) => a.toLowerCase()));
+
   const last = parseLaunches(await d.read(launchesPath(d.chainId)), d.chainId);
   const lastBy = new Map((last ? last.launches : []).map((e) => [e.token, e]));
-  // stats.json, which index-history.ts wrote just before: activity and totals.
-  let statsBytes: Uint8Array | null = null;
+  // stats.json, which index-history.ts wrote just before: activity, totals and
+  // the block they were counted at. ONE THAT CANNOT BE READ FAILS THE RUN: a
+  // file with null activity would tell agents nothing traded. (None at all -
+  // before the first history run - is no activity yet.)
+  let statsBytes: Uint8Array | null;
   try {
     statsBytes = await d.read(statsPath(d.chainId));
   } catch (e) {
-    failed++;
-    d.log(`stats.json: ${(e as Error).message}`);
+    throw new Error(`stats.json could not be read, so nothing is written: ${(e as Error).message}`);
   }
   const stats = parseStats(statsBytes, d.chainId);
-  const totals = parseTotals(statsBytes, d.chainId);
-
-  // THE HIDDEN ASSETS: each hidden factory's quote asset, read once a run.
-  const hiddenQuotes = new Set<string>();
-  for (const f of d.hiddenFactories) {
-    try {
-      hiddenQuotes.add(('0x' + wordAt(await call(f, SEL.quoteToken), 0).slice(24)).toLowerCase());
-    } catch (e) {
-      failed++;
-      d.log(`hidden factory ${f}: ${(e as Error).message}`);
-    }
-  }
-  const hiddenLaunches = new Set(d.hiddenLaunches.map((a) => a.toLowerCase()));
+  const { totals, asOf: statsAsOf } = parseStatsHead(statsBytes, d.chainId);
 
   // EVERY LAUNCH, 50 A PAGE, AT THE SAFE BLOCK. A page that cannot be read
   // fails the run: a file without those launches would say they are gone.
@@ -324,7 +398,7 @@ export async function indexLaunches(d: LaunchesDeps): Promise<{ launches: number
 
   // EACH QUOTE ASSET'S SYMBOL AND DECIMALS, kept from the last file, read once otherwise.
   const quotes = new Map<string, { symbol: string; decimals: number }>();
-  for (const e of last ? last.launches : []) quotes.set(e.quote.token, { symbol: e.quote.symbol, decimals: e.quote.decimals });
+  for (const e of last ? last.launches : []) quotes.set(e.quote.token, { symbol: cleanText(e.quote.symbol, 16).text, decimals: e.quote.decimals });
   const quoteOf = async (q: string) => {
     const known = quotes.get(q);
     if (known) return known;
@@ -337,15 +411,22 @@ export async function indexLaunches(d: LaunchesDeps): Promise<{ launches: number
     return one;
   };
 
+  /** A kept name and symbol, cleaned again: the cleaning of the run that wrote
+   *  them may have been weaker than this one's. */
+  const kept = (was: LaunchEntry) => {
+    const n = cleanText(was.name, 64), s = cleanText(was.symbol, 16);
+    return { name: n.text, symbol: s.text, textCleaned: was.textCleaned === true || n.cleaned || s.cleaned };
+  };
   const entries: LaunchEntry[] = [];
   for (const v of views) {
     if (v.status === 0 || !STATUS[v.status]) continue; // notFound: no launch
     const was = lastBy.get(v.token);
+    const hidden = hiddenLaunches.has(v.token) || hiddenQuotes.has(v.quote);
     try {
       // THE FIXED FIELDS, kept while the curve is the same.
       let fixed: Fixed;
       if (was && was.curve === v.curve) {
-        fixed = { name: was.name, symbol: was.symbol, textCleaned: was.textCleaned, taxBps: was.taxBps };
+        fixed = { ...kept(was), taxBps: was.taxBps };
       } else {
         const [nameRaw, symRaw, rec] = await Promise.all([call(v.token, SEL.name), call(v.token, SEL.symbol), call(d.registry, SEL.launchOf + pad(v.token))]);
         const name = decodeText(nameRaw), symbol = decodeText(symRaw);
@@ -357,17 +438,18 @@ export async function indexLaunches(d: LaunchesDeps): Promise<{ launches: number
         fixed = { name: n.text, symbol: s.text, textCleaned: n.cleaned || s.cleaned, taxBps };
       }
       const quote = await quoteOf(v.quote);
-      const hidden = hiddenLaunches.has(v.token) || hiddenQuotes.has(v.quote);
       entries.push(entryOf(v, fixed, quote, stats[v.token], { siteBase: d.siteBase, hidden }));
     } catch (e) {
       failed++;
       d.log(`launch ${v.token}: ${(e as Error).message}`);
-      // ITS LAST ENTRY STANDS, as it was; a launch never written is left out.
-      if (was) entries.push(was);
+      // ITS LAST ENTRY STANDS, as it was - but for what this run knows without
+      // a read: its text cleaned again, and whether CURB hides it now. A
+      // launch never written is left out.
+      if (was) entries.push({ ...was, ...kept(was), hidden });
     }
   }
 
-  const file = buildLaunches({ chainId: d.chainId, lens: d.lens, asOf, entries, totals });
+  const file = buildLaunches({ chainId: d.chainId, lens: d.lens, asOf, statsAsOf, entries, totals });
   const written = shouldWrite(last, file);
   if (written) {
     await d.write(launchesPath(d.chainId), new Uint8Array(Buffer.from(JSON.stringify(file))), `launches at ${asOf.block}`);
@@ -399,6 +481,10 @@ async function main(): Promise<void> {
   if (!cfg.site) throw new Error('the config names no site.base');
   const here = dirname(fileURLToPath(import.meta.url));
   const hidden = hiddenFromConfig(readFileSync(join(here, '..', '..', '..', 'web', 'config.js'), 'utf8'));
+  let factoryQuotes: Record<string, string> = {};
+  try {
+    factoryQuotes = factoryQuotesFrom(readFileSync(join(here, '..', '..', '..', 'web', 'agents', 'deployment.json'), 'utf8'));
+  } catch { /* none: a hidden factory's asset is read from the chain */ }
   let read: LaunchesDeps['read'];
   let write: LaunchesDeps['write'];
   if (dry) {
@@ -421,7 +507,7 @@ async function main(): Promise<void> {
     };
   }
   const r = await indexLaunches({
-    rpc, chainId, registry: cfg.registry, lens: cfg.lens, siteBase: cfg.site.base, ...hidden, read, write,
+    rpc, chainId, registry: cfg.registry, lens: cfg.lens, siteBase: cfg.site.base, ...hidden, factoryQuotes, read, write,
     log: (l) => console.log(l),
   });
   console.log(JSON.stringify({ mode: 'launches', ...r }));
