@@ -367,8 +367,9 @@ each must offer, on Base mainnet:
 - **the whole transaction index**: `eth_getTransactionByHash` of a
   transaction months old answers it. geth's default keeps only the last
   2,350,000 blocks of it - about 5.4 days of Base's 0.2-second blocks (part
-  6.1), less than an epoch may last (`keeper.maxEpochWaitSec`, 7 days) - and
-  a provider that prunes there cannot compute an epoch whose first days are
+  6.1). An epoch is at most a day while `keeper.maxEpochWaitSec` is 86,400
+  (part 6.2), but one after a veto or a keeper outage can be longer, and a
+  provider that prunes there cannot compute an epoch whose first days are
   older: the keeper's epoch waits, the guardian's check is unverifiable. To
   check one, take any transaction hash of a block far back (BaseScan, or
   `eth_getBlockByNumber` of block 30,000,000 on that provider) and ask the
@@ -408,8 +409,9 @@ provider that refuses while another takes it is a warning in the log ("a
 provider refused the transaction another took"), not a failed veto.
 
 To follow the chain, the guardian and a verifier need no large
-`eth_getLogs` range: a pass looks a root's event up in its own block and
-otherwise scans only the blocks since its last pass. But a check recomputes
+`eth_getLogs` range: a pass looks a root's event up in its own block (the
+active root's too, and so does the keeper) and otherwise scans only the
+blocks since its last pass. But a check recomputes
 its root's epoch over all of the epoch's blocks, and since 5 November 2026
 there are ten times as many (part 6.1): a provider limited to 2,000 blocks
 per request was enough on 2-second blocks; on 0.2-second blocks a small
@@ -444,18 +446,38 @@ it reads again, on every provider, the blocks between the safe head and the
 latest (they are not kept: they may still be reorganised) - about 700 to
 1,200 blocks, 2 to 4 minutes of chain.
 
-**A check costs what its epoch's blocks cost.** A root is checked by
-recomputing its epoch on every provider within `guardian.checkTimeoutSec`
-(120 s): the token's `Transfer` logs and the distributor's logs over the
-whole epoch, two scans of its blocks. The shortest epoch
-(`keeper.minEpochGapSec`, an hour) is 18,000 blocks: 36 requests at a
-1,000-block window, 360 at 100. A day is 432,000 blocks: 864 requests at
-1,000 (about 2 minutes at 8 a second), 8,640 at 100. The longest
-(`keeper.maxEpochWaitSec`, 7 days) is 3,024,000: some 6,000 requests at
-1,000. A check that runs out is unverifiable, and an unverifiable root is
-vetoed after its grace (part 10). So **the window of the narrower provider
-decides how long an epoch can be checked**, not only how fast a backlog is
-read - part 6.2.
+**A check costs what its epoch's blocks cost, and nothing more.** A root is
+checked by recomputing its epoch on every provider, **the providers at the
+same time**, within `guardian.checkTimeoutSec` (300 s in
+`deploy/sharer.json`; 120 by default). On each provider it reads:
+
+- the token's `Transfer` logs and the distributor's logs over the epoch:
+  two scans of its blocks;
+- a header for most blocks with a transfer (the time of the block before
+  it), 16 at once;
+- the probe: one `eth_call` for about every 37 holders above the weight
+  floor;
+- some 60 more: the root's event and the active root's (each found by its
+  block's time, about 25 headers; the active root's on provider `a` only),
+  the launch, the price, and two for each of the keeper's transactions in
+  the epoch.
+
+**Nothing grows with how long a launch has shared.** Until 7 November 2026
+every check and every new keeper epoch also scanned the distributor's logs
+since sharing began - about 430 requests a day of sharing at a 1,000-block
+window, so a launch could not be checked in time from its second day of
+sharing. Two things still replay a launch from its launch block: its
+**first** epoch, and a host whose state cache misses (a fresh `/data`).
+
+The shortest epoch (`keeper.minEpochGapSec`, an hour) is 18,000 blocks: 36
+requests at a 1,000-block window, 360 at 100. A day is 432,000 blocks: 864
+at 1,000, 8,640 at 100. For a busy token (about 10,000 transfers a day, a
+top Base meme token measured on 7 November 2026) the headers cost more
+than the logs: about 3,200 a day. A check that runs out is unverifiable,
+and an unverifiable root is vetoed after its grace (part 10). So **the
+narrower provider's window and rate decide how long an epoch can be
+checked**, not only how fast a backlog is read - part 6.2 gives the
+numbers for the free pair.
 
 **A backlog is read chunk by chunk.** The scans keep their progress after
 every chunk, written to `/data` at once: a refusal, a timeout or a restart
@@ -486,12 +508,16 @@ any scan. A guardian that was down therefore catches up over many passes of
 five minutes or so, back to back (a pass longer than `--interval=` starts
 the next at once), and its heartbeat says how far it is the whole time.
 
-**A refusal spell is waited out.** An `eth_getLogs` refused for no stated
-reason (a 429, "rate limit") is asked again after 0.5 s, then 1, 2, 4, 8, 16
-and 32 s: 7 tries, 63.5 s, before the read fails - and with it the pass,
-whose kept chunks stay kept (`--getlogs-tries N` on the command line, 1 to
-10, sets another number; each one more doubles the wait). A check that runs
-out of time stops at once all the same. A range refusal halves the window,
+**A refusal spell is waited out, on every read.** An `eth_getLogs`, a
+header, an `eth_call` or a receipt refused for no stated reason (a 429,
+"rate limit") is asked again after 0.5 s, then 1, 2, 4, 8, 16 and 32 s: 7
+tries, 63.5 s, before the read fails - and with it the pass, whose kept
+chunks stay kept (`--getlogs-tries N` on the command line, 1 to 10, sets
+another number for every read; each one more doubles the wait). Until 7
+November 2026 only `eth_getLogs` waited; the other reads gave up after
+7.5 s, and a check reads headers 16 at once. A check that runs out of time
+stops at its next request all the same: a pause may run on, but the request
+after it is withdrawn, never sent. A range refusal halves the window,
 but never below a range the provider has already answered (keyless dRPC
 answers 101 blocks: the reader settles at 100, where halving from 2,000 gave
 62). Every error names the provider by its label (`provider b: eth_getLogs
@@ -546,36 +572,68 @@ Measured on 7 November 2026:
   `eth_getLogs`, no `eth_call`), `base.llamarpc.com` and
   `endpoints.omniatech.io` (not answering), `base.blockpi.network` (asks
   for a key).
-- **ENOUGH ONLY WHILE NO LAUNCH SHARES.** On 7 November 2026 no launch has
-  holder sharing on (no `HolderSharingEnabled` log from block 52,662,671 to
-  54,149,030), so the guardian has no root to check and the free pair only
-  has to read the chain's history. The first root of a launch that shares
-  has to be **recomputed on both providers within 120 s** (part 6.1): at
-  keyless dRPC's 100 blocks and 1 request a second even the shortest epoch
-  (an hour, 360 requests) takes six minutes, and Tenderly's 1,000 blocks
-  stop at epochs of about a day. Every such root would be unverifiable and
-  **vetoed after its grace**, honest or not. When that happens is not the
-  owner's to choose: a creator turns holder sharing on from the launch form,
-  or later from the launch's page, whenever the catalog approves a version
-  (on 7 November 2026 it recommends and approves one). So, now rather than when a launch asks, one of these is
-  decided and done:
-  1. a provider with `eth_getLogs` windows of 10,000 blocks or more and a
-     full archive for **both** lines (a paid plan, or a free one that offers
-     them) - nothing else changes;
-  2. `guardian.checkTimeoutSec` scaled to the longest epoch at the
-     narrower window (it is bounded by `guardian.passTimeoutSec`, itself at
-     most half of `guardian.vetoUnverifiedBeforeSec`: 450 s at today's
-     900, not enough for a day at 100-block windows);
-  3. `keeper.maxEpochWaitSec` shortened, so that no epoch is longer than
-     the guardian can check (the keeper's block of `deploy/sharer.json`
-     and of every keeper host's config, not the sharing block: no rules
-     version);
-  4. code that keeps an epoch's logs across passes, so a check resumes
-     where the last one stopped (not written).
+- **A LAUNCH THAT SHARES: WHAT THE FREE PAIR CAN CHECK.** A creator turns
+  holder sharing on from the launch form, or later from the launch's page,
+  whenever the catalog approves a version (on 7 November 2026 it recommends
+  and approves one): when the first root comes is not the owner's to
+  choose. The owner pays for no RPC (7 November 2026), so the first two
+  steps of the free-RPC plan of that day were made before any launch
+  shares. Step 1, in code: no check reads a launch's history, the providers
+  are read at once, every read waits out a refusal spell (part 6.1). Step
+  2, two host-local settings in `deploy/sharer.json` (no rules version):
+  - `guardian.checkTimeoutSec` **300** (it was 120). It is bounded by
+    `guardian.passTimeoutSec` (300) and that by half of
+    `guardian.vetoUnverifiedBeforeSec` (900), so a pass still ends within
+    the late window. More (450) needs code: the scans' budget of their own.
+    One slow check can use a whole pass; the other pending roots wait for
+    the next one;
+  - `keeper.maxEpochWaitSec` **86,400** (it was 7 days): a quiet launch's
+    epoch is at most a day. It forces a daily epoch on a launch earning less
+    than MIN_POT: about $0.03 of gas a day each, from the keeper key.
+
+  What then fits, on Tenderly's keyless gateway (1,000 blocks, about 10
+  requests a second) and publicnode, estimated from the measurements of 7
+  November 2026 (a busy token: about 10,000 transfers and 3,200 header
+  reads a day; a quiet one: none):
+
+  | | the guardian (300 s) | the keeper (two Tenderly lines, 13-minute step) |
+  |---|---|---|
+  | busy, an hour (the usual 1.5 to 2 h of the GitHub keeper) | about 35 s | about 45 s |
+  | busy, the longest that fits | about 15 hours | about a day |
+  | quiet, a day | about 130 s | about 250 s |
+  | quiet, the longest that fits | about 2.4 days | about 2.4 days |
+
+  **Rules until step 3** (a per-launch index kept in `/data`, so a check
+  reads almost nothing whatever the epoch's length; not written yet):
+  1. after an UNVERIFIED veto of a busy launch, `ack-veto` within about
+     **10 hours**: later, the reopened epoch outgrows the check and is
+     vetoed again;
+  2. a standby keeper outage longer than about **15 hours** strands busy
+     launches until step 3 (their next epoch is too long to check);
+  3. a launch that turns sharing on more than about **4 days after its
+     launch** gets no first epoch until step 3 (it replays the token from
+     the launch block). Its income waits; nothing is lost.
+
+  **What stays unsafe.** Until step 3: an epoch longer than the check or
+  the keeper can read (a busy one over about 15 hours, a quiet one over
+  about 2.4 days) is vetoed UNVERIFIED each time it is proposed, and each
+  veto makes the next one longer - only step 3 or a paid provider ends it;
+  the first epoch named in rule 3; a guardian or keeper with a lost state
+  cache, for any launch older than about 4 days; the forced daily epochs'
+  gas. After step 3 too: one company twice (the keeper's two lines and the
+  guardian's line `a` are Tenderly); one guardian PC; a freeze as the
+  fallback (an unfreeze takes 48 hours); spam of the permissionless
+  `harvest()` or of transfers, about $40 an hour, can push a check late and
+  force that freeze; free endpoints change without notice, and each line is
+  a cross-check with no spare; publicnode's state window may shrink to
+  about 6.9 days (measure it again on 13 November 2026). None of these
+  loses funds while the guardian is up: what it cannot verify it vetoes or
+  freezes. Each delays payouts.
 - **The keeper's pair, the same way.** The keeper computes every epoch on
   both of its providers within one run (its tick step has 13 minutes on
-  GitHub Actions, and an epoch's computation keeps no progress), so a
-  keeper reading through keyless dRPC would never publish. Its first line also reads the role events alone: put
+  GitHub Actions, and an epoch's computation keeps no progress), the
+  providers at once since 7 November 2026, so a keeper reading through
+  keyless dRPC would never publish. Its first line also reads the role events alone: put
   the provider with the wider window first in `SHARING_RPC_URLS` (and in
   the keeper host's `rpc_urls`), or a keeper that was off reads its backlog
   at the narrower window.
@@ -1300,7 +1358,8 @@ What it does by itself:
 - **every pass is bounded in time**. It checks the pending roots first -
   those it has never judged before those it found unverifiable before, and
   among each the one whose hour ends first first; each root's check ends
-  after `guardian.checkTimeoutSec` (120 s), every download and every read
+  after `guardian.checkTimeoutSec` (300 s in `deploy/sharer.json`, 120 by
+  default), every download and every read
   included (a publisher holding a stolen key chooses the URI, and could
   point it at a file that never finishes arriving), and is not started again
   while an abandoned one still runs; the checks of a pass end after
@@ -1674,7 +1733,7 @@ gives them.
 | `verify --loop` / `verify --once` | none | check every epoch, alert |
 | `verify --distributor X --epoch N --rpc URL [--rpc URL] --config FILE\|URL [--site URL] [--gateway URL]` | none | the public check of one epoch; `--config` is required (the published `sharing/<chain>/config.json`, or a file) |
 | `guardian --loop --interval=120` | guardian | check every epoch, veto and freeze |
-| `--getlogs-tries N` (keeper, verify, guardian, rebuild) | - | how often an `eth_getLogs` refused for a rate limit is asked before the read fails: 7 by default (63.5 s of waiting), 1 to 10 (part 6.1) |
+| `--getlogs-tries N` (keeper, verify, guardian, rebuild) | - | how often a read refused for a rate limit (an `eth_getLogs`, a header, an `eth_call`, a receipt) is asked before it fails: 7 by default (63.5 s of waiting), 1 to 10 (part 6.1) |
 | `rebuild` | none | refill `/data` from the chain and the files |
 | `ack-veto --distributor X --epoch N --by NAME` | none (the data repo token) | let the keeper recompute after a veto |
 | `check` | none | the chain, the contract addresses and their wiring, the launchers and owners, the keys against their roles, `eth_call` with no `to`, the published config of this rules version, which secrets are present, and an alert sink (part 7) |

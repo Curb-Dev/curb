@@ -74,8 +74,10 @@ providers and page where they differ; check the pending roots first, the
 one whose hour ends first first, then any active root not yet checked, then
 re-hash the site copy of the verified ones. A root's `RootPublished` (its
 URI) is looked up in the one block its `payableAt` names, on both providers,
-so nothing scans a launch's history. Each check has a deadline
-(`guardian.checkTimeoutSec`, 120 s) and the pass another
+and the active root's the same way (as the keeper does), so nothing scans a
+launch's history. Each check has a deadline
+(`guardian.checkTimeoutSec`, 120 s by default, 300 in `deploy/sharer.json`;
+its two providers are read at once) and the pass another
 (`guardian.passTimeoutSec`, 300 s); every download is bounded in time and
 size, body included (`src/ops/http.ts`). A check that runs out is
 unverifiable; once the pass runs out the pending roots left are vetoed if
