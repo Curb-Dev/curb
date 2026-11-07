@@ -591,8 +591,10 @@ Measured on 7 November 2026:
 - **What a backlog costs**: for every million blocks behind (2.3 days of
   chain), provider `a` reads about 6,000 requests (the Graduator twice, the
   role events of 4 addresses) - some 15 minutes at 8 a second; provider `b`
-  reads the Graduator twice: about 20,000 requests on keyless dRPC (**5 to 6
-  hours** at 1 a second), about 200 on publicnode. The guardian writes its
+  reads the Graduator twice: about 20,000 requests on keyless dRPC (**6 to 7
+  hours**: the discovery, run against it on 7 November 2026, read 20,000
+  blocks in 256 s - 225 requests, 20 refusals waited out - which is 0.9 a
+  second), about 200 on publicnode. The guardian writes its
   heartbeat after every pass of the catch-up (part 6.1), not clean until it
   is done, and pages that it is failing after `guardian.failingAfterSec`.
   The catch-up also raises, once each, the alerts of every role, catalog
