@@ -499,6 +499,7 @@
   },
   "keeper": {
     "intervalSec": 300,
+    "maxEpochWaitSec": 86400,
     "largeFileBytes": 8388608,
     "largeFileAccounts": 50000,
     "lowEthWei": "300000000000000"
@@ -515,7 +516,7 @@
     "vetoUnverifiedAfterSec": 600,
     "freezeAtBadRoots": 3,
     "freezeOnRepeat": true,
-    "checkTimeoutSec": 120,
+    "checkTimeoutSec": 300,
     "passTimeoutSec": 300,
     "maxGasPriceWei": "100000000000",
     "lowEthWei": "300000000000000"
