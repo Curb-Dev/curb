@@ -400,16 +400,22 @@ is read for every root and every scan of the Graduator, and they must
 agree; a third line is a third provider that must answer every request
 too, and nothing ever fails over to it. Adding one can only make a host stop more often. The first line
 (provider `a`) has a role of its own: it alone reads the role events, and it
-prices and simulates every transaction the keeper or the guardian sends (each
-is then handed to every provider, and must be taken by provider `a`).
+prices and simulates every transaction the keeper or the guardian sends. Each
+transaction is then handed to every provider and counts as sent when **any**
+of them takes it (a signed transaction is the same wherever it enters, and
+the sender waits for its receipt and replaces it if it is not mined); a
+provider that refuses while another takes it is a warning in the log ("a
+provider refused the transaction another took"), not a failed veto.
 
-No provider needs a large `eth_getLogs` range for the guardian or a
-verifier: a pass looks a root's event up in its own block and otherwise scans
-only the blocks since its last pass. But the number of blocks is what counts,
-and since 5 November 2026 there are ten times as many (part 6.1): a provider
-limited to 2,000 blocks per request was enough on 2-second blocks; on
-0.2-second blocks a small window means many requests, and a free plan's
-rate limit is what stops a host.
+To follow the chain, the guardian and a verifier need no large
+`eth_getLogs` range: a pass looks a root's event up in its own block and
+otherwise scans only the blocks since its last pass. But a check recomputes
+its root's epoch over all of the epoch's blocks, and since 5 November 2026
+there are ten times as many (part 6.1): a provider limited to 2,000 blocks
+per request was enough on 2-second blocks; on 0.2-second blocks a small
+window means many requests, a free plan's rate limit is what stops a host,
+and the narrower provider's window decides how long an epoch can be checked
+in time (part 6.2).
 
 ### 6.1 Blocks every 0.2 seconds
 
@@ -420,7 +426,7 @@ requests per day of chain, by the window a provider allows:
 
 | window (blocks) | requests a day | an hour | for 1,000,000 blocks (2.3 days) |
 |---|---|---|---|
-| 50,000 | 9 | 0.4 | 20 |
+| 50,000 | 9; 44 in a backlog (a chunk is at most 10,000 blocks, below) | 0.4; 2 | 20; 100 |
 | 1,000 | 432 | 18 | 1,000 |
 | 100 | 4,320 | 180 | 10,000 |
 | 62 | 6,970 | 290 | 16,130 |
@@ -430,56 +436,108 @@ That is one scan of one address. Over every new block a guardian runs:
 the Graduator's `HolderSharingEnabled` on **each** provider twice (the
 discovery of the distributors, and the list of distributors bound so far
 that every check needs - kept up to the safe head on every pass so that no
-check spends its deadline reading history), and the role events of the
-factory, the catalog, the hook, the registry and every distributor on
-provider `a` alone. And on every pass it reads again, on every provider, the
-blocks between the safe head and the latest (they are not kept: they may
-still be reorganised) - about 700 to 1,100 blocks, 2 to 4 minutes of chain.
+check spends its deadline reading history; the second read is accepted, not
+an oversight: the two scans start at different blocks and keep their
+progress apart), and the role events of the factory, the catalog, the hook,
+the registry and every distributor on provider `a` alone. And on every pass
+it reads again, on every provider, the blocks between the safe head and the
+latest (they are not kept: they may still be reorganised) - about 700 to
+1,200 blocks, 2 to 4 minutes of chain.
 
-**A backlog is read chunk by chunk.** The scans keep their progress every
-10,000 blocks (about 33 minutes of chain, `SCAN_CHUNK_BLOCKS`), written to
-`/data` at once: a refusal, a timeout or a restart costs at most the chunk
-in progress, and the next pass resumes after the last whole chunk. A scan
-with more than one chunk to read logs each one it finishes (`"msg":"history
-scan"`, the scan, `through` the block reached, `to` its end). (Before
-7 November 2026 a scan kept nothing until it had read its whole range, so a
-guardian that was down long enough could never catch up on a free plan:
-every pass threw its work away at the first refusal and began again.) A
-pass whose scans fail still sends any veto or freeze it owes from earlier
-passes. Every error names the provider by its label (`provider b: eth_getLogs
-refused 5 times in a row (blocks ...): ...`), never by its URL.
+**A check costs what its epoch's blocks cost.** A root is checked by
+recomputing its epoch on every provider within `guardian.checkTimeoutSec`
+(120 s): the token's `Transfer` logs and the distributor's logs over the
+whole epoch, two scans of its blocks. The shortest epoch
+(`keeper.minEpochGapSec`, an hour) is 18,000 blocks: 36 requests at a
+1,000-block window, 360 at 100. A day is 432,000 blocks: 864 requests at
+1,000 (about 2 minutes at 8 a second), 8,640 at 100. The longest
+(`keeper.maxEpochWaitSec`, 7 days) is 3,024,000: some 6,000 requests at
+1,000. A check that runs out is unverifiable, and an unverifiable root is
+vetoed after its grace (part 10). So **the window of the narrower provider
+decides how long an epoch can be checked**, not only how fast a backlog is
+read - part 6.2.
+
+**A backlog is read chunk by chunk.** The scans keep their progress after
+every chunk, written to `/data` at once: a refusal, a timeout or a restart
+costs at most the chunk in progress, and the next pass resumes after the
+last whole chunk. A chunk is **10 requests** on the provider that answers
+the narrowest windows (`SCAN_CHUNK_REQUESTS`; the role events, which read
+each address one by one, count one request an address), at most 10,000
+blocks (`SCAN_CHUNK_BLOCKS`): 1,000 blocks at a 100-block window, 10,000 at
+1,000. It is counted on the windows a provider has **answered**, not on what
+the reader asks next: a fresh process starts with 10 blocks, then 10 times
+the widest answered, and so on up, so its first chunk is kept even on a
+provider that takes 5 blocks a request. (Before 7 November 2026 a scan kept
+nothing until it had read its whole range, and then nothing until it had
+read 10,000 blocks: on keyless dRPC that is 161 requests, more than it
+answers between two refusal spells, and every pass lost its chunk at the
+same refusal.) A scan with more than one chunk to read logs each one it
+finishes (`"msg":"history scan"`, the scan, `through` the block reached,
+`to` its end).
+
+**A pass reads a backlog for `guardian.passTimeoutSec` (300 s), then
+checks.** Its scans start no chunk after that (each reads one at least), the
+role events never go past the blocks the discovery has read, and the pass
+goes on: it checks the roots of the launches it knows, writes its heartbeat
+and ends **not clean**, with `history scans behind the safe head N: the
+discovery through X (Y blocks left), ...` as its error, until it has caught
+up. Vetoes and a freeze owed from earlier passes are sent **first**, before
+any scan. A guardian that was down therefore catches up over many passes of
+five minutes or so, back to back (a pass longer than `--interval=` starts
+the next at once), and its heartbeat says how far it is the whole time.
+
+**A refusal spell is waited out.** An `eth_getLogs` refused for no stated
+reason (a 429, "rate limit") is asked again after 0.5 s, then 1, 2, 4, 8, 16
+and 32 s: 7 tries, 63.5 s, before the read fails - and with it the pass,
+whose kept chunks stay kept (`--getlogs-tries N` on the command line, 1 to
+10, sets another number; each one more doubles the wait). A check that runs
+out of time stops at once all the same. A range refusal halves the window,
+but never below a range the provider has already answered (keyless dRPC
+answers 101 blocks: the reader settles at 100, where halving from 2,000 gave
+62). Every error names the provider by its label (`provider b: eth_getLogs
+refused 8 times in a row (blocks ...): ...`), never by its URL.
 
 ### 6.2 A guardian on free endpoints
 
-When no RPC plan can be paid for, the guardian runs on two public endpoints
-that need no key. Measured on 7 November 2026, in this order in its
-`secrets/rpc_urls`:
+When no RPC plan can be paid for, the guardian runs on public endpoints.
+Measured on 7 November 2026:
 
-```
-https://base.gateway.tenderly.co
-https://base.drpc.org
-```
-
-- **Provider `a`, Tenderly's public gateway**: `eth_getLogs` over 1,000
-  blocks (a wider window is refused with "invalid params", and the reason -
-  "Block range too large ... maximum 1000 blocks" - in the error's data,
-  which the reader reads), full archive, the whole transaction index (a
-  transaction of May 2025 answered), the `safe` tag, `eth_call` with no `to`
-  and 15,000,000 gas. It refuses above about 6 requests a second ("rate
-  limit exceeded", HTTP 429), which the reader waits out, and caps traffic at
-  about 1 GB a day per IP address. It is first because provider `a` alone
-  reads the role events and prices and simulates the vetoes and freezes:
-  the wide window belongs there.
-- **Provider `b`, dRPC's public endpoint** (no account): full archive, the
-  whole transaction index, the `safe` tag. `eth_getLogs` over up to 101
-  blocks; it refuses 125 with "ranges over 10000 blocks are not supported on
-  free plan" (code 35), which the reader takes as a range limit and halves
-  to - it settles at **62 blocks**. About 3 to 4 requests a second ("You
-  reached Public endpoint rate limit, please upgrade to paid plan", HTTP 429,
-  code 15), which the reader waits out. The refusal the guardian has reported
-  since 18 October 2026 ("You reached free plan rate limit, please upgrade
-  to paid plan", then naming no provider) has the same wording: most likely
-  dRPC's free plan, met by a scan that kept no progress.
+- **Provider `a`: Tenderly's gateway** (`https://base.gateway.tenderly.co`,
+  or the same host with an access key in its path, which an account gives):
+  `eth_getLogs` over 1,000 blocks without a key (a wider window is refused
+  with "invalid params", and the reason - "Block range too large ... maximum
+  1000 blocks" - in the error's data, which the reader reads), full archive,
+  the whole transaction index (a transaction of May 2025 answered), the
+  `safe` tag, `eth_call` with no `to` and 15,000,000 gas. About 20
+  requests per 2 seconds per IP address (8 a second ran without a refusal;
+  above that "rate limit exceeded", HTTP 429, which the reader waits out),
+  and about 1 GB of traffic a day per IP address. It is first because
+  provider `a` alone reads the role events and prices and simulates the
+  vetoes and freezes: the wide window belongs there. Whether the keyless
+  gateway relays `eth_sendRawTransaction` is **not known** (an undecodable
+  payload got "Internal server error"); nothing depends on it, as a veto any
+  provider takes is sent (part 6).
+- **Provider `b` once caught up: dRPC's public endpoint**
+  (`https://base.drpc.org`, no account): full archive, the whole
+  transaction index, the `safe` tag. `eth_getLogs` over up to 101 blocks;
+  it refuses 125 with "ranges over 10000 blocks are not supported on free
+  plan" (code 35), which the reader takes as a range limit - it settles at
+  **100 blocks**. Its limiter answers 45 to 55 requests in a burst, then
+  refuses ("You reached Public endpoint rate limit, please upgrade to paid
+  plan", HTTP 429, code 15) in spells of 1 to 43 s: **about 1 request a
+  second** overall, paced or not. The guardian's refusal of 18 October 2026
+  ("You reached **free plan** rate limit, please upgrade to paid plan", naming
+  no provider) is dRPC's wording for a keyed free plan - not the same text,
+  the same company - met by a scan that kept no progress.
+- **Provider `b` while a backlog is read: publicnode**
+  (`https://base-rpc.publicnode.com`): `eth_getLogs` over 50,000 blocks -
+  a chunk is then one request - but state for only about 50 to 60 days
+  (older reads ask for a token). Fit for a backlog younger than that, while
+  no launch shares (below); once the guardian is clean, keyless dRPC
+  replaces it only after dRPC is measured again from that host's address
+  (`check` passing, and a run of 150 back-to-back 100-block `eth_getLogs`
+  answering about 1 a second with no refusal spell longer than 45 s), and
+  the guardian is clean again after the change.
 - **Not these** (measured the same day, without a key):
   `mainnet.base.org` (HTTP 429 "request limit reached" on every
   `eth_getLogs`), `1rpc.io/base` (`eth_getLogs` over 50 blocks at most; its
@@ -487,25 +545,55 @@ https://base.drpc.org
   (Alchemy's: 10 blocks, compute-unit 429s), `base.meowrpc.com` (no
   `eth_getLogs`, no `eth_call`), `base.llamarpc.com` and
   `endpoints.omniatech.io` (not answering), `base.blockpi.network` (asks
-  for a key). `base-rpc.publicnode.com` answers 50,000-block windows but
-  keeps state for only about 50 to 60 days (older reads ask for a token): a
-  spare to put in by hand in place of one that is down, never a third line.
+  for a key).
+- **ENOUGH ONLY WHILE NO LAUNCH SHARES.** On 7 November 2026 no launch has
+  holder sharing on (no `HolderSharingEnabled` log from block 52,662,671 to
+  54,149,030), so the guardian has no root to check and the free pair only
+  has to read the chain's history. The first root of a launch that shares
+  has to be **recomputed on both providers within 120 s** (part 6.1): at
+  keyless dRPC's 100 blocks and 1 request a second even the shortest epoch
+  (an hour, 360 requests) takes six minutes, and Tenderly's 1,000 blocks
+  stop at epochs of about a day. Every such root would be unverifiable and
+  **vetoed after its grace**, honest or not. Before any launch turns holder
+  sharing on, one of these is decided and done:
+  1. a provider with `eth_getLogs` windows of 10,000 blocks or more and a
+     full archive for **both** lines (a paid plan, or a free one that offers
+     them) - nothing else changes;
+  2. `guardian.checkTimeoutSec` scaled to the longest epoch at the
+     narrower window (it is bounded by `guardian.passTimeoutSec`, itself at
+     most half of `guardian.vetoUnverifiedBeforeSec`: 450 s at today's
+     900, not enough for a day at 100-block windows);
+  3. `keeper.maxEpochWaitSec` shortened, so that no epoch is longer than
+     the guardian can check (the keeper's block of `deploy/sharer.json`
+     and of every keeper host's config, not the sharing block: no rules
+     version);
+  4. code that keeps an epoch's logs across passes, so a check resumes
+     where the last one stopped (not written).
+- **The keeper's pair, the same way.** The keeper computes every epoch on
+  both of its providers within one run (its tick step has 13 minutes on
+  GitHub Actions, and an epoch's computation keeps no progress), so a
+  keeper reading through keyless dRPC would never publish. Its first line also reads the role events alone: put
+  the provider with the wider window first in `SHARING_RPC_URLS` (and in
+  the keeper host's `rpc_urls`), or a keeper that was off reads its backlog
+  at the narrower window.
 - **Not the keeper's companies.** The guardian is the check on what the
   keeper's providers say. If the keeper reads through Tenderly or dRPC, the
   guardian on this pair shares a company with it: one fault reaches both.
   Write that down as a decision, as the one of 2026-10-16 is, or give one
   of the two a different provider.
-- **What it costs once caught up**, at the windows above (1,000 and 62
+- **What it costs once caught up**, at the windows above (1,000 and 100
   blocks) and `--interval=120`: provider `a` about 8 `eth_getLogs` and 15
-  other requests a pass; provider `b` about 40 `eth_getLogs` a pass, half of
-  them the blocks above the safe head - about 0.3 a second, a tenth of its
-  limit.
+  other requests a pass; provider `b` about 25 `eth_getLogs` a pass, half of
+  them the blocks above the safe head - about 0.2 a second, within its 1.
 - **What a backlog costs**: for every million blocks behind (2.3 days of
-  chain), provider `b` reads the Graduator twice, about 32,000 requests,
-  and provider `a` about 6,000 - some 3 hours at the measured rates. The
-  first pass of a guardian that was down reads the whole backlog before it
-  checks anything, and writes its heartbeat when it ends; a refusal on the
-  way ends that pass (not clean), and the next one resumes.
+  chain), provider `a` reads about 6,000 requests (the Graduator twice, the
+  role events of 4 addresses) - some 15 minutes at 8 a second; provider `b`
+  reads the Graduator twice: about 20,000 requests on keyless dRPC (**5 to 6
+  hours** at 1 a second), about 200 on publicnode. The guardian writes its
+  heartbeat after every pass of the catch-up (part 6.1), not clean until it
+  is done, and pages that it is failing after `guardian.failingAfterSec`.
+  The catch-up also raises, once each, the alerts of every role, catalog
+  and registry event it had not read yet.
 
 **`--interval=` is this host's own.** The guardian's pass interval is the
 `--interval=` of its start command (part 10, step 4), which overrides
@@ -1113,6 +1201,15 @@ the same way. Do this again after every change to the repository's settings.
   over only 10 (Alchemy) and 5 (QuickNode) blocks - a WARN: the services page
   through it, but once a launch shares with holders a paid plan or a provider
   with wide getLogs is needed.
+- **A RUN THAT IS BEHIND RESUMES.** Each job has 20 minutes, and the service
+  steps have limits inside them (the verifier's 15 minutes, the keeper's
+  rebuild 5 and its tick 13), so the step that saves `/data` always runs: a
+  run cut short keeps what its scans read (part 6.1) and the next run goes
+  on from there. A verifier pass also stops its scans after
+  `guardian.passTimeoutSec` and ends not clean while it is behind, so after
+  an outage its runs fail for a while and each moves on. The first line of
+  `SHARING_RPC_URLS` reads the keeper's role events: the wider window
+  belongs there (part 6.2).
 
 ---
 
@@ -1163,8 +1260,9 @@ What it does by itself:
   it is judged, before the next root is checked (with any other veto it
   owes, in one `vetoMany`). A veto that does not land (gas above its cap, a
   provider down, no ETH) pages ("The guardian could NOT veto", again every 5
-  minutes) and is sent again at the start of every pass, before any root is
-  checked, until the root is no longer pending or its hour is over. Just
+  minutes) and is sent again at the start of every pass, before any history
+  is read and any root is checked, until the root is no longer pending or
+  its hour is over. Just
   before each send it reads every root it is about to veto again, on both
   providers, and leaves out those no longer pending (a `vetoMany` naming one
   of them would revert whole);
@@ -1208,7 +1306,9 @@ What it does by itself:
   check"); when such a root is in the last 15 minutes of its hour, it
   freezes instead, once, which holds every pending root until it has
   checked them. A pass that ran past its deadline counts as failed (it pages
-  after 10 minutes of that);
+  after 10 minutes of that). The history it reads is bounded the same way:
+  its scans start no chunk after `guardian.passTimeoutSec`, and a backlog is
+  read over many passes, each of which still checks (part 6.1);
 - it reads every distributor's roots, and each root's `RootPublished`, on
   both of its providers, and pages when they differ: one provider cannot
   hide a root from it. The roots of every launch are read in a few
@@ -1569,6 +1669,7 @@ gives them.
 | `verify --loop` / `verify --once` | none | check every epoch, alert |
 | `verify --distributor X --epoch N --rpc URL [--rpc URL] --config FILE\|URL [--site URL] [--gateway URL]` | none | the public check of one epoch; `--config` is required (the published `sharing/<chain>/config.json`, or a file) |
 | `guardian --loop --interval=120` | guardian | check every epoch, veto and freeze |
+| `--getlogs-tries N` (keeper, verify, guardian, rebuild) | - | how often an `eth_getLogs` refused for a rate limit is asked before the read fails: 7 by default (63.5 s of waiting), 1 to 10 (part 6.1) |
 | `rebuild` | none | refill `/data` from the chain and the files |
 | `ack-veto --distributor X --epoch N --by NAME` | none (the data repo token) | let the keeper recompute after a veto |
 | `check` | none | the chain, the contract addresses and their wiring, the launchers and owners, the keys against their roles, `eth_call` with no `to`, the published config of this rules version, which secrets are present, and an alert sink (part 7) |
