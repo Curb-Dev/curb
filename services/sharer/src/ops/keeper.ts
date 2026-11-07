@@ -71,6 +71,9 @@ export interface OpsContext {
   allowSingleProvider?: boolean;
   /** Read-back retry pacing for publishing (tests make it instant). */
   refetch?: { tries: number; delayMs: number };
+  /** Blocks a history scan reads before it records how far it got
+   *  (SCAN_CHUNK_BLOCKS; tests make it small). */
+  scanChunkBlocks?: bigint;
 }
 
 export interface KeeperKeys {
@@ -388,23 +391,57 @@ export async function keeperTick(ctx: OpsContext, keys: KeeperKeys, o: TickOptio
 
 // ---------------------------------------------------------------- pieces
 
+/** A HISTORY SCAN KEEPS WHAT IT HAS READ. The discovery, the role-event and
+ *  the bound-distributor scans read their blocks in chunks of this many and
+ *  record, after each chunk, the last block every log of which was read and
+ *  handled - flushed to /data at once, so a process that is killed keeps it
+ *  too. A scan that fails part-way (a provider refusing eth_getLogs, a
+ *  timeout) resumes after the last whole chunk on the next pass, instead of
+ *  starting again from where its pass started: on 0.2-second blocks (Base
+ *  since 5 November 2026, 432,000 a day) and the small getLogs windows of
+ *  free providers, a backlog read in one piece may never finish. 10,000
+ *  blocks is about 33 minutes of Base: 10 requests at a 1,000-block window,
+ *  100 at a 100-block one. */
+export const SCAN_CHUNK_BLOCKS = 10_000n;
+
+/** [from, to] cut in chunks of at most `size` blocks, in order. */
+export function scanChunks(from: bigint, to: bigint, size: bigint): [bigint, bigint][] {
+  if (size < 1n) throw new Error('a scan chunk is at least one block');
+  const out: [bigint, bigint][] = [];
+  for (let a = from; a <= to; a += size) out.push([a, a + size - 1n < to ? a + size - 1n : to]);
+  return out;
+}
+
+const chunkOf = (ctx: OpsContext): bigint => ctx.scanChunkBlocks ?? SCAN_CHUNK_BLOCKS;
+
+/** A backlog read in many chunks says how far it has got, chunk by chunk
+ *  (one chunk, the usual pass, says nothing). */
+function scanned(ctx: OpsContext, scan: string, through: bigint, to: bigint, provider?: string): void {
+  ctx.log.info('history scan', { scan, ...(provider ? { provider } : {}), through, to, left: to - through });
+}
+
 /** HolderSharingEnabled up to the safe head, cached incrementally.
  *
  *  The guardian asks with `allProviders` and `head`: every provider is
  *  scanned and their answers joined, so one provider that leaves a
  *  distributor out cannot hide it, and the blocks past the safe head up to
  *  `head` are scanned too (not cached: they may still be reorganised), so a
- *  launch that switched sharing on minutes ago is watched at once. */
+ *  launch that switched sharing on minutes ago is watched at once.
+ *
+ *  Chunk by chunk (SCAN_CHUNK_BLOCKS): a chunk counts as read, and what it
+ *  found is kept, only once EVERY provider asked has read all of it. */
 export async function discover(ctx: OpsContext, safe: bigint, o: { allProviders?: boolean; head?: bigint } = {}): Promise<Address[]> {
   const readers = o.allProviders ? ctx.readers : [ctx.readers[0]];
   const st = ctx.store.get<{ block: bigint; ds: Address[] }>('discovery', { block: ctx.cfg.sharing.graduatorFromBlock - 1n, ds: [] });
-  if (safe > st.block) {
-    for (const r of readers) {
-      const found = await discoverSharing(r, ctx.cfg.sharing.graduator, st.block + 1n, safe);
-      for (const s of found) if (!st.ds.includes(s.distributor)) st.ds.push(s.distributor);
-    }
-    st.block = safe;
+  const chunks = scanChunks(st.block + 1n, safe, chunkOf(ctx));
+  for (const [a, z] of chunks) {
+    const found: Address[] = [];
+    for (const r of readers) for (const s of await discoverSharing(r, ctx.cfg.sharing.graduator, a, z)) found.push(s.distributor);
+    for (const d of found) if (!st.ds.includes(d)) st.ds.push(d);
+    if (chunks.length > 1) scanned(ctx, 'discovery', z, safe);
+    st.block = z;
     ctx.store.set('discovery', st);
+    ctx.store.flush();
   }
   const ds = [...st.ds];
   if (o.head !== undefined && o.head > st.block) {
@@ -423,30 +460,43 @@ export async function discover(ctx: OpsContext, safe: bigint, o: { allProviders?
  *  providers' lists up to T differ, or when a scan names a distributor or a
  *  token twice: a provider that leaves a distributor out or invents one
  *  still stops the epoch as a disagreement, never a silent change of its
- *  exclusions. */
+ *  exclusions.
+ *
+ *  Each provider's scan is kept chunk by chunk (SCAN_CHUNK_BLOCKS), so one
+ *  cut short - by a refusal, or by a check's deadline - resumes where it
+ *  stopped; and the guardian and the verifier bring every scan up to the
+ *  safe head on every pass (verify.ts), outside any check's deadline: a
+ *  check then finds the list in /data instead of scanning the Graduator's
+ *  history within its guardian.checkTimeoutSec. */
 export async function boundDistributors(ctx: OpsContext, T: bigint, safe: bigint): Promise<Address[] | undefined> {
   const { cfg } = ctx;
   if (T > safe) return undefined;
-  // a copy: a check abandoned at its deadline may still be running this
-  const all = structuredClone(ctx.store.get<Record<string, { block: bigint; bound: [Address, Address, bigint][] }>>('boundDistributors', {}));
+  type Scan = { block: bigint; bound: [Address, Address, bigint][] };
   const lists: string[] = [];
   let out: Address[] = [];
   for (const [i, r] of ctx.readers.entries()) {
     const key = `${i}:${r.label}`;
-    const st = all[key] ?? { block: cfg.sharing.graduatorFromBlock - 1n, bound: [] };
-    if (T > st.block) {
-      for (const s of await discoverSharing(r, cfg.sharing.graduator, st.block + 1n, T)) {
+    // a copy: a check abandoned at its deadline may still be running this
+    const st = structuredClone(ctx.store.get<Record<string, Scan>>('boundDistributors', {})[key] ?? { block: cfg.sharing.graduatorFromBlock - 1n, bound: [] });
+    const chunks = scanChunks(st.block + 1n, T, chunkOf(ctx));
+    for (const [a, z] of chunks) {
+      for (const s of await discoverSharing(r, cfg.sharing.graduator, a, z)) {
         if (st.bound.some(([d, t]) => d === s.distributor || t === s.token)) return undefined;
         st.bound.push([s.distributor, s.token, s.block]);
       }
-      st.block = T;
-      all[key] = st;
+      if (chunks.length > 1) scanned(ctx, 'bound distributors', z, T, r.label);
+      st.block = z;
+      // kept only if it is further than what is kept (an abandoned check may
+      // have written since): both are this provider's whole answer up to there
+      ctx.store.update<Record<string, Scan>>('boundDistributors', {}, (all) => {
+        if (!all[key] || all[key].block < z) all[key] = structuredClone(st);
+      });
+      ctx.store.flush();
     }
     const ds = st.bound.filter(([, , b]) => b <= T).map(([d]) => d);
     lists.push(ds.join(','));
     if (i === 0) out = ds;
   }
-  ctx.store.set('boundDistributors', all);
   return lists.every((l) => l === lists[0]) ? out : undefined;
 }
 
@@ -501,23 +551,30 @@ async function keyChecks(ctx: OpsContext, keys: KeeperKeys, f: FactoryView, rep:
   }
 }
 
-/** Role and catalog events since the last scan -> alerts. */
+/** Role and catalog events since the last scan -> alerts. Chunk by chunk
+ *  (SCAN_CHUNK_BLOCKS): eventsBlock moves past a chunk only once each of
+ *  its events was handled. A chunk read again after a failure raises
+ *  nothing twice: each alert's key is its log's position. */
 export async function roleEvents(ctx: OpsContext, ds: Address[], to: bigint, keys: { publisher?: TxSender | null; pusher?: TxSender | null; guardian?: TxSender | null }): Promise<void> {
   const { cfg, store } = ctx;
   const from = store.get<bigint>('eventsBlock', cfg.eventsFromBlock - 1n) + 1n;
-  if (to < from) return;
-  const evs = await scanEvents(ctx.readers[0], { factory: cfg.distributorFactory, catalog: cfg.catalog, distributors: ds, hook: cfg.hook, registry: cfg.registry }, from, to);
   const ours = Object.values(keys).filter(Boolean).map((s) => s!.address);
-  for (const e of evs) {
-    if (e.name === 'PushSkipped') {
-      recordSkip(ctx, e.address, String(e.args.account).toLowerCase(), Number((await ctx.readers[0].block(e.block)).timestamp), null);
-      continue;
+  const chunks = scanChunks(from, to, chunkOf(ctx));
+  for (const [a, z] of chunks) {
+    const evs = await scanEvents(ctx.readers[0], { factory: cfg.distributorFactory, catalog: cfg.catalog, distributors: ds, hook: cfg.hook, registry: cfg.registry }, a, z);
+    for (const e of evs) {
+      if (e.name === 'PushSkipped') {
+        recordSkip(ctx, e.address, String(e.args.account).toLowerCase(), Number((await ctx.readers[0].block(e.block)).timestamp), null);
+        continue;
+      }
+      if (e.name === 'RootVetoed') recordVeto(ctx, e.address, { epoch: String(e.args.epoch), reason: String(e.args.reason).toLowerCase(), block: e.block.toString(), at: Number((await ctx.readers[0].block(e.block)).timestamp) });
+      const al = alertFor(e, { factory: cfg.distributorFactory, catalog: cfg.catalog, ours, hook: cfg.hook, registry: cfg.registry, policyOwner: cfg.policyOwner, launchers: cfg.launchers });
+      if (al) await ctx.alerts.raise(al, { cooldownSec: 365 * 86400 });
     }
-    if (e.name === 'RootVetoed') recordVeto(ctx, e.address, { epoch: String(e.args.epoch), reason: String(e.args.reason).toLowerCase(), block: e.block.toString(), at: Number((await ctx.readers[0].block(e.block)).timestamp) });
-    const a = alertFor(e, { factory: cfg.distributorFactory, catalog: cfg.catalog, ours, hook: cfg.hook, registry: cfg.registry, policyOwner: cfg.policyOwner, launchers: cfg.launchers });
-    if (a) await ctx.alerts.raise(a, { cooldownSec: 365 * 86400 });
+    if (chunks.length > 1) scanned(ctx, 'role events', z, to);
+    store.set('eventsBlock', z);
+    store.flush();
   }
-  store.set('eventsBlock', to);
 }
 
 export interface VetoSeen {

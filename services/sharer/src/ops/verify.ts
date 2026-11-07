@@ -51,7 +51,11 @@
 // it. The recompute's list of every distributor bound so far (each epoch
 // excludes the others) comes from each provider's own scan of the
 // Graduator, kept in /data and advanced over new blocks only (keeper.ts
-// boundDistributors).
+// boundDistributors) - on every pass, up to the safe head, before any check
+// starts, so no check spends its deadline scanning history. The scans that
+// do read history (the discovery, the role events, that list) keep their
+// progress chunk by chunk, so a backlog is read across passes even when
+// each pass is cut short.
 //
 // A PASS IS BOUNDED IN TIME, AND A VETO DOES NOT WAIT FOR IT. The URI is
 // chosen by whoever holds the publisher key, so a copy may trickle forever
@@ -75,7 +79,8 @@
 // is not frozen; a freeze until it holds - frozen, with no unfreeze
 // announced, since one announced ripens on time and every root still
 // pending then becomes payable (a freeze() cancels it) - for a day at most.
-// The freeze goes first. Each root's state is re-read on every provider
+// A pass whose scans fail still sends what it owes before it ends. The
+// freeze goes first. Each root's state is re-read on every provider
 // just before sending, in batches, so a vetoMany names only roots still
 // pending; one that would revert, or was mined and reverted, falls back to
 // one veto() per root; a reverted receipt is never a success. The guardian
@@ -485,8 +490,42 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
     }
     const latest = await commonHead(ctx.readers, 'latest');
     const safe = await commonHead(ctx.readers, 'safe');
-    const ds = await discover(ctx, safe.number, { allProviders: true, head: latest.number });
-    await roleEvents(ctx, ds, safe.number, { guardian });
+    let ds: Address[];
+    try {
+      ds = await discover(ctx, safe.number, { allProviders: true, head: latest.number });
+      await roleEvents(ctx, ds, safe.number, { guardian });
+    } catch (e) {
+      // A SCAN THAT FAILS DOES NOT HOLD BACK WHAT IS OWED. The vetoes and the
+      // freeze decided on earlier passes need no scan: settleOwed re-reads
+      // every root it sends for on every provider. The pass then ends, not
+      // clean, as before. (Its progress is kept chunk by chunk: keeper.ts.)
+      rep.ok = false;
+      rep.errors.push(errorText(e));
+      log.error('watch tick failed', { error: errorText(e) });
+      if (guardian) {
+        try {
+          await settleOwed(ctx, guardian, rep);
+        } catch (e2) {
+          rep.errors.push(`owed vetoes: ${errorText(e2)}`);
+          log.error('owed vetoes not settled', { error: errorText(e2) });
+        }
+      }
+      return rep;
+    }
+    // EVERY PROVIDER'S LIST OF BOUND DISTRIBUTORS, BROUGHT UP TO THE SAFE
+    // HEAD NOW, outside any check's deadline: a check reads it from /data
+    // (keeper.ts boundDistributors). Left to the first check of a launch, a
+    // provider with a small getLogs window could not scan the Graduator's
+    // history within guardian.checkTimeoutSec, and an honest root would be
+    // unverifiable. A failure here does not stop the pass (it is not clean):
+    // a check scans what is left itself.
+    try {
+      await boundDistributors(ctx, safe.number, safe.number);
+    } catch (e) {
+      rep.ok = false;
+      rep.errors.push(`the bound distributors: ${errorText(e)}`);
+      log.error('the bound distributors not brought up to the safe head', { error: errorText(e) });
+    }
     const f = await readFactory(r0, cfg.distributorFactory, latest.number);
     if (guardian && !(await isVetoer(r0, cfg.distributorFactory, guardian.address, latest.number))) {
       await ctx.alerts.raise({ key: 'guardian-not-vetoer', severity: 'page', title: 'The guardian key is NOT a vetoer', text: `${guardian.address} cannot veto on ${cfg.distributorFactory}: it only alerts until the Safe adds it.` }, { cooldownSec: cfg.alerts.reminderSec });
