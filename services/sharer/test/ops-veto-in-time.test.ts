@@ -7,6 +7,10 @@
 //     copies that never finish arriving: decided too late to veto, and
 //     never "unreached", so not frozen either. Cut short, it is vetoed by
 //     the late rule. A root past its hour is still checked in full;
+//   - the time left for that cut is counted from the latest "now" there is:
+//     the newest head a provider shows, or the host clock if it is later. A
+//     provider behind (or both behind, with the host clock right) cannot
+//     stretch the check into the time its veto needs to land;
 //   - a root whose RootPublished cannot be read (a provider fails on it) is
 //     unverifiable, never left with no verdict: the late rule and the
 //     grace apply to it;
@@ -77,6 +81,69 @@ test('a stolen-key root first met late in its hour, with copies that never finis
   assert.equal(rep.results[0].verdict, 'unverifiable', js(said));
   assert.match(rep.results[0].problems[0], /not checked within \d+ s \(guardian\.vetoLandingSec before its hour ends/, js(said));
   assert.ok(alertKeys(g).includes(`unverified:${L.D}:${P.epoch}:late`), js(said));
+});
+
+/** The same stolen-key root, first met with 24 s (240 s at about 1:10) left:
+ *  checkTimeoutSec 300 -> 30 s, vetoLandingSec 90 -> 9 s, the late window
+ *  900 -> 90 s, the grace 600 -> 60 s. The providers named in `behind` show
+ *  their latest and safe heads 12 blocks (120 s) late. With `hostClock`, this
+ *  host's clock keeps the chain's true time; without, it is about an hour slow. */
+async function metLateBehind(behind: ('a' | 'b')[], hostClock: boolean) {
+  const LAG = 12;
+  const LEFT = 24;
+  const w = opsWorld({ config: (c) => Object.assign(c.guardian, { checkTimeoutSec: 30, passTimeoutSec: 30, vetoUnverifiedBeforeSec: 90, vetoUnverifiedAfterSec: 60, vetoLandingSec: 9, freezeAtBadRoots: 0 }) });
+  const { L, site } = stolen(w, 'behind');
+  const P = w.sim.launch(L.D).pending;
+  w.sim.blockTime = 1n;
+  w.chainPass(Number(BigInt(P.payableAt) - head(w)) - LEFT - 1 - LAG);
+  for (let i = 0; i < LAG; i++) w.sim.mine();
+  const late = (label: 'a' | 'b'): Rpc => ({
+    label,
+    request: async (x) => {
+      const p = [...((x.params ?? []) as any[])];
+      if (x.method === 'eth_getBlockByNumber' && (p[0] === 'latest' || p[0] === 'safe')) p[0] = '0x' + (w.sim.latest - BigInt(LAG)).toString(16);
+      return w.sim.rpc(label).request({ ...x, params: p });
+    },
+  });
+  const rpcs = (['a', 'b'] as const).map((l) => (behind.includes(l) ? late(l) : w.sim.rpc(l)));
+  const net = w.net as any;
+  const plain = net.fetch;
+  net.fetch = (async (u: any, init: any) => (String(u) === site || String(u).startsWith('https://gw.test/') ? stalled() : plain(u, init))) as typeof fetch;
+  const g = w.make('guardian', { rpcs });
+  net.fetch = plain;
+  const left0 = Number(BigInt(P.payableAt) - head(w));
+  assert.equal(left0, LEFT, 'the true time left at the start');
+  if (hostClock) w.clock.t = Number(head(w)) * 1000;
+  else assert.ok(w.clock.t < Number(head(w)) * 1000 - 3000 * 1000, 'the host clock is slow');
+  // the chain's clock (and this host's, when it keeps time) runs one second a second
+  const tickTock = setInterval(() => {
+    w.sim.mine();
+    if (hostClock) w.clock.t += 1000;
+  }, 1000);
+  let rep;
+  try {
+    rep = await watchTick(g.ctx, g.keys.guardian);
+  } finally {
+    clearInterval(tickTock);
+  }
+  const said = { left0, results: rep.results.map((r) => [r.verdict, r.problems[0]]), vetoed: rep.vetoed.length, frozen: w.sim.state.factory.frozen, leftAtEnd: Number(BigInt(P.payableAt) - head(w)), alerts: alertKeys(g) };
+  // vetoed: the chain takes a veto only before payableAt
+  assert.equal(rep.vetoed.length, 1, `vetoed in time: ${js(said)}`);
+  assert.equal(w.sim.launch(L.D).pending.payableAt, 0n, 'no longer pending');
+  assert.equal(w.sim.launch(L.D).active.epoch, 0, 'and never active');
+  assert.equal(rep.results.length, 1, js(said));
+  assert.equal(rep.results[0].verdict, 'unverifiable', js(said));
+  // cut at 24 - 9 = 15 s or less, not at 24 + 12 - 9 = 27 s
+  const cut = /not checked within (\d+) s \(guardian\.vetoLandingSec before its hour ends/.exec(rep.results[0].problems[0]);
+  assert.ok(cut && Number(cut[1]) <= 15, `cut from the latest clock: ${js(said)}`);
+}
+
+test('a provider 120 s behind cannot stretch the check of a root met late: the time left is counted from the newest head', { timeout: 120_000 }, async () => {
+  await metLateBehind(['b'], false);
+});
+
+test('both providers 120 s behind cannot stretch it either: the host clock, later than their heads, counts', { timeout: 120_000 }, async () => {
+  await metLateBehind(['a', 'b'], true);
 });
 
 test('a pending root past its hour is checked in full, not cut short: an honest one still verifies', { timeout: 60_000 }, async () => {

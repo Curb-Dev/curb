@@ -494,8 +494,9 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
     }
 
     const latest = await commonHead(ctx.readers, 'latest');
-    // the chain's clock as last read, and when (step 3)
-    let clock = { ts: latest.timestamp, at: performance.now() };
+    // the chain's clock as last read - the oldest and the newest head time
+    // the providers showed - and when (step 3)
+    let clock = { oldest: latest.oldest, newest: latest.newest, at: performance.now() };
     const safe = await commonHead(ctx.readers, 'safe');
     // THE HISTORY SCANS ARE BOUNDED IN TIME TOO: together they start no new
     // chunk after guardian.passTimeoutSec (each reads one at least), and
@@ -610,13 +611,25 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
     // the late rule vetoes it. A root past that time already is checked in
     // full (its page says it is no longer vetoable), and one a freeze holds
     // has all the time there is.
+    //
+    // THE TIME LEFT IS COUNTED FROM THE LATEST "NOW" THERE IS: the newest
+    // head any provider showed, or this host's clock if it is later. Counted
+    // from a provider that is behind, or from a slow host clock, the check
+    // would run into the time its veto needs to land, and a root met late
+    // could become payable unvetoed. A provider (or a host clock) that claims
+    // a time in the future can only cut the check earlier, never stretch it:
+    // an honest root is then unverifiable and vetoed late, which delays its
+    // payout and pays nothing wrong. Only a root past its hour on EVERY
+    // provider (the oldest head) is checked in full.
     const pendingCheck = (P: RootView): { ms: number; limit?: string } => {
       const by = !fzNow.frozen ? P.payableAt : fzNow.unfreezeAt === 0n ? null : fzNow.unfreezeAt > P.payableAt ? fzNow.unfreezeAt : P.payableAt;
       const full = checkMs();
       if (by === null) return { ms: full };
-      const left = Number(by - clock.ts) * 1000 - (performance.now() - clock.at);
+      const since = performance.now() - clock.at;
+      if (Number(by - clock.oldest) * 1000 - since <= 0) return { ms: full };
+      const left = Number(by) * 1000 - Math.max(Number(clock.newest) * 1000 + since, ctx.now());
       const cut = Math.max(1000, left - cfg.guardian.vetoLandingSec * 1000);
-      return left <= 0 || cut >= full ? { ms: full } : { ms: cut, limit: `guardian.vetoLandingSec before its hour ends: ${Math.max(0, Math.round(left / 1000))} s were left` };
+      return cut >= full ? { ms: full } : { ms: cut, limit: `guardian.vetoLandingSec before its hour ends: ${Math.max(0, Math.round(left / 1000))} s were left, counted from the newest provider head or this host's clock` };
     };
     const k = cfg.guardian.freezeAtBadRoots;
     // k or more at once: freeze first, once, then send every veto owed
@@ -666,7 +679,7 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
 
         // decided on a fresh head: the check may have taken minutes
         const now = await commonHead(ctx.readers, 'latest');
-        clock = { ts: now.timestamp, at: performance.now() };
+        clock = { oldest: now.oldest, newest: now.newest, at: performance.now() };
         const fz = await freezeHolds(ctx, now.number);
         fzNow = fz;
         const frozenNow = fz.frozen;

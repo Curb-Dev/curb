@@ -309,11 +309,12 @@ export const MUTANTS: Mutant[] = [
   // D: every read waits out a refusal spell
   m('FD1 only eth_getLogs waits out a refusal spell', R, '{ logWindow, tries: logWindow.tries }', '{ logWindow }', 'every read waits out a refusal spell', 'refusal spell inside a check'),
   // the review of step 1: a veto lands inside its root's hour
-  m("FV1 a pending root's check not cut short for its veto", V, '      return left <= 0 || cut >= full ? { ms: full } :', '      return true ? { ms: full } :', 'first met late in its hour'),
-  m('FV2 a root past its hour cut short too', V, '      return left <= 0 || cut >= full ? { ms: full } :', '      return cut >= full ? { ms: full } :', 'checked in full'),
+  m("FV1 a pending root's check not cut short for its veto", V, '      return cut >= full ? { ms: full } :', '      return true ? { ms: full } :', 'first met late in its hour'),
+  m('FV2 a root past its hour cut short too', V, '      if (Number(by - clock.oldest) * 1000 - since <= 0) return { ms: full };\n', '', 'checked in full'),
   m('FV3 an event not read leaves the root with no verdict', V, '          if (signal.aborted) throw e;\n          // AN EVENT NOT READ', '          throw e;\n          // AN EVENT NOT READ', 'never left with no verdict'),
   m('FV4 a lookup abandoned at the deadline pages about the event', V, '          if (signal.aborted) throw e;\n          // AN EVENT NOT READ', '          // AN EVENT NOT READ', 'raises no alert about the event'),
   m('FV5 a landing time outside the late window accepted', C, '  if (guardian.vetoUnverifiedBeforeSec > 0 && guardian.vetoLandingSec >= guardian.vetoUnverifiedBeforeSec) throw', '  if (false) throw', 'every refusal'),
+  m('FV6 the time left for the cut counted from the lower head', V, 'Math.max(Number(clock.newest) * 1000 + since, ctx.now())', '(Number(clock.oldest) * 1000 + since)', 'cannot stretch the check of a root met late', 'cannot stretch it either'),
   m('FT1 a veto handed to one provider after the other', T, "    const answers = await Promise.allSettled(this.readers.map((r) => r.request('eth_sendRawTransaction', [raw], SEND_TRIES)));", "    const answers: PromiseSettledResult<unknown>[] = [];\n    for (const r of this.readers) answers.push((await Promise.allSettled([r.request('eth_sendRawTransaction', [raw], SEND_TRIES)]))[0]);", 'holds nothing back'),
   m('FT2 a veto asked as often as a read', T, "r.request('eth_sendRawTransaction', [raw], SEND_TRIES)", "r.request('eth_sendRawTransaction', [raw])", 'asked at most twice'),
   m('FK1 the missing-price alert says 7 days again', K, 'an epoch waits for keeper.maxEpochWaitSec (${k.maxEpochWaitSec} s since the last one).', 'an epoch waits for the 7-day rule.', 'a missing price'),

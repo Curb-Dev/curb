@@ -198,14 +198,20 @@ export async function crossChecked(readers: ChainReader[], factory: Address, ds:
   return { factory: all[0].factory, dists: all[0].dists };
 }
 
-/** The highest block every provider has: latest on each, the lowest wins. */
-export async function commonHead(readers: ChainReader[], tag: 'latest' | 'safe'): Promise<{ number: bigint; timestamp: bigint }> {
+/** The highest block every provider has: latest on each, the lowest wins.
+ *  With it, the oldest and the newest of the heads' times (the guardian's
+ *  clock, verify.ts). */
+export async function commonHead(readers: ChainReader[], tag: 'latest' | 'safe'): Promise<{ number: bigint; timestamp: bigint; oldest: bigint; newest: bigint }> {
   let best: { number: bigint; timestamp: bigint } | null = null;
+  let oldest = 0n;
+  let newest = 0n;
   for (const r of readers) {
     const h = await r.head(tag);
+    if (!best || h.timestamp < oldest) oldest = h.timestamp;
+    if (!best || h.timestamp > newest) newest = h.timestamp;
     if (!best || h.number < best.number) best = { number: h.number, timestamp: h.timestamp };
   }
-  return best!;
+  return { ...best!, oldest, newest };
 }
 
 // ------------------------------------------------------------- the harvest

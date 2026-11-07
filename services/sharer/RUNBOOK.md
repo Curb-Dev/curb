@@ -650,7 +650,16 @@ Measured on 7 November 2026:
   4. stop or restart the guardian (an update, a reboot) only when no root is
      pending with less than about **10 minutes** of its hour left: wait until
      it is settled or vetoed. A guardian back with less than about 2 minutes
-     left cannot check and veto that root in time.
+     left cannot check and veto that root in time. The time left for a
+     check is counted from the latest "now" there is: the newest head
+     either provider shows, or the host's clock if it is later. So a
+     provider that is behind, or a slow clock, cannot stretch a check into
+     the 90 s its veto needs to land (since 7 November 2026; before, the
+     lower head counted, and a provider more than about 80 s behind ate that
+     margin). A provider or a clock that is ahead only cuts checks shorter:
+     an honest root is then vetoed as unverified, which delays its payout
+     and pays nothing wrong. Keep the host's clock synced (NTP; on a Windows
+     PC, part 8.6 step 8).
 
   **What stays unsafe.** Until step 3: an epoch longer than the check or
   the keeper can read (a busy one over about 15 hours, a quiet one over
