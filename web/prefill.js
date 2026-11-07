@@ -1,7 +1,7 @@
 // A PREFILLED LAUNCH LINK: what it may put in the create form, and when.
 //
 // An AI agent, or a person, hands someone a link such as
-//   https://curbfun.xyz/launchpad?factory=0x...&name=Moon%20Cat&symbol=MCAT&tax=2&earn=holders
+//   https://curbfun.xyz/launchpad?factory=0x...&name=Moon%20Cat&symbol=MCAT&tax=2&earn=you
 // and the form opens with those choices filled in. The person then checks every
 // field, connects and presses Create the launch, exactly as with a form they
 // filled in by hand: the region gate, the wallet and every check before a send

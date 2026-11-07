@@ -508,7 +508,7 @@ const shareCard = (p) => p.evaluate(() => ({
   disabled: document.getElementById("nShare").disabled, terms: !document.getElementById("shareTerms").hidden,
   unavailable: document.getElementById("shareUnavailable").hidden ? "" : document.getElementById("shareUnavailable").textContent,
 }));
-test("P13: earn=holders picks Holders, the guide's own link: the five statements show and the note says what Holders gives away; with no version approved it goes back to You and says why", async () => {
+test("P13: earn=holders, still a choice a link may make, picks Holders: the five statements show and the note says what Holders gives away; with no version approved it goes back to You and says why", async () => {
   test.setTimeout(120_000);
   const WETHF = await factoryFor(WETH);
   const link = { factory: WETHF, name: "Share Cat", symbol: "SHCT", tax: "2", earn: "holders" };

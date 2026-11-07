@@ -104,7 +104,7 @@ https://curbfun.xyz/launchpad?factory=<assets[].factory>&name=<..>&symbol=<..>&t
 | `name` | 1 to 32 characters: letters and digits of any script, space and `. , ' - & ! ? ( ) + #`. No emoji. No space at either end. Nothing that looks like a web address (`evil.com`). No Latin letters mixed with Cyrillic or Greek ones. |
 | `symbol` | 1 to 10 characters: A-Z, a-z, 0-9. |
 | `tax` | The creator tax in percent, 1 to 5, at most 2 decimals: `2`, `2.5`, `4.25`. |
-| `earn` | `you` (the creator keeps their share) or `holders` (their share goes to holders, for good). |
+| `earn` | `you` (the creator keeps their share) or `holders` (their share goes to holders, for good). Holder payouts depend on CURB's keeper and guardian publishing and checking each epoch, so they can be delayed. |
 
 Every key is optional. A key given twice is not used; a `factory` given twice, or written other than as `0x` and 40 hex digits, fills nothing. The form shows "Filled in from a link" and asks the person to check every field. With `earn=holders` it also says, on its own line, that the creator share goes to whoever holds the token, for good. A link never carries a creator wallet, a dev buy, slippage or a recipient: the form never reads them, and warns when a link tries. It does not fill the description, the links or the image either; the person adds those. A link that also names `rpc`, `lens` or `token` fills nothing.
 
@@ -128,7 +128,7 @@ Say its status first. Then the numbers in the paired asset's own units: raised a
 ### Hand off a launch
 
 1. Pick the paired asset in deployment.json, never one with `hidden: true`, and start from its `launchUrl`.
-2. Add `name`, `symbol`, `tax` and `earn` as the person chose them, within the rules above.
+2. Add `name`, `symbol`, `tax` and `earn` as the person chose them, within the rules above. Use `earn=you` unless they ask for the tax to go to holders.
 3. Show the full URL, unshortened.
 4. Tell the person to check every field before they press Create the launch, and that a launch cannot be changed afterwards.
 5. Tell them to add the creator wallet, a dev buy, the description, the links and the image themselves if they want them.
@@ -161,11 +161,12 @@ Dollar figures are for display only. Nothing trades at them.
 4. Sort by `progress.bps`, highest first.
 5. Answer in TSLAc units (raised of threshold), with `asOf` and each `page` link.
 
-**"Launch a meme called Moon Cat on NVDAc with a 2% tax paid to holders."**
-1. Take the NVDAc `launchUrl` and add `&name=Moon%20Cat&symbol=MCAT&tax=2&earn=holders`.
+**"Launch a meme called Moon Cat on NVDAc with a 2% tax."**
+1. Take the NVDAc `launchUrl` and add `&name=Moon%20Cat&symbol=MCAT&tax=2&earn=you`.
 2. Give the full link.
-3. Say that the launch is permanent, that giving the tax to holders is one-way, and that holder payouts need CURB's keeper to keep publishing them.
+3. Say that the launch is permanent.
 4. Say that the person adds anything else (creator wallet, dev buy, description, links, image) on the form.
+5. If they want the tax to go to holders instead, use `earn=holders` and say that this is one-way and that holder payouts can be delayed (the `earn` row above).
 
 **"Buy 0.05 ETH of $MCAT for me."**
 Refuse to trade. Give `https://curbfun.xyz/token/{token}` for the launch and say the person buys there, from their own wallet.

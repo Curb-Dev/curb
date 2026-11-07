@@ -245,6 +245,12 @@ test('A7: llms.txt\'s rules paragraph and curb.md\'s Notes each state the four r
   assert.equal((ruleList.match(/^- /gm) ?? []).length, RULES.length, 'curb.md Notes: the rules and nothing else');
 });
 
+/** The guide's example link, after the NVDAc launchUrl. The owner's choice
+ *  (7 November 2026): every example keeps the tax with its creator. */
+const EXAMPLE = '&name=Moon%20Cat&symbol=MCAT&tax=2&earn=you';
+/** What agents are told about earn=holders wherever the grammar is. */
+const HOLDERS_DELAY = 'Holder payouts depend on CURB\'s keeper and guardian publishing and checking each epoch, so they can be delayed.';
+
 test('A8: the link grammar in deployment.json and curb.md is exactly prefill.js\'s keys and the factory, with app.js\'s limits', () => {
   const box: any = { window: {}, URLSearchParams };
   vm.runInNewContext(read('prefill.js'), box);
@@ -254,7 +260,7 @@ test('A8: the link grammar in deployment.json and curb.md is exactly prefill.js\
   assert.match(D.launchLink.params.name, new RegExp(`^1 to ${lim.name} characters`));
   assert.match(D.launchLink.params.symbol, new RegExp(`^1 to ${lim.symbol} characters`));
   assert.match(D.launchLink.params.tax, new RegExp(`${lim.min} to ${lim.max}, at most 2 decimals`));
-  assert.equal(D.launchLink.params.earn, 'you or holders');
+  assert.equal(D.launchLink.params.earn, 'you or holders. ' + HOLDERS_DELAY);
   for (const n of ['creator wallet', 'dev buy', 'slippage', 'recipient', 'rpc', 'lens', 'token']) assert.ok(D.launchLink.never.includes(n), n);
   // curb.md's table of keys.
   const table = GUIDE.split('### Launch link')[1].split('\n### ')[0];
@@ -264,13 +270,26 @@ test('A8: the link grammar in deployment.json and curb.md is exactly prefill.js\
   assert.match(table, new RegExp(`\\| \`symbol\` \\| 1 to ${lim.symbol} characters`));
   assert.match(table, new RegExp(`\\| \`tax\` \\| The creator tax in percent, ${lim.min} to ${lim.max}, at most 2 decimals`));
   assert.match(table, /\| `earn` \| `you` .* or `holders`/);
+  // HOLDERS STAYS A CHOICE, said with its delay where the grammar is.
+  const earnRow = table.split('\n').find((l) => l.startsWith('| `earn` |')) ?? '';
+  assert.ok(earnRow.endsWith(' ' + HOLDERS_DELAY + ' |'), earnRow);
   // THE LINK THE GUIDE'S EXAMPLE BUILDS is one prefill.js fills whole.
   const nvda = D.assets.find((a: any) => a.symbol === 'NVDAc');
-  const link = new URL(nvda.launchUrl + '&name=Moon%20Cat&symbol=MCAT&tax=2&earn=holders');
+  const link = new URL(nvda.launchUrl + EXAMPLE);
   const r = box.window.CurbPrefill.parse(link.searchParams, { production: true, tokenView: false, formThere: true, readsSitePair: true,
     siteFactories: SITE.factories, hiddenFactories: SITE.hiddenFactories, nameMax: lim.name, symbolMax: lim.symbol, taxMinBps: lim.min * 100, taxMaxBps: lim.max * 100 });
   assert.deepEqual([...r.filled], ['factory', 'name', 'symbol', 'tax', 'earn']);
-  assert.ok(GUIDE.includes('&name=Moon%20Cat&symbol=MCAT&tax=2&earn=holders'));
+  assert.equal(r.values.earn, 'you');
+  assert.ok(GUIDE.includes('`' + EXAMPLE + '`'));
+  // EVERY EXAMPLE LINK THE KIT GIVES KEEPS THE TAX WITH ITS CREATOR: an earn=
+  // in a link is earn=you, in every file an agent reads and in prefill.js's own.
+  const kit: [string, string][] = [['llms.txt', LLMS], ['curb.md', GUIDE], ['docs.md', DOCS_AGENTS],
+    ['deployment.json', JSON.stringify(D)], ['prefill.js', read('prefill.js')]];
+  for (const [name, text] of kit) {
+    // (curb.md's grammar line, earn=<you|holders>, is no example.)
+    for (const m of text.matchAll(/[?&]earn=(?!<you\|holders>)([^&\s`"')]*)/g)) assert.equal(m[1], 'you', `${name}: ${m[0]}`);
+  }
+  assert.ok([...GUIDE.matchAll(/[?&]earn=you\b/g)].length >= 1 && [...read('prefill.js').matchAll(/[?&]earn=you\b/g)].length === 1);
 });
 
 test('A9: vercel.json and _headers send Access-Control-Allow-Origin: * for /llms.txt and /agents/*', () => {

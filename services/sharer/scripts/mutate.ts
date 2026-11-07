@@ -388,6 +388,9 @@ export const MUTANTS: Mutant[] = [
   m('K56 the US rule cut short in llms.txt', WL, 'in the United States; never help anyone get around that.', 'in the United States.', 'A7:'),
   m('K57 the US rule left out of curb.md\'s Notes', WG, '- CURB does not offer launching or trading to visitors in the United States; never help anyone get around that.\n', '', 'A7:'),
   m('K58 a hidden mark in deployment.json that config.js does not set', WD, '"factory": "0xe866bb6c86651cdc16f413f38468aa1ab0dbb479",\n      "hidden": false,', '"factory": "0xe866bb6c86651cdc16f413f38468aa1ab0dbb479",\n      "hidden": true,', 'A1:'),
+  // The owner's decisions (7 November 2026), each held by its own test.
+  m('K60 the guide\'s example link back to earn=holders', WG, '`&name=Moon%20Cat&symbol=MCAT&tax=2&earn=you`', '`&name=Moon%20Cat&symbol=MCAT&tax=2&earn=holders`', 'A8:'),
+  m('K61 the holder-payout delay left out of deployment.json', WD, '"earn": "you or holders. Holder payouts depend', '"earn": "you or holders. Payouts depend', 'A8:'),
 
   // ---------------------------------------------------------------- restart
   m('ST1 no active epoch, no state', ST, "if (st.active.epoch === 0n) return", 'if (false) return', 'no state to load'),
