@@ -74,7 +74,7 @@ test('U1: the values a link may carry are filled', () => {
 test('U2: each value outside its rule is refused on its own, and the others still fill', () => {
   const bad: Record<string, string[]> = {
     name: ['x'.repeat(33), '', ' Moon', 'Moon ', 'Moon 🐱', '<img>', 'Moon"', 'a/b', 'a@b', '100%', 'a\tb', 'a\nb',
-      'a\u0000b', 'a\u007fb', 'a\u0085b', 'a​b', 'a‮b', 'a⁦b', '﻿Moon', 'é'],
+      'a\u0000b', 'a\u007fb', 'a\u0085b', 'a\u{200b}b', 'a\u{202e}b', 'a\u{2066}b', '\u{feff}Moon', 'e\u{301}'],
     symbol: ['x'.repeat(11), '', 'M CAT', '$CAT', 'CAT!', 'ÇAT'],
     tax: ['0.99', '5.01', '6', '0', '01', '1.', '.5', '1,5', '1.555', '+1', '-1', '1e0', '0x1', '１', 'NaN', 'Infinity', ' 1', '1 '],
     earn: ['Holders', 'HOLDERS', 'creator', '', '1', 'true', 'You'],

@@ -39,6 +39,11 @@ const SS = 'src/state-store.ts';
 const H = 'scripts/index-history.ts';
 const WS = '../../web/sharing.js';
 const WT = '../../web/token.js';
+// THE AGENT KIT: the prefilled launch link, the launches file, and what the site tells agents.
+const WP = '../../web/prefill.js';
+const XL = 'scripts/index-launches.ts';
+const WD = '../../web/agents/deployment.json';
+const WL = '../../web/llms.txt';
 const off = (cond: string) => [cond, 'if (false)'] as const;
 
 export const MUTANTS: Mutant[] = [
@@ -327,6 +332,40 @@ export const MUTANTS: Mutant[] = [
   m('P48 the signal not passed on', P, 'gatherEpoch(r, config, req, cache, { signal: opts.signal, rebuildStepBlocks: opts.rebuildStepBlocks })', 'gatherEpoch(r, config, req, cache, { rebuildStepBlocks: opts.rebuildStepBlocks })', 'aborted signal'),
   m('P49 the recompute looks up any number of keeper txs', P, '  if (f.keeper.txs.length > MAX_KEEPER_TXS) throw new InputError(', '  if (false) throw new InputError(', 'more keeper transactions'),
   m('S34 any number of keeper txs attributed', S, '  if (txs.length > MAX_KEEPER_TXS) txs.length = MAX_KEEPER_TXS;', '', 'at most 512 keeper'),
+
+  // ---------------------------------------------------------------- the agent kit
+  // A prefilled launch link (web/prefill.js): the half-link exception and each rule.
+  m('K1 the half-link exception without the listed check', WP, '    (o.siteFactories || []).map(lc).includes(f) && !(o.hiddenFactories || []).map(lc).includes(f) &&\n', '    !(o.hiddenFactories || []).map(lc).includes(f) &&\n', 'U8:'),
+  m('K2 the half-link exception without the hidden check', WP, ' && !(o.hiddenFactories || []).map(lc).includes(f) &&\n    !!o.readsSitePair;', ' &&\n    !!o.readsSitePair;', 'U8:'),
+  m('K3 the half-link exception without the page pair', WP, '&&\n    !!o.readsSitePair;', '&&\n    true;', 'U8:'),
+  m('K4 the half-link exception off production too', WP, 'const own = !!o.production && ', 'const own = ', 'U8:'),
+  m('K5 the half-link exception with an endpoint or lens named', WP, '!o.rpcNamed && !o.lensNamed && ADDR.test(f)', 'ADDR.test(f)', 'U8:'),
+  m('K6 any name of 1-32 characters', WP, 'return NAME_CHARS.test(v) ? v : null;', 'return /^.{1,32}$/su.test(v) ? v : null;', 'U2:'),
+  m('K7 a name of 33 characters', WP, 'if (v.length < 1 || v.length > o.nameMax) return null;', 'if (v.length < 1 || v.length > o.nameMax + 1) return null;', 'U2:'),
+  m('K8 a space at either end of a name', WP, '    if (/^ | $/.test(v)) return null;\n', '', 'U2:'),
+  m('K9 any symbol without white space', WP, '"^[A-Za-z0-9]{1,"', '"^[^\\\\s]{1,"', 'U2:'),
+  m('K10 no tax band', WP, 'return bps >= o.taxMinBps && bps <= o.taxMaxBps ? v : null;', 'return v;', 'U2:', 'U4:'),
+  m('K11 the tax band written a second time', WP, 'return bps >= o.taxMinBps && bps <= o.taxMaxBps ? v : null;', 'return bps >= 100 && bps <= 500 ? v : null;', 'U4:'),
+  m('K12 three tax decimals', WP, '(\\.[0-9]{1,2})?$/;', '(\\.[0-9]{1,3})?$/;', 'U2:'),
+  m('K13 earn in any case', WP, 'return v === "you" || v === "holders" ? v : null;', 'return v.toLowerCase() === "you" || v.toLowerCase() === "holders" ? v : null;', 'U2:'),
+  m('K14 the first of a repeated key', WP, '    if (all.length > 1) { out.refused.push([k, "twice"]); continue; }\n', '', 'U3:'),
+  m('K15 every query key copied into the values', WP, '  for (const k of KEYS) {\n    const all = q.getAll(k);\n    if (!all.length) continue;\n    if (all.length > 1) { out.refused.push([k, "twice"]); continue; }\n    const v = check(k, String(all[0]), o);',
+    '  for (const k of new Set([...KEYS, ...q.keys()])) {\n    const all = q.getAll(k);\n    if (!all.length) continue;\n    if (all.length > 1) { out.refused.push([k, "twice"]); continue; }\n    const v = KEYS.includes(k) ? check(k, String(all[0]), o) : String(all[0]);', 'U5:'),
+  m('K16 a link naming rpc, lens or token still fills', WP, '  if (q.get("rpc") || q.get("lens")) { out.blocked = "endpoint"; return out; }\n  if (q.get("token")) { out.blocked = "launch"; return out; }\n', '', 'U6:'),
+  m('K17 a key the link can never set, matched as written', WP, 'const norm = (k) => String(k).toLowerCase().replace(/[-_]/g, "");', 'const norm = (k) => String(k).toLowerCase();', 'U5:'),
+  m('K26 a page reading another pair still filled', WP, '  if (!o.readsSitePair) { out.blocked = "saved"; return out; }\n', '', 'U6:'),
+  // The launches file for agents (scripts/index-launches.ts).
+  m('K28 progress not capped', XL, 'return Number(b > 10_000n ? 10_000n : b);', 'return Number(b);', 'L6:'),
+  m('K29 raised and threshold swapped', XL, '      raised: v.realQuoteReserve.toString(),\n      threshold: v.graduationThreshold.toString(),', '      raised: v.graduationThreshold.toString(),\n      threshold: v.realQuoteReserve.toString(),', 'L1:'),
+  m('K30 bidi controls kept in names', XL, '\\u{202a}-\\u{202e}', '', 'L3:'),
+  m('K31 written every run', XL, '): boolean {\n  if (!last) return true;', '): boolean {\n  if (!last || true) return true;', 'L4:'),
+  m('K32 refreshed by a count of blocks', XL, 'return next.asOf.timestamp - last.asOf.timestamp >= REFRESH_AFTER_S;', 'return next.asOf.block - last.asOf.block >= REFRESH_AFTER_S;', 'L4:'),
+  m('K33 the fixed fields kept by token only', XL, 'if (was && was.curve === v.curve) {', 'if (was) {', 'L2:'),
+  m('K34 the hidden lists ignored', XL, 'const hidden = hiddenLaunches.has(v.token) || hiddenQuotes.has(v.quote);', 'const hidden = false;', 'L7:'),
+  m('K35 a failed launch drops its last entry', XL, '      if (was) entries.push(was);\n', '', 'L8:'),
+  // What the site tells agents, held to the files it is taken from.
+  m('K37 a factory replaced in deployment.json', WD, '"factory": "0xe866bb6c86651cdc16f413f38468aa1ab0dbb479",', '"factory": "0xe866bb6c86651cdc16f413f38468aa1ab0dbb470",', 'A1:'),
+  m('K38 a rule left out of llms.txt', WL, 'Never ask for a private key, seed phrase or password. ', '', 'A7:'),
 
   // ---------------------------------------------------------------- restart
   m('ST1 no active epoch, no state', ST, "if (st.active.epoch === 0n) return", 'if (false) return', 'no state to load'),
