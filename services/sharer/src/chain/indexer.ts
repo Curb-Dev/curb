@@ -312,7 +312,10 @@ export async function probeAccounts(r: ChainReader, distributor: Address, accoun
  *  THE INDEX IS COUNTED IN BLOCKS, NOT DAYS. geth's default keeps the last
  *  2,350,000 blocks of it: about 54 days of Base's 2-second blocks, but only
  *  about 5.4 days of the 0.2-second blocks Base has made since 5 November
- *  2026 - less than an epoch may last (keeper.maxEpochWaitSec, 7 days). On
+ *  2026 - less than an epoch may last (it has no upper bound: a veto or
+ *  a keeper outage makes the next one longer; keeper.maxEpochWaitSec, a
+ *  day in deploy/sharer.json and 7 days by default, only paces quiet
+ *  launches). On
  *  a provider that prunes there, the transactions of an epoch's oldest days
  *  are gone: r.tx() of one that logged from D throws, and that provider
  *  cannot compute the epoch (the keeper's epoch waits; the guardian's check

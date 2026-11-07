@@ -81,7 +81,13 @@ export class SetupError extends Error {
  *  runs out stops at once all the same (its reads throw RequestStopped,
  *  which is never asked again: chainview.ts stoppable). A host whose
  *  providers refuse longer sets more with --getlogs-tries (each one doubles
- *  the wait). */
+ *  the wait).
+ *
+ *  The keys' TxSenders read through these readers too: the simulation, the
+ *  fees, the nonce, the balance and the receipts wait a spell out on
+ *  provider a as the checks do. The signed transaction does not: it goes
+ *  to every provider at once, each asked at most twice (tx.ts SEND_TRIES),
+ *  so a provider that refuses never holds a veto back from the others. */
 export const OPS_LOG_WINDOW: Readonly<Partial<LogWindowOptions>> = { tries: 7 };
 
 export function build(o: BuildOptions): Built {

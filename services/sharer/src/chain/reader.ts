@@ -97,13 +97,14 @@ export class ChainReader {
     };
   }
 
-  /** One request, asked again after a pause when it failed transiently. */
-  async request(method: string, params: unknown[]): Promise<any> {
+  /** One request, asked again after a pause when it failed transiently: up
+   *  to `tries` more times (the reader's own by default). */
+  async request(method: string, params: unknown[], tries = this.opts.tries): Promise<any> {
     for (let attempt = 0; ; attempt++) {
       try {
         return await this.rpc.request({ method, params });
       } catch (e) {
-        if (!isTransient(e) || attempt >= this.opts.tries) throw e;
+        if (!isTransient(e) || attempt >= tries) throw e;
         await this.opts.sleep(this.opts.backoffMs * 2 ** attempt);
       }
     }

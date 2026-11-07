@@ -85,6 +85,84 @@ test('a provider that fails stops the other at its next request, and its own err
   assert.deepEqual(askedAfter('b', 'a'), [], `provider a asked nothing more once b had failed: ${js(events)}`);
 });
 
+test('a provider that fails stops the other in the middle of a long scan, not after it', async () => {
+  // a one-block window: provider b's replay of the transfers is one
+  // eth_getLogs per block, inside ONE read of the epoch's (r.logs), so
+  // only the stoppable reader can stop it between two of them
+  const w = vectorWorld(loadVector('v01-mid-epoch-transfers'));
+  w.chain.faults.rangeLimit = { max: 1n, message: 'Block range too large for public access: maximum 1 blocks' };
+  let bLogs = 0;
+  let aFailed = false;
+  let bAfter = 0;
+  let threeIn!: () => void;
+  const third = new Promise<void>((r) => (threeIn = r));
+  const a: Rpc = {
+    label: 'a',
+    request: async (x) => {
+      if (x.method === 'eth_getLogs') {
+        await third; // b is well into its scan
+        aFailed = true;
+        throw new Error('provider a: broken');
+      }
+      return w.chain.rpc('a').request(x);
+    },
+  };
+  const b: Rpc = {
+    label: 'b',
+    request: async (x) => {
+      if (aFailed) bAfter++;
+      if (x.method === 'eth_getLogs' && ++bLogs === 3) threeIn();
+      await wait(5);
+      return w.chain.rpc('b').request(x);
+    },
+  };
+  const rd = (r: Rpc) => new ChainReader(r, { tries: 0, logWindow: { tries: 0, initial: 1 } });
+  // read whole, provider b's eth_getLogs are many more than three
+  const whole = { n: 0 };
+  const counting = (label: string): Rpc => ({ label, request: async (x) => (label === 'b' && x.method === 'eth_getLogs' && whole.n++, w.chain.rpc(label).request(x)) });
+  await prepareEpoch([rd(counting('a')), rd(counting('b'))], w.config, req(w), { stateCache: null });
+  assert.ok(whole.n > 8, `${whole.n} eth_getLogs read whole`);
+  await assert.rejects(prepareEpoch([rd(a), rd(b)], w.config, req(w), { stateCache: null }), /provider a: broken$/);
+  await wait(300);
+  assert.equal(bAfter, 0, `provider b asked nothing more once a had failed (${bLogs} eth_getLogs of ${whole.n})`);
+});
+
+test("the guardian's event lookup reads every provider at once: provider b is read while provider a waits for it", { timeout: 60_000 }, async () => {
+  const w = opsWorld();
+  const k = w.make('keeper');
+  w.pass(3601);
+  assert.equal((await tick(w, k)).published.length, 1);
+  const L = w.launches[0];
+  const isEvent = (x: { method: string; params?: unknown[] }) => {
+    const p = (x.params ?? []) as any[];
+    return x.method === 'eth_getLogs' && String(p[0]?.address).toLowerCase() === L.D && [p[0]?.topics?.[0]].flat().includes(TOPICS.RootPublished);
+  };
+  let bAsked!: () => void;
+  const seen = new Promise<void>((r) => (bAsked = r));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const a: Rpc = {
+    label: 'a',
+    async request(x) {
+      if (isEvent(x)) {
+        await Promise.race([seen, new Promise((_, reject) => (timer = setTimeout(() => reject(new Error('provider b was not asked for the event while provider a waited: one after the other')), 5000)))]);
+        clearTimeout(timer);
+      }
+      return w.sim.rpc('a').request(x);
+    },
+  };
+  const b: Rpc = {
+    label: 'b',
+    async request(x) {
+      if (isEvent(x)) bAsked();
+      return w.sim.rpc('b').request(x);
+    },
+  };
+  const g = w.make('guardian', { rpcs: [a, b], logTries: 0 });
+  const rep = await watchTick(g.ctx, g.keys.guardian);
+  clearTimeout(timer);
+  assert.deepEqual(rep.results.map((r) => [r.verdict, r.problems]), [['ok', []]], js(rep.results));
+});
+
 test('a check whose providers take 0.9 and 1.3 s finishes within a 2-s deadline: they are read at once', { timeout: 60_000 }, async () => {
   const w = opsWorld({ config: (c) => Object.assign(c.guardian, { checkTimeoutSec: 2, passTimeoutSec: 2 }) });
   const k = w.make('keeper');

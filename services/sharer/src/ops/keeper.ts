@@ -804,7 +804,7 @@ async function epochDue(
   const I1 = pre.received1 - v.active.cumHolders1;
   const money = await moneyOf(r0, { quote: meta.quoteToken, quoteIsWeth: meta.quoteToken === cfg.sharing.weth, feeds: cfg.sharing.feeds[meta.quoteToken] ?? null, ethUsd: cfg.ethUsdFeed }, latest.number);
   if (money.P === 0n) {
-    await ctx.alerts.raise({ key: `missing-price:${d}`, severity: 'warn', title: 'A price is missing', text: `The quote ${meta.quoteToken} of ${d} has no readable Chainlink price: the keeper fee counts as 0 and an epoch waits for the 7-day rule.`, distributor: d }, { cooldownSec: cfg.alerts.reminderSec });
+    await ctx.alerts.raise({ key: `missing-price:${d}`, severity: 'warn', title: 'A price is missing', text: `The quote ${meta.quoteToken} of ${d} has no readable Chainlink price: the keeper fee counts as 0 and an epoch waits for keeper.maxEpochWaitSec (${k.maxEpochWaitSec} s since the last one).`, distributor: d }, { cooldownSec: cfg.alerts.reminderSec });
   }
   if (I0 <= 0n && I1 <= 0n) {
     clearDue(ctx, d);

@@ -193,7 +193,7 @@ export const MUTANTS: Mutant[] = [
   // ---------------------------------------------------------------- reader
   m('R1 429 and 5xx are transient', R, "if (cur.status === 429 || (typeof cur.status === 'number' && cur.status >= 500) || cur.code === 429) return true;", '', 'reader:'),
   m('R2 a revert is never transient', R, 'if (/revert/i.test(t)) return false;', '', 'reader:'),
-  m('R3 transient retried', R, 'if (!isTransient(e) || attempt >= this.opts.tries) throw e;', 'throw e;', 'reader:'),
+  m('R3 transient retried', R, 'if (!isTransient(e) || attempt >= tries) throw e;', 'throw e;', 'reader:'),
   m('R4 block number checked', R, 'if (h.number !== n) throw', 'if (false) throw', 'reader:'),
   m('R5 header hash required', R, 'if (!isHash(raw.hash) || !isHash(raw.parentHash)) throw', 'if (false) throw', 'reader refuses'),
   m('R6 tx hash checked', R, "if (lower(t.hash) !== hash.toLowerCase()) throw", 'if (false) throw', 'reader:'),
