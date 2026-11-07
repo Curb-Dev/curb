@@ -305,9 +305,20 @@ export async function probeAccounts(r: ChainReader, distributor: Address, accoun
  *  a publish replaced at the same nonce never lands; one mined after T may
  *  be known to one provider and not yet to another; one mined before F may
  *  be known to an archive node and already pruned from another's
- *  transaction index (geth keeps about 54 days of it on Base), and the
- *  journal keeps 500 sends per key, months of them on a quiet deployment.
- *  A hash that logged from D in the window must be there. */
+ *  transaction index, and the journal keeps 500 sends per key, months of
+ *  them on a quiet deployment. A hash that logged from D in the window must
+ *  be there.
+ *
+ *  THE INDEX IS COUNTED IN BLOCKS, NOT DAYS. geth's default keeps the last
+ *  2,350,000 blocks of it: about 54 days of Base's 2-second blocks, but only
+ *  about 5.4 days of the 0.2-second blocks Base has made since 5 November
+ *  2026 - less than an epoch may last (keeper.maxEpochWaitSec, 7 days). On
+ *  a provider that prunes there, the transactions of an epoch's oldest days
+ *  are gone: r.tx() of one that logged from D throws, and that provider
+ *  cannot compute the epoch (the keeper's epoch waits; the guardian's check
+ *  is unverifiable). So every provider must keep the whole index (RUNBOOK
+ *  part 6 says how to check); both public endpoints chosen on 7 November
+ *  2026 answered a transaction of May 2025. */
 export async function collectKeeperTxs(r: ChainReader, D: Address, factory: Address, F: bigint, T: bigint, extraHashes: string[] = []): Promise<KeeperTx[]> {
   const logs = await r.logs({ address: D }, F, T);
   const logged = new Set<string>(logs.map((l) => l.transactionHash.toLowerCase()));
