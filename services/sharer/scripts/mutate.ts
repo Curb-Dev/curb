@@ -371,10 +371,10 @@ export const MUTANTS: Mutant[] = [
   m('K40 a factory trimmed and re-cased before the check', WP, '  const f = String(raw == null ? "" : raw);', '  const f = String(raw == null ? "" : raw).trim().replace(/^0X/, "0x");', 'U6:', 'U8:'),
   m('K41 a factory named twice is still a whole link', WP, '!o.lensNamed && named.length === 1 &&', '!o.lensNamed && named.length >= 1 &&', 'U8:'),
   m('K42 a factory named twice said to be not offered', WP, 'if (factories.length > 1) { out.blocked = "factories"; return out; }', 'if (factories.length > 1) { out.blocked = "factory"; return out; }', 'U3:'),
-  m('K43 blank filler letters in a name', WP, 'if (BLANK_LETTERS.test(v) || DOMAIN_LIKE.test(v)) return null;', 'if (DOMAIN_LIKE.test(v)) return null;', 'U2:'),
-  m('K44 a web address in a name', WP, 'if (BLANK_LETTERS.test(v) || DOMAIN_LIKE.test(v)) return null;', 'if (BLANK_LETTERS.test(v)) return null;', 'U2:'),
-  m('K45 Latin mixed with Cyrillic or Greek in a name', WP, '    if (LATIN.test(v) && LOOKALIKE.test(v)) return null;\n', '', 'U2:'),
-  m('K46 a ":" in a name', WP, "const NAME_CHARS = /^[\\p{L}\\p{N} .,'&!?()+#-]+$/u;", "const NAME_CHARS = /^[\\p{L}\\p{N} .,'&!?()+#:-]+$/u;", 'U2:'),
+  // (K43, blank filler letters, and K45, Latin mixed with Cyrillic or Greek,
+  // went with their rules: a name from a link is Latin only, K62.)
+  m('K44 a web address in a name', WP, '    if (WEB_DOT.test(looks) || WEB_SPELLED.test(looks) || WEB_SPACED.test(looks)) return null;\n', '', 'U2:'),
+  m('K46 a ":" in a name', WP, "const NAME_CHARS = /^(?:(?=\\p{L})\\p{Script=Latin}|[0-9 .,'&!?()+#-])+$/u;", "const NAME_CHARS = /^(?:(?=\\p{L})\\p{Script=Latin}|[0-9 .,'&!?()+#:-])+$/u;", 'U2:'),
   m('K47 Holders from a link not said on its own line', WP, '  if (r.values && r.values.earn === "holders") {', '  if (false) {', 'the notice says'),
   m('K48 recipient taken out of the keys a link can never set', WP, '"payto", "recipient", "receiver"', '"payto", "receiver"', 'U5a:'),
   m('K49 the Hangul fillers kept in names', XL, '\\u{2800}\\u{3164}\\u{ffa0}', '\\u{2800}\\u{ffa0}', 'L3:'),
@@ -391,6 +391,10 @@ export const MUTANTS: Mutant[] = [
   // The owner's decisions (7 November 2026), each held by its own test.
   m('K60 the guide\'s example link back to earn=holders', WG, '`&name=Moon%20Cat&symbol=MCAT&tax=2&earn=you`', '`&name=Moon%20Cat&symbol=MCAT&tax=2&earn=holders`', 'A8:'),
   m('K61 the holder-payout delay left out of deployment.json', WD, '"earn": "you or holders. Holder payouts depend', '"earn": "you or holders. Payouts depend', 'A8:'),
+  m('K62 a name of any script', WP, "const NAME_CHARS = /^(?:(?=\\p{L})\\p{Script=Latin}|[0-9 .,'&!?()+#-])+$/u;", "const NAME_CHARS = /^[\\p{L}\\p{N} .,'&!?()+#-]+$/u;", 'U2:'),
+  m('K63 a web address spelled out, spaced before the dot or bracketed', WP, 'if (WEB_DOT.test(looks) || WEB_SPELLED.test(looks) || WEB_SPACED.test(looks)) return null;', 'if (WEB_DOT.test(looks) || WEB_SPACED.test(looks)) return null;', 'U2:'),
+  m('K64 a web address spaced after the dot', WP, 'if (WEB_DOT.test(looks) || WEB_SPELLED.test(looks) || WEB_SPACED.test(looks)) return null;', 'if (WEB_DOT.test(looks) || WEB_SPELLED.test(looks)) return null;', 'U2:'),
+  m('K65 a name read as written, not as it looks', WP, '    const looks = v.normalize("NFKC");', '    const looks = v;', 'U2:'),
 
   // ---------------------------------------------------------------- restart
   m('ST1 no active epoch, no state', ST, "if (st.active.epoch === 0n) return", 'if (false) return', 'no state to load'),

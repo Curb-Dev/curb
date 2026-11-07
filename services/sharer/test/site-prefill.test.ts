@@ -55,7 +55,10 @@ test('the limits are app.js\'s own, so a link is held to what the form is', () =
 });
 
 test('U1: the values a link may carry are filled', () => {
-  for (const name of ["Na'vidia", 'Güzel Kedi', 'Moon Cat', 'x'.repeat(32), 'A.B, C-D & E! (F)? +#', 'Котик 2', 'Γάτα', 'Dr. Pepper', 'Web3.0', 'ㄱ 한글']) {
+  // LATIN LETTERS, accents and all, and the digits 0-9. The owner's controls
+  // (7 November 2026): "St Louis", "Moon Cat" and "Dr. Who" are no web address.
+  for (const name of ["Na'vidia", 'Güzel Kedi', 'Moon Cat', 'x'.repeat(32), 'A.B, C-D & E! (F)? +#', 'Dr. Pepper', 'Web3.0',
+    'St Louis', 'St. Louis', 'Dr. Who', 'Moon 2.0', 'Polka Dots', 'Œuvre Straße', 'Café Ñandú']) {
     assert.equal(one('name', name), name, `name ${JSON.stringify(name)}`);
   }
   for (const s of ['A', 'MCAT', 'moon', 'Ab1', '0123456789']) assert.equal(one('symbol', s), s, `symbol ${s}`);
@@ -79,8 +82,17 @@ test('U2: each value outside its rule is refused on its own, and the others stil
       '\u{3164}', '\u{3164}\u{3164}', 'Moon\u{3164}Cat', '\u{115f}', '\u{1160}', 'a\u{ffa0}b',
       // A WEB ADDRESS in a name shown on every card, and the ":" of one.
       'Claim at evil.com', 'evil.co', 'x.рф', 'Go to bit.ly now', 'a:b', 'https:',
-      // LATIN MIXED WITH CYRILLIC OR GREEK: the look-alikes.
-      '\u{0421}urb', 'Moon \u{041a}otik', 'C\u{03bf}in'],
+      // ... AND ONE SPELLED OUT, spaced or bracketed (the 7 November review's,
+      // then more of the same), in any case.
+      'evil dot com', 'evil(.)com', 'evil[.]com', 'Claim at evil . com', 'evil .com', 'evil (dot) com', 'evil(dot)com',
+      'evil-dot-com', 'EVIL DOT COM', 'evil . COM', 'evil{.}com', 'evil. com', 'Claim at evil. com now',
+      // (fullwidth letters are Latin, and read as what they look like: "ｅｖｉｌ ｄｏｔ ｃｏｍ", "evil ｄｏｔ com")
+      '\u{ff45}\u{ff56}\u{ff49}\u{ff4c} \u{ff44}\u{ff4f}\u{ff54} \u{ff43}\u{ff4f}\u{ff4d}', 'evil \u{ff44}\u{ff4f}\u{ff54} com',
+      // LATIN MIXED WITH ANOTHER SCRIPT: the look-alikes ("Сurb", "Ꮯurb" in Cherokee).
+      '\u{0421}urb', 'Moon \u{041a}otik', 'C\u{03bf}in', '\u{13df}urb',
+      // ANOTHER SCRIPT ALONE, or a digit other than 0-9 (the person types those by hand).
+      '\u{041a}\u{043e}\u{0442}\u{0438}\u{043a} 2', '\u{0393}\u{03ac}\u{03c4}\u{03b1}', '\u{3131} \u{d55c}\u{ae00}',
+      'Moon \u{0661}', 'Moon \u{ff11}', 'Moon \u{2160}', 'Moon \u{00b2}'],
     symbol: ['x'.repeat(11), '', 'M CAT', '$CAT', 'CAT!', 'ÇAT'],
     tax: ['0.99', '5.01', '6', '0', '01', '1.', '.5', '1,5', '1.555', '+1', '-1', '1e0', '0x1', '１', 'NaN', 'Infinity', ' 1', '1 '],
     earn: ['Holders', 'HOLDERS', 'creator', '', '1', 'true', 'You'],
@@ -263,9 +275,12 @@ test('the notice says what was filled and what was not, by rule, and never echoe
   for (const v of ['Moon Cat', 'M CAT', 'Holders', OTHER, '50', 'Qzx desc']) assert.ok(!text.includes(v), `the notice echoes ${v}`);
   assert.deepEqual([...P.notice(parse({ name: 'A' }), PAGE)], ['Filled in from a link: the name. Check every field before you create. A launch cannot be changed afterwards.']);
   assert.match(P.notice(parse({ tax: '9' }), PAGE).join(' '), /must be a percent from 1 to 5, with at most 2 decimals/);
-  assert.match(P.notice(parse({ name: '<b>' }), PAGE).join(' '), /must be 1 to 32 letters, digits, spaces/);
-  assert.match(P.notice(parse({ name: 'evil.com' }), PAGE).join(' '),
-    /\. , ' - & ! \? \( \) \+ #, with no space at either end, nothing that looks like a web address, and no Latin letters mixed with Cyrillic or Greek ones\./);
+  const nameRule = 'The link\'s name was not used: it must be 1 to 32 Latin letters (A to Z, accents allowed), digits 0 to 9, ' +
+    'spaces or . , \' - & ! ? ( ) + #, with no space at either end and nothing that looks like a web address. You can still ' +
+    'type any name in the form yourself.';
+  for (const name of ['<b>', 'evil.com', 'evil dot com', '\u{13df}urb']) {
+    assert.deepEqual([...P.notice(parse({ name }), PAGE)], [nameRule], name);
+  }
   assert.deepEqual([...P.notice(parse({}), PAGE)], []);
   // HOLDERS, CHOSEN BY A LINK, IS SAID ON ITS OWN LINE, right under what was
   // filled: it gives the creator's share to whoever holds the token, for good.

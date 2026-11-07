@@ -36,6 +36,9 @@ const TWO_FACTORIES = "This link names more than one factory, so nothing from it
 const HOLDERS_LINE = "This link chose Holders: if you keep that, your creator share is 0% for good and goes to whoever " +
   "holds the token. Choose You to keep it.";
 const OTHER_ENDPOINT = "http://other-endpoint.test:8701";
+const NAME_RULE = "The link's name was not used: it must be 1 to 32 Latin letters (A to Z, accents allowed), digits 0 " +
+  "to 9, spaces or . , ' - & ! ? ( ) + #, with no space at either end and nothing that looks like a web address. You " +
+  "can still type any name in the form yourself.";
 
 test.describe.configure({ mode: "serial" });
 
@@ -266,7 +269,7 @@ test("P4: invalid values are refused one by one, never half used, and the form s
     await expect(p.locator("#earnYouPick")).toBeChecked();
     const note = await noteText(p);
     expect(note).toContain(FILLED + ": the paired asset.");
-    expect(note).toContain("The link's name was not used: it must be 1 to 32 letters, digits, spaces or");
+    expect(note).toContain(NAME_RULE);
     expect(note).toContain("The link's symbol was not used: it must be 1 to 10 letters or digits.");
     expect(note).toContain("The link's creator tax was not used: it must be a percent from 1 to 5, with at most 2 decimals.");
     expect(note).toContain("The link's choice of who earns the tax was not used: it must be you or holders.");
@@ -576,6 +579,33 @@ test("P14: a factory written other than as the page reads it, or named twice, is
     const note = await noteText(p);
     expect(note, what).toContain(said);
     expect(note, what).not.toContain(FILLED);
+    await close(p);
+  }
+});
+
+// ================================================================== P15
+test("P15: a link's name that reads as a web address, spelled out, spaced or bracketed, or that is not Latin, is not used; St Louis, Moon Cat and Dr. Who are", async () => {
+  test.setTimeout(120_000);
+  const WETHF = await factoryFor(WETH);
+  // THE 7 NOVEMBER REVIEW'S, Cherokee "Ꮯurb" and a Cyrillic one (escaped).
+  for (const name of ["evil dot com", "evil(.)com", "evil[.]com", "Claim at evil . com", "Ꮯurb", "Котик"]) {
+    const p = await newPage();
+    await openForm(p, { factory: WETHF, name, symbol: "MOON" });
+    await expect(p.locator("#nSymbol"), name).toHaveValue("MOON");
+    await expect(p.locator("#nName"), name).toHaveValue("");
+    await expect.poll(() => noteText(p), { message: name }).toContain(NAME_RULE);
+    const note = await noteText(p);
+    expect(note, name).toContain(FILLED + ": the paired asset and the symbol.");
+    expect(note, name).not.toContain(name);
+    await close(p);
+  }
+  // THE OWNER'S CONTROLS: no web address, so the link fills them.
+  for (const name of ["St Louis", "Moon Cat", "Dr. Who"]) {
+    const p = await newPage();
+    await openForm(p, { factory: WETHF, name, symbol: "MOON" });
+    await expect(p.locator("#nName"), name).toHaveValue(name);
+    await expect.poll(() => noteText(p), { message: name }).toContain(FILLED + ": the paired asset, the name and the symbol.");
+    expect(await noteText(p), name).not.toContain("name was not used");
     await close(p);
   }
 });

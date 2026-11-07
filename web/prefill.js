@@ -55,21 +55,28 @@ const offered = (raw, listed, hidden) => {
   return (listed || []).map(lc).includes(l) && !(hidden || []).map(lc).includes(l);
 };
 
-/// A name: letters and digits of any script, space and . , ' - & ! ? ( ) + #
-/// No emoji, no control, format, bidi or zero-width character, no combining
-/// mark, no markup character, no ":". Stricter than the form on purpose: a
-/// name is shown on every card for good, so a stranger's link may not plant
-/// in it what the person might miss -
-const NAME_CHARS = /^[\p{L}\p{N} .,'&!?()+#-]+$/u;
-/// - a letter that renders as nothing (the Hangul fillers),
-const BLANK_LETTERS = /[\u{115f}\u{1160}\u{3164}\u{ffa0}]/u;
-/// - a web address ("Claim at evil.com": a dot between a letter or digit and
-///   two letters),
-const DOMAIN_LIKE = /[\p{L}\p{N}]\.\p{L}{2,}/u;
-/// - or Latin mixed with Cyrillic or Greek, the look-alikes ("Сurb" with a
-///   Cyrillic С). One script alone is fine: "Котик 2".
-const LATIN = /\p{Script=Latin}/u;
-const LOOKALIKE = /[\p{Script=Cyrillic}\p{Script=Greek}]/u;
+/// A NAME FROM A LINK is stricter than the form on purpose: a name is shown on
+/// every card for good, so a stranger's link may not plant in it what the
+/// person might miss. The person can still type any name on the form by hand.
+///
+/// Its characters: Latin letters (\p{Script=Latin}, accents allowed), the
+/// digits 0-9, space and . , ' - & ! ? ( ) + #, and nothing else. So no letter
+/// of another script, and with it no look-alike ("Сurb" with a Cyrillic С,
+/// "Ꮯurb" with a Cherokee Ꮯ) and no letter that renders as nothing (the
+/// Hangul fillers); no emoji, no control, format, bidi or zero-width
+/// character, no combining mark, no markup character, no ":".
+const NAME_CHARS = /^(?:(?=\p{L})\p{Script=Latin}|[0-9 .,'&!?()+#-])+$/u;
+/// And nothing that reads as a web address, a dot or the word "dot" before a
+/// word of 2 to 6 letters (the length of most endings, .com to .online):
+/// - "evil.com", "x.io": a dot between a letter or digit and letters;
+const WEB_DOT = /[\p{L}\p{N}]\.\p{L}{2,}/u;
+/// - "evil . com", "evil .com", "evil(.)com", "evil (dot) com", "evil dot com",
+///   "evil-dot-com": a space before the dot, a dot or "dot" in brackets, or
+///   "dot" between spaces or hyphens, in any case;
+const WEB_SPELLED = /[\p{L}\p{N}](?:\s+\.\s*|\s*[(\[{<]\s*(?:\.|dot)\s*[)\]}>]\s*|[\s-]+dot[\s-]+)\p{L}{2,6}(?!\p{L})/iu;
+/// - "evil. com": a space after the dot only, then a lower-case word. A capital
+///   there is a sentence, not an address, so "Dr. Who" and "St. Louis" stay.
+const WEB_SPACED = /[\p{L}\p{N}]\.\s+\p{Ll}{2,6}(?!\p{L})/u;
 /// A tax in percent: no sign, no leading zero, no exponent, at most 2 decimals.
 const TAX_TEXT = /^(0|[1-9][0-9]{0,2})(\.[0-9]{1,2})?$/;
 
@@ -100,8 +107,9 @@ function check(key, v, o) {
   if (key === "name") {
     if (v.length < 1 || v.length > o.nameMax) return null;
     if (/^ | $/.test(v)) return null;
-    if (BLANK_LETTERS.test(v) || DOMAIN_LIKE.test(v)) return null;
-    if (LATIN.test(v) && LOOKALIKE.test(v)) return null;
+    // AS IT LOOKS: a fullwidth "ｄｏｔ" reads as "dot".
+    const looks = v.normalize("NFKC");
+    if (WEB_DOT.test(looks) || WEB_SPELLED.test(looks) || WEB_SPACED.test(looks)) return null;
     return NAME_CHARS.test(v) ? v : null;
   }
   if (key === "symbol") {
@@ -199,9 +207,9 @@ function notice(r, o) {
   for (const [k, why] of r.refused) {
     if (why === "twice") { out.push("The link gave " + FIELD[k] + " more than once, so it was not used."); continue; }
     if (k === "name") {
-      out.push("The link's name was not used: it must be 1 to " + o.nameMax + " letters, digits, spaces or " +
-        ". , ' - & ! ? ( ) + #, with no space at either end, nothing that looks like a web address, and no " +
-        "Latin letters mixed with Cyrillic or Greek ones.");
+      out.push("The link's name was not used: it must be 1 to " + o.nameMax + " Latin letters (A to Z, accents " +
+        "allowed), digits 0 to 9, spaces or . , ' - & ! ? ( ) + #, with no space at either end and nothing that " +
+        "looks like a web address. You can still type any name in the form yourself.");
     } else if (k === "symbol") {
       out.push("The link's symbol was not used: it must be 1 to " + o.symbolMax + " letters or digits.");
     } else if (k === "tax") {

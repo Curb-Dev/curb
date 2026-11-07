@@ -101,7 +101,7 @@ https://curbfun.xyz/launchpad?factory=<assets[].factory>&name=<..>&symbol=<..>&t
 | Key | Rule (a value that breaks it is not used, and the form says so) |
 |---|---|
 | `factory` | One of `assets[].factory`. Any other address fills nothing. |
-| `name` | 1 to 32 characters: letters and digits of any script, space and `. , ' - & ! ? ( ) + #`. No emoji. No space at either end. Nothing that looks like a web address (`evil.com`). No Latin letters mixed with Cyrillic or Greek ones. |
+| `name` | 1 to 32 characters: Latin letters (A to Z, accents allowed), the digits 0 to 9, space and `. , ' - & ! ? ( ) + #`. No other script, no emoji. No space at either end. Nothing that looks like a web address: `evil.com`, `evil . com`, `evil(.)com` and `evil dot com` are all refused. A name outside this rule the person types on the form themselves. |
 | `symbol` | 1 to 10 characters: A-Z, a-z, 0-9. |
 | `tax` | The creator tax in percent, 1 to 5, at most 2 decimals: `2`, `2.5`, `4.25`. |
 | `earn` | `you` (the creator keeps their share) or `holders` (their share goes to holders, for good). Holder payouts depend on CURB's keeper and guardian publishing and checking each epoch, so they can be delayed. |

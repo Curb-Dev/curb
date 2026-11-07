@@ -283,8 +283,9 @@ FOR AI AGENTS - web/prefill.js, web/llms.txt, web/agents/
   creator wallet, the dev buy, slippage, a recipient, the description, the
   links or the image, and the note warns when a link tried. earn=holders gets
   a line of its own: it gives the creator's share to whoever holds the token,
-  for good. A name is stricter than the form: no blank filler letters, nothing
-  like a web address, no Latin mixed with Cyrillic or Greek. A link that also
+  for good. A name is stricter than the form: Latin letters and the digits 0-9
+  only, and nothing like a web address, spelled out ("evil dot com"), spaced
+  ("evil . com") or bracketed ("evil(.)com") too. A link that also
   names rpc, lens or token, a factory config.js does not list or hides, a
   factory written other than "0x" and 40 hex digits or named twice, or a page
   reading a pair saved in this browser fills nothing. The half-link rule
