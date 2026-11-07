@@ -167,3 +167,20 @@ test('the verify workflow: its own environment, no key, verify --once', () => {
   assert.match(y, /run: node src\/cli\.ts verify --once/);
   assert.ok(!/_KEY\b/.test(y), 'no key of any kind');
 });
+
+for (const name of ['sharing-keeper.yml', 'sharing-verify.yml']) {
+  test(`${name}: every run of the service has a step limit, and they end inside the job's 20 minutes, so the save after them runs`, () => {
+    const y = wf(name).replace(/^\s*#.*$/gm, '');
+    assert.match(y, /\n    timeout-minutes: 20\n/, "the job's own limit");
+    const steps = y.split(/\n      - /).slice(1);
+    const runs = steps.filter((s) => /\n\s+run: (\|[\s\S]*node src\/cli\.ts|node src\/cli\.ts)/.test(s));
+    assert.ok(runs.length >= 1, 'the service runs');
+    let sum = 0;
+    for (const s of runs) {
+      const m = /\n        timeout-minutes: (\d+)\n/.exec(s);
+      assert.ok(m, `a step limit on: ${s.split('\n')[0]}`);
+      sum += Number(m![1]);
+    }
+    assert.ok(sum <= 18, `the service's steps take at most ${sum} of the job's 20 minutes: 2 are left for the set-up and the save`);
+  });
+}

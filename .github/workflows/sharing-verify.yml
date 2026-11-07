@@ -62,7 +62,12 @@ jobs:
           restore-keys: |
             sharing-verify-data-
 
+      # A STEP LIMIT INSIDE THE JOB'S: a run cut by the job's 20 minutes may
+      # not get to its "always()" save, and the next run would read again
+      # what this one read (the scans keep their progress in /data, chunk by
+      # chunk). A pass stops its scans at guardian.passTimeoutSec anyway.
       - name: Verify every published epoch
+        timeout-minutes: 15
         env:
           CURB_SHARER_RPC_URLS: ${{ secrets.SHARING_VERIFY_RPC_URLS }}
           CURB_SHARER_ALERT_WEBHOOKS: ${{ secrets.SHARING_ALERT_WEBHOOKS }}

@@ -71,7 +71,13 @@ jobs:
           restore-keys: |
             sharing-keeper-data-
 
+      # STEP LIMITS INSIDE THE JOB'S (5 + 13 of its 20 minutes): a run cut by
+      # the job's limit may not get to its "always()" save, and the next run
+      # would read again what this one read; cut by a step's, the save still
+      # runs and keeps what the scans read (in /data, chunk by chunk). A
+      # rebuild cut short has written state.json: the next run is warm.
       - name: Rebuild /data on a cold cache
+        timeout-minutes: 5
         env:
           CURB_SHARER_RPC_URLS: ${{ secrets.SHARING_RPC_URLS }}
           CURB_SHARER_ALERT_WEBHOOKS: ${{ secrets.SHARING_ALERT_WEBHOOKS }}
@@ -83,6 +89,7 @@ jobs:
           fi
 
       - name: Standby keeper tick
+        timeout-minutes: 13
         env:
           CURB_SHARER_PUBLISHER_KEY: ${{ secrets.SHARING_PUBLISHER_KEY }}
           CURB_SHARER_PUSHER_KEY: ${{ secrets.SHARING_STANDBY_PUSHER_KEY }}
