@@ -17,6 +17,10 @@
 //   --health-port N (or CURB_SHARER_HEALTH_PORT, default 8080) for the loops;
 //                   CURB_SHARER_HEALTH_GRACE_SEC: how long a starting loop
 //                   counts as healthy before its first clean tick
+//   --getlogs-tries N  keeper, verify, guardian, rebuild: how often an
+//                   eth_getLogs refused for a rate limit is asked before the
+//                   read fails (default 7: 63.5 s of waiting; each one more
+//                   doubles it; 1 to 10)
 //
 // Exit codes: 0 done (or verified), 1 a failure or a mismatch, 2 bad usage or
 // an epoch that could not be verified. alert-test: 0 every sink took the
@@ -84,7 +88,8 @@ const USAGE = `usage: curb-sharer <keeper|verify|guardian|rebuild|ack-veto|check
   ack-veto --distributor 0x.. --epoch N [--by NAME] [--note TEXT]
   check [--probe]
   alert-test [--note TEXT]
-common: --config FILE  --data DIR  --health-port N  --single-provider (local rehearsal only)`;
+common: --config FILE  --data DIR  --health-port N  --single-provider (local rehearsal only)
+keeper, verify, guardian, rebuild: --getlogs-tries N (default 7)`;
 
 async function loadConfigArg(a: Args): Promise<OpsConfig> {
   const p = one(a, 'config') ?? process.env.CURB_SHARER_CONFIG;
@@ -146,14 +151,17 @@ export async function main(argv: string[], io: { out: (s: string) => void; err: 
 
     const mode: Mode | null = a.mode === 'keeper' ? 'keeper' : a.mode === 'verify' ? 'verify' : a.mode === 'guardian' ? 'guardian' : a.mode === 'rebuild' ? 'rebuild' : a.mode === 'ack-veto' ? 'ack' : a.mode === 'check' ? 'check' : null;
     if (!mode) throw new ConfigError(`unknown mode ${a.mode}`);
-    const extra: Record<Mode, string[]> = { keeper: ['loop', 'once', 'standby', 'interval'], verify: ['loop', 'once', 'interval'], guardian: ['loop', 'once', 'interval'], rebuild: [], ack: ['distributor', 'epoch', 'by', 'note'], check: ['print-public-config', 'probe'] };
+    const extra: Record<Mode, string[]> = { keeper: ['loop', 'once', 'standby', 'interval', 'getlogs-tries'], verify: ['loop', 'once', 'interval', 'getlogs-tries'], guardian: ['loop', 'once', 'interval', 'getlogs-tries'], rebuild: ['getlogs-tries'], ack: ['distributor', 'epoch', 'by', 'note'], check: ['print-public-config', 'probe'] };
     allowed(a, [...common, ...extra[mode]]);
     const isLoop = has(a, 'loop');
     if (['keeper', 'verify', 'guardian'].includes(mode) && isLoop === has(a, 'once')) throw new ConfigError(`${a.mode} needs exactly one of --loop and --once`);
     const cfg = await loadConfigArg(a);
     const dataDir = one(a, 'data') ?? process.env.CURB_SHARER_DATA ?? '/data';
     const standby = has(a, 'standby');
-    const b = build({ cfg, mode, dataDir, allowSingleProvider: has(a, 'single-provider'), role: standby ? 'standby' : 'primary' });
+    const triesArg = one(a, 'getlogs-tries');
+    const logTries = triesArg === undefined ? undefined : Number(triesArg);
+    if (logTries !== undefined && (!Number.isSafeInteger(logTries) || logTries < 1 || logTries > 10)) throw new ConfigError('--getlogs-tries must be a whole number from 1 to 10');
+    const b = build({ cfg, mode, dataDir, allowSingleProvider: has(a, 'single-provider'), role: standby ? 'standby' : 'primary', logTries });
     const { ctx, keys, lease } = b;
     const log = ctx.log;
 

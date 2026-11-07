@@ -211,3 +211,37 @@ test('every eth_getLogs error names the provider by its label, never its URL', a
   });
   await assert.rejects(getLogsAdaptive(http, { address: TOKEN }, 1n, 1n, new LogWindow({ initial: 1, ...noSleep })), named(/refused a 1-block window \(size/));
 });
+
+test('a range ceiling is looked for between the widest range answered and the one refused: never halved below what was answered', async () => {
+  // keyless dRPC, 7 November 2026: 101 blocks answered, 125 refused - with
+  // this wording, which names a range it does not mean
+  const DRPC = 'ranges over 10000 blocks are not supported on free plan';
+  const f = { address: TOKEN, topics: [TOPIC] };
+  const c = chainWithLogs(5000, 7);
+  c.faults.rangeLimit = { max: 101n, message: DRPC, code: 35 };
+  const win = new LogWindow({ initial: 2000, ...noSleep });
+  assert.equal(win.widest, 0, 'nothing answered yet');
+  await getLogsAdaptive(c.rpc(), f, 1n, 100n, win); // a scan's slow start: 100 blocks, answered at once
+  assert.equal(win.widest, 100);
+  const logs = await getLogsAdaptive(c.rpc(), f, 101n, 1100n, win);
+  assert.equal(logs.length, Math.floor(1100 / 7) - Math.floor(100 / 7));
+  assert.deepEqual(windows(c).slice(0, 6), [100, 1000, 500, 250, 125, 100], 'refused down to 125, then the 100 it answered - not 62');
+  assert.equal(win.cap, 100);
+  assert.ok(windows(c).slice(5).every((x) => x === 100), 'every later window the 100 it answered');
+
+  // nothing answered first: halved as before (2,000 down to 62)
+  const c2 = chainWithLogs(5000, 7);
+  c2.faults.rangeLimit = { max: 101n, message: DRPC, code: 35 };
+  const win2 = new LogWindow({ initial: 2000, ...noSleep });
+  await getLogsAdaptive(c2.rpc(), f, 1n, 1000n, win2);
+  assert.deepEqual(windows(c2).slice(0, 6), [1000, 500, 250, 125, 62, 62]);
+  assert.equal(win2.cap, 62);
+
+  // a result-size ceiling is about these blocks: halved only, whatever was answered elsewhere
+  const c3 = chainWithLogs(4000, 1, 3);
+  c3.faults.sizeLimit = { max: 4000, message: ALCHEMY };
+  const win3 = new LogWindow({ initial: 2000, ...noSleep });
+  win3.widest = 1500;
+  await getLogsAdaptive(c3.rpc(), f, 1n, 4000n, win3);
+  assert.deepEqual(windows(c3).slice(0, 2), [2000, 1000], `a size refusal at 2,000 halves to 1,000, not to the 1,500 once answered (${windows(c3).slice(0, 6)})`);
+});

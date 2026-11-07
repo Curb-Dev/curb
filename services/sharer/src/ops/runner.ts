@@ -8,6 +8,7 @@ import { encodeFunctionData } from 'viem';
 import { defaultStateCache } from '../state-store.ts';
 import { opsFactoryAbi } from './abis.ts';
 import { ChainReader } from '../chain/reader.ts';
+import type { LogWindowOptions } from '../chain/logs.ts';
 import { httpRpc, type Rpc } from '../chain/rpc.ts';
 import { diffSharingConfig, type OpsConfig } from './config.ts';
 import { checkWiring } from './wiring.ts';
@@ -44,6 +45,9 @@ export interface BuildOptions {
   holder?: string;
   role?: 'primary' | 'standby';
   refetch?: { tries: number; delayMs: number };
+  /** How often an eth_getLogs refused "busy" is asked (OPS_LOG_WINDOW;
+   *  the CLI's --getlogs-tries). */
+  logTries?: number;
 }
 
 export interface Built {
@@ -61,6 +65,22 @@ export class SetupError extends Error {
   }
 }
 
+/** THE HOSTS' READERS WAIT OUT A REFUSAL SPELL. An eth_getLogs refused for
+ *  no stated reason (a 429, "rate limit") is asked again after 0.5 s, then
+ *  doubling; with the reader's default of 4 tries a scan gave up after
+ *  7.5 s. A free endpoint refuses in spells longer than that (keyless dRPC,
+ *  7 November 2026: up to 43 s) and a scan that gives up reads its chunk
+ *  again on the next pass. 7 tries wait 63.5 s in all before a read fails.
+ *
+ *  The same for a check's recompute: a refusal spell inside a check is
+ *  waited out up to the check's own deadline (guardian.checkTimeoutSec)
+ *  instead of making the root unverifiable after 7.5 s, and a check that
+ *  runs out stops at once all the same (its reads throw RequestStopped,
+ *  which is never asked again: chainview.ts stoppable). A host whose
+ *  providers refuse longer sets more with --getlogs-tries (each one doubles
+ *  the wait). */
+export const OPS_LOG_WINDOW: Readonly<Partial<LogWindowOptions>> = { tries: 7 };
+
 export function build(o: BuildOptions): Built {
   const cfg = o.cfg;
   const log = o.log ?? jsonLogger({ base: { svc: 'curb-sharer', mode: o.mode } });
@@ -77,7 +97,8 @@ export function build(o: BuildOptions): Built {
   }
   if (rpcs.length === 0) throw new SetupError('no RPC provider: set the rpc_urls secret (two URLs from two different providers)');
   if (rpcs.length < 2 && !o.allowSingleProvider) throw new SetupError('one RPC provider given; two independent ones are required (every epoch is read from both and compared)');
-  const readers = rpcs.map((r) => new ChainReader(r));
+  const logWindow = { ...OPS_LOG_WINDOW, ...(o.logTries !== undefined ? { tries: o.logTries } : {}) };
+  const readers = rpcs.map((r) => new ChainReader(r, { logWindow }));
 
   const store = new Store(o.dataDir);
   // complete balance states between epochs, kept under /data too (state-store.ts)

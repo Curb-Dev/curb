@@ -89,6 +89,11 @@ export class LogWindow {
   cap: number;
   capIsSize = false;
   served = 0;
+  /** The widest range (blocks) the endpoint has answered: 0 until it has
+   *  answered one. `window` is only what is asked next - 2,000 before the
+   *  endpoint has refused anything - and a history scan that counts its
+   *  chunks in requests counts them in this (ops/keeper.ts chunkSize). */
+  widest = 0;
   readonly opts: LogWindowOptions;
   constructor(opts: Partial<LogWindowOptions> = {}) {
     this.opts = { ...DEFAULT_LOG_WINDOW, ...opts };
@@ -103,6 +108,18 @@ export class LogWindowError extends Error {
     super(message, { cause });
     this.name = 'LogWindowError';
     this.kind = kind;
+  }
+}
+
+/** A request its caller has withdrawn - a check past its deadline
+ *  (ops/chainview.ts stoppable) - with the caller's reason as its message.
+ *  NEVER ASKED AGAIN: read as a refusal it would be "busy", and the reader
+ *  would wait out its whole backoff (a minute on the hosts) before giving up
+ *  a check that is already over, which meanwhile counts as still running. */
+export class RequestStopped extends Error {
+  constructor(reason: unknown) {
+    super(reason instanceof Error ? reason.message : 'stopped', { cause: reason });
+    this.name = 'RequestStopped';
   }
 }
 
@@ -146,6 +163,7 @@ export async function getLogsAdaptive(rpc: Rpc, filter: LogFilter, fromBlock: bi
     try {
       logs = await rpc.request({ method: 'eth_getLogs', params: [{ ...filter, fromBlock: hex(cursor), toBlock: hex(end) }] });
     } catch (e) {
+      if (e instanceof RequestStopped) throw e;
       const kind = classifyLogError(e);
       if (kind === 'busy') {
         // REFUSED NOW, NOT REFUSED THIS RANGE: the same window after a pause.
@@ -158,7 +176,13 @@ export async function getLogsAdaptive(rpc: Rpc, filter: LogFilter, fromBlock: bi
       // the ceiling so the next window does not ask for too much again.
       const span = Number(end - cursor + 1n);
       if (span <= o.min) throw new LogWindowError(`${who}: eth_getLogs refused a ${span}-block window (${kind}, blocks ${cursor}..${end}): ${(e as Error).message}`, kind, e);
-      win.window = Math.max(o.min, Math.floor(span / 2));
+      // A RANGE CEILING LIES BETWEEN THE WIDEST RANGE THIS ENDPOINT HAS
+      // ANSWERED AND THE ONE IT REFUSED: halved, but never below the one it
+      // answered (keyless dRPC takes 101 blocks; halved from 2,000 the reader
+      // settled at 62, a third more requests than needed). A result-size
+      // ceiling is about these blocks: halved only.
+      const half = Math.max(o.min, Math.floor(span / 2));
+      win.window = kind === 'range' && win.widest > half && win.widest < span ? win.widest : half;
       win.cap = win.window;
       win.capIsSize = kind === 'size';
       win.served = 0;
@@ -173,6 +197,7 @@ export async function getLogsAdaptive(rpc: Rpc, filter: LogFilter, fromBlock: bi
       if (l.removed === true) throw new Error(`${who}: eth_getLogs answered a removed log`);
       out.push(l);
     }
+    if (Number(end - cursor + 1n) > win.widest) win.widest = Number(end - cursor + 1n);
     cursor = end + 1n;
     if (win.window < win.cap) {
       win.window = Math.min(win.cap, win.window * 2);

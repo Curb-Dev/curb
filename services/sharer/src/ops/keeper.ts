@@ -44,7 +44,7 @@ import type { Store } from './store.ts';
 import { OutOfEth, StuckTx, WouldRevert, type TxSender } from './tx.ts';
 import { publishFile, writeLatest, type Published } from './publish.ts';
 import { planPushes, unpaidValue0, type LeafState } from './push.ts';
-import { scanEvents, alertFor } from './events.ts';
+import { scanEvents, scannedAddresses, alertFor } from './events.ts';
 import type { Lease } from './lease.ts';
 import { primaryHeartbeatAge, writeHeartbeat, LEASE_PATH, STATUS_PATH, STANDBY_STATUS_PATH } from './lease.ts';
 import { fileCid, ipfsUri } from './cid.ts';
@@ -400,24 +400,63 @@ export async function keeperTick(ctx: OpsContext, keys: KeeperKeys, o: TickOptio
  *  starting again from where its pass started: on 0.2-second blocks (Base
  *  since 5 November 2026, 432,000 a day) and the small getLogs windows of
  *  free providers, a backlog read in one piece may never finish. 10,000
- *  blocks is about 33 minutes of Base: 10 requests at a 1,000-block window,
- *  100 at a 100-block one. */
+ *  blocks is about 33 minutes of Base: 10 requests at a 1,000-block window.
+ *  That is the most a chunk reads: it is cut to SCAN_CHUNK_REQUESTS
+ *  requests (below), and a pass may stop its scans between two chunks
+ *  (`until`, verify.ts). */
 export const SCAN_CHUNK_BLOCKS = 10_000n;
 
-/** [from, to] cut in chunks of at most `size` blocks, in order. */
-export function scanChunks(from: bigint, to: bigint, size: bigint): [bigint, bigint][] {
-  if (size < 1n) throw new Error('a scan chunk is at least one block');
-  const out: [bigint, bigint][] = [];
-  for (let a = from; a <= to; a += size) out.push([a, a + size - 1n < to ? a + size - 1n : to]);
-  return out;
+/** A CHUNK IS COUNTED IN REQUESTS, NOT ONLY IN BLOCKS: at most about this
+ *  many eth_getLogs on each provider. A free endpoint refuses in spells once
+ *  a burst of requests is spent (keyless dRPC, 7 November 2026: about 45 to
+ *  55 answered, then refusals of up to 43 s, about 1 answered a second
+ *  overall), and a chunk that needs more requests than one burst - 10,000
+ *  blocks are 161 at a 62-block window - may never be read whole: every pass
+ *  would lose it at the same refusal and begin it again. A chunk has to fit
+ *  in what is left of a burst after the pass's other reads (the blocks above
+ *  the safe head, re-read every pass, are 10 or so at a 100-block window):
+ *  10 windows, 1,000 blocks at 100, the whole 10,000 at 1,000. */
+export const SCAN_CHUNK_REQUESTS = 10n;
+
+/** The blocks the next chunk of a scan on `readers` reads, asked before
+ *  every chunk: SCAN_CHUNK_BLOCKS (ctx.scanChunkBlocks, in tests), cut to
+ *  SCAN_CHUNK_REQUESTS requests on the provider that answers the narrowest
+ *  windows - `perWindow` requests a window when a scan reads that many
+ *  addresses one by one (the role events), one window at least.
+ *
+ *  A PROVIDER'S WINDOW IS WHAT IT HAS ANSWERED (LogWindow.widest), not what
+ *  the reader will ask next: before its first answer that is 2,000 blocks,
+ *  however few the provider takes, and a first chunk sized on it is the
+ *  chunk too big to finish. A provider that has answered nothing yet counts
+ *  as a one-block window, so a scan starts SLOW - 10 blocks, then 10 times
+ *  the widest answered, and so on up - and the first chunk of a fresh
+ *  process is kept even on a provider that takes 5 blocks at a time. */
+export function chunkSize(ctx: OpsContext, readers: ChainReader[], perWindow = 1): bigint {
+  const most = ctx.scanChunkBlocks ?? SCAN_CHUNK_BLOCKS;
+  const w = BigInt(Math.max(1, Math.min(...readers.map((r) => (r.logWindow.widest > 0 ? Math.min(r.logWindow.window, r.logWindow.widest) : 1)))));
+  const n = SCAN_CHUNK_REQUESTS / BigInt(Math.max(1, perWindow));
+  const size = w * (n > 0n ? n : 1n);
+  return size < most ? size : most;
 }
 
-const chunkOf = (ctx: OpsContext): bigint => ctx.scanChunkBlocks ?? SCAN_CHUNK_BLOCKS;
-
-/** A backlog read in many chunks says how far it has got, chunk by chunk
- *  (one chunk, the usual pass, says nothing). */
-function scanned(ctx: OpsContext, scan: string, through: bigint, to: bigint, provider?: string): void {
-  ctx.log.info('history scan', { scan, ...(provider ? { provider } : {}), through, to, left: to - through });
+/** [from, to] chunk by chunk (chunkSize, asked before each), in order, no
+ *  block twice and none left out; `read` returning 'stop' ends it.
+ *
+ *  A SCAN IS BOUNDED IN TIME when given `until` (ctx.now(), ms): no chunk is
+ *  started after it - but the first always is, so a pass whose other work
+ *  ate its budget still moves every scan on. What is left is read by the
+ *  next pass, from what was kept. A backlog read in many chunks says how far
+ *  it has got, chunk by chunk (one chunk, the usual pass, says nothing). */
+async function eachChunk(ctx: OpsContext, size: () => bigint, from: bigint, to: bigint, until: number | undefined, scan: string, provider: string | undefined, read: (a: bigint, z: bigint) => Promise<void | 'stop'>): Promise<void> {
+  let n = 0;
+  for (let a = from; a <= to; n++) {
+    if (n > 0 && until !== undefined && ctx.now() >= until) return;
+    const z0 = a + size() - 1n;
+    const z = z0 < to ? z0 : to;
+    if ((await read(a, z)) === 'stop') return;
+    if (n > 0 || z < to) ctx.log.info('history scan', { scan, ...(provider ? { provider } : {}), through: z, to, left: to - z });
+    a = z + 1n;
+  }
 }
 
 /** HolderSharingEnabled up to the safe head, cached incrementally.
@@ -428,26 +467,31 @@ function scanned(ctx: OpsContext, scan: string, through: bigint, to: bigint, pro
  *  `head` are scanned too (not cached: they may still be reorganised), so a
  *  launch that switched sharing on minutes ago is watched at once.
  *
- *  Chunk by chunk (SCAN_CHUNK_BLOCKS): a chunk counts as read, and what it
- *  found is kept, only once EVERY provider asked has read all of it. */
-export async function discover(ctx: OpsContext, safe: bigint, o: { allProviders?: boolean; head?: bigint } = {}): Promise<Address[]> {
+ *  Chunk by chunk (eachChunk): a chunk counts as read, and what it found is
+ *  kept, only once EVERY provider asked has read all of it. Given `until`,
+ *  it may stop short of `safe` (discoveredThrough says where): the blocks
+ *  past the safe head are then not read either - the next pass gets there. */
+export async function discover(ctx: OpsContext, safe: bigint, o: { allProviders?: boolean; head?: bigint; until?: number } = {}): Promise<Address[]> {
   const readers = o.allProviders ? ctx.readers : [ctx.readers[0]];
   const st = ctx.store.get<{ block: bigint; ds: Address[] }>('discovery', { block: ctx.cfg.sharing.graduatorFromBlock - 1n, ds: [] });
-  const chunks = scanChunks(st.block + 1n, safe, chunkOf(ctx));
-  for (const [a, z] of chunks) {
+  await eachChunk(ctx, () => chunkSize(ctx, readers), st.block + 1n, safe, o.until, 'discovery', undefined, async (a, z) => {
     const found: Address[] = [];
     for (const r of readers) for (const s of await discoverSharing(r, ctx.cfg.sharing.graduator, a, z)) found.push(s.distributor);
     for (const d of found) if (!st.ds.includes(d)) st.ds.push(d);
-    if (chunks.length > 1) scanned(ctx, 'discovery', z, safe);
     st.block = z;
     ctx.store.set('discovery', st);
     ctx.store.flush();
-  }
+  });
   const ds = [...st.ds];
-  if (o.head !== undefined && o.head > st.block) {
+  if (o.head !== undefined && o.head > st.block && st.block >= safe) {
     for (const r of readers) for (const s of await discoverSharing(r, ctx.cfg.sharing.graduator, st.block + 1n, o.head)) if (!ds.includes(s.distributor)) ds.push(s.distributor);
   }
   return ds;
+}
+
+/** The last block the discovery has read (and kept). */
+export function discoveredThrough(ctx: OpsContext): bigint {
+  return ctx.store.get<{ block: bigint }>('discovery', { block: ctx.cfg.sharing.graduatorFromBlock - 1n }).block;
 }
 
 /** Every distributor bound up to block T, for an epoch's exclusions (the
@@ -462,29 +506,33 @@ export async function discover(ctx: OpsContext, safe: bigint, o: { allProviders?
  *  still stops the epoch as a disagreement, never a silent change of its
  *  exclusions.
  *
- *  Each provider's scan is kept chunk by chunk (SCAN_CHUNK_BLOCKS), so one
- *  cut short - by a refusal, or by a check's deadline - resumes where it
+ *  Each provider's scan is kept chunk by chunk (eachChunk), so one cut
+ *  short - by a refusal, a check's deadline or `until` - resumes where it
  *  stopped; and the guardian and the verifier bring every scan up to the
  *  safe head on every pass (verify.ts), outside any check's deadline: a
  *  check then finds the list in /data instead of scanning the Graduator's
- *  history within its guardian.checkTimeoutSec. */
-export async function boundDistributors(ctx: OpsContext, T: bigint, safe: bigint): Promise<Address[] | undefined> {
+ *  history within its guardian.checkTimeoutSec. Stopped short of T by
+ *  `until`, it answers undefined. */
+export async function boundDistributors(ctx: OpsContext, T: bigint, safe: bigint, until?: number): Promise<Address[] | undefined> {
   const { cfg } = ctx;
   if (T > safe) return undefined;
   type Scan = { block: bigint; bound: [Address, Address, bigint][] };
   const lists: string[] = [];
   let out: Address[] = [];
+  let whole = true;
   for (const [i, r] of ctx.readers.entries()) {
     const key = `${i}:${r.label}`;
     // a copy: a check abandoned at its deadline may still be running this
     const st = structuredClone(ctx.store.get<Record<string, Scan>>('boundDistributors', {})[key] ?? { block: cfg.sharing.graduatorFromBlock - 1n, bound: [] });
-    const chunks = scanChunks(st.block + 1n, T, chunkOf(ctx));
-    for (const [a, z] of chunks) {
+    let twice = false;
+    await eachChunk(ctx, () => chunkSize(ctx, [r]), st.block + 1n, T, until, 'bound distributors', r.label, async (a, z) => {
       for (const s of await discoverSharing(r, cfg.sharing.graduator, a, z)) {
-        if (st.bound.some(([d, t]) => d === s.distributor || t === s.token)) return undefined;
+        if (st.bound.some(([d, t]) => d === s.distributor || t === s.token)) {
+          twice = true;
+          return 'stop';
+        }
         st.bound.push([s.distributor, s.token, s.block]);
       }
-      if (chunks.length > 1) scanned(ctx, 'bound distributors', z, T, r.label);
       st.block = z;
       // kept only if it is further than what is kept (an abandoned check may
       // have written since): both are this provider's whole answer up to there
@@ -492,12 +540,14 @@ export async function boundDistributors(ctx: OpsContext, T: bigint, safe: bigint
         if (!all[key] || all[key].block < z) all[key] = structuredClone(st);
       });
       ctx.store.flush();
-    }
+    });
+    if (twice) return undefined;
+    if (st.block < T) whole = false;
     const ds = st.bound.filter(([, , b]) => b <= T).map(([d]) => d);
     lists.push(ds.join(','));
     if (i === 0) out = ds;
   }
-  return lists.every((l) => l === lists[0]) ? out : undefined;
+  return whole && lists.every((l) => l === lists[0]) ? out : undefined;
 }
 
 /** Another holder refused this keeper the lease. A streak of such ticks
@@ -552,16 +602,19 @@ async function keyChecks(ctx: OpsContext, keys: KeeperKeys, f: FactoryView, rep:
 }
 
 /** Role and catalog events since the last scan -> alerts. Chunk by chunk
- *  (SCAN_CHUNK_BLOCKS): eventsBlock moves past a chunk only once each of
- *  its events was handled. A chunk read again after a failure raises
- *  nothing twice: each alert's key is its log's position. */
-export async function roleEvents(ctx: OpsContext, ds: Address[], to: bigint, keys: { publisher?: TxSender | null; pusher?: TxSender | null; guardian?: TxSender | null }): Promise<void> {
+ *  (eachChunk): eventsBlock moves past a chunk only once each of its events
+ *  was handled. A chunk read again after a failure raises nothing twice:
+ *  each alert's key is its log's position. `to` is never past the blocks the
+ *  discovery has read: `ds` is every distributor bound up to there, and a
+ *  block read with a distributor missing is never read again. */
+export async function roleEvents(ctx: OpsContext, ds: Address[], to: bigint, keys: { publisher?: TxSender | null; pusher?: TxSender | null; guardian?: TxSender | null }, until?: number): Promise<void> {
   const { cfg, store } = ctx;
   const from = store.get<bigint>('eventsBlock', cfg.eventsFromBlock - 1n) + 1n;
   const ours = Object.values(keys).filter(Boolean).map((s) => s!.address);
-  const chunks = scanChunks(from, to, chunkOf(ctx));
-  for (const [a, z] of chunks) {
-    const evs = await scanEvents(ctx.readers[0], { factory: cfg.distributorFactory, catalog: cfg.catalog, distributors: ds, hook: cfg.hook, registry: cfg.registry }, a, z);
+  const watched = { factory: cfg.distributorFactory, catalog: cfg.catalog, distributors: ds, hook: cfg.hook, registry: cfg.registry };
+  // one eth_getLogs a window for each address it reads (events.ts scanEvents)
+  await eachChunk(ctx, () => chunkSize(ctx, [ctx.readers[0]], scannedAddresses(watched)), from, to, until, 'role events', undefined, async (a, z) => {
+    const evs = await scanEvents(ctx.readers[0], watched, a, z);
     for (const e of evs) {
       if (e.name === 'PushSkipped') {
         recordSkip(ctx, e.address, String(e.args.account).toLowerCase(), Number((await ctx.readers[0].block(e.block)).timestamp), null);
@@ -571,10 +624,9 @@ export async function roleEvents(ctx: OpsContext, ds: Address[], to: bigint, key
       const al = alertFor(e, { factory: cfg.distributorFactory, catalog: cfg.catalog, ours, hook: cfg.hook, registry: cfg.registry, policyOwner: cfg.policyOwner, launchers: cfg.launchers });
       if (al) await ctx.alerts.raise(al, { cooldownSec: 365 * 86400 });
     }
-    if (chunks.length > 1) scanned(ctx, 'role events', z, to);
     store.set('eventsBlock', z);
     store.flush();
-  }
+  });
 }
 
 export interface VetoSeen {

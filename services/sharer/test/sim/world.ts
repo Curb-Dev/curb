@@ -100,7 +100,7 @@ export function opsWorld(o: WorldOptions = {}) {
     for (let i = 0; i < blocks; i++) sim.mine();
   };
 
-  const make = (mode: Mode, x: { role?: 'primary' | 'standby'; holder?: string; dataDir?: string | null; rpcs?: any[]; signers?: Partial<Record<'publisher' | 'pusher' | 'guardian', Signer>>; cfg?: OpsConfig } = {}): Built & { log: ReturnType<typeof memoryLogger> } => {
+  const make = (mode: Mode, x: { role?: 'primary' | 'standby'; holder?: string; dataDir?: string | null; rpcs?: any[]; signers?: Partial<Record<'publisher' | 'pusher' | 'guardian', Signer>>; cfg?: OpsConfig; logTries?: number } = {}): Built & { log: ReturnType<typeof memoryLogger> } => {
     const log = memoryLogger();
     const b = build({
       cfg: x.cfg ?? cfg,
@@ -117,6 +117,7 @@ export function opsWorld(o: WorldOptions = {}) {
       role: x.role,
       holder: x.holder ?? `${mode}-${x.role ?? 'primary'}`,
       refetch: { tries: 2, delayMs: 1 },
+      logTries: x.logTries,
     });
     return Object.assign(b, { log });
   };

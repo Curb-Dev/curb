@@ -13,6 +13,15 @@
 //   - each provider's bound-distributor scan resumes where it stopped, and the
 //     guardian brings it up to the safe head every pass, before any check;
 //   - a pass whose scan fails still sends the vetoes it owes.
+// And since the review of 7 November 2026 (a 10,000-block chunk was still
+// more requests than keyless dRPC answers between two refusal spells):
+//   - a chunk is counted in requests, on the windows a provider has
+//     ANSWERED, starting slow: on a free tier that takes 5 blocks a request
+//     and 30 requests a pass, every pass moves on, the first included;
+//   - a refusal spell of up to 63.5 s is waited out (7 tries);
+//   - the vetoes owed go out first in a pass, before any scan; the scans of
+//     a pass stop at guardian.passTimeoutSec, and the pass still checks;
+//   - a check past its deadline stops at its next read, not after a backoff.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,8 +31,13 @@ import { tmpdir } from 'node:os';
 import { encodeAbiParameters, encodeEventTopics, keccak256, toHex } from 'viem';
 import { opsWorld, HOLDERS } from './sim/world.ts';
 import { tick, js, lying } from './sim/helpers.ts';
-import { discover, roleEvents, boundDistributors, scanChunks, SCAN_CHUNK_BLOCKS } from '../src/ops/keeper.ts';
+import { discover, discoveredThrough, roleEvents, boundDistributors, chunkSize, SCAN_CHUNK_BLOCKS, SCAN_CHUNK_REQUESTS } from '../src/ops/keeper.ts';
+import { scannedAddresses } from '../src/ops/events.ts';
 import { watchTick } from '../src/ops/verify.ts';
+import { stoppable } from '../src/ops/chainview.ts';
+import { ChainReader } from '../src/chain/reader.ts';
+import { RequestStopped } from '../src/chain/logs.ts';
+import { RpcError } from '../src/chain/rpc.ts';
 import { Store } from '../src/ops/store.ts';
 import { opsDistributorAbi, opsFactoryAbi } from '../src/ops/abis.ts';
 import { TOPICS } from '../src/chain/abis.ts';
@@ -89,12 +103,29 @@ function eventAt(w: W, n: bigint, address: string, abi: any, name: string, args:
   return `event:${address.toLowerCase()}:${txHash}:0`;
 }
 
-test('scanChunks cuts a range in order, without a gap or an overlap', () => {
-  assert.deepEqual(scanChunks(1000n, 1009n, 4n), [[1000n, 1003n], [1004n, 1007n], [1008n, 1009n]]);
-  assert.deepEqual(scanChunks(5n, 5n, 4n), [[5n, 5n]]);
-  assert.deepEqual(scanChunks(6n, 5n, 4n), []);
-  assert.throws(() => scanChunks(1n, 2n, 0n));
+test('a chunk is SCAN_CHUNK_REQUESTS requests of the narrowest window a provider has ANSWERED, at most SCAN_CHUNK_BLOCKS', () => {
   assert.equal(SCAN_CHUNK_BLOCKS, 10_000n);
+  assert.equal(SCAN_CHUNK_REQUESTS, 10n);
+  const g = opsWorld().make('guardian');
+  const [a, b] = g.ctx.readers;
+  assert.equal(a.logWindow.window, 2000, 'what the reader asks first');
+  assert.equal(chunkSize(g.ctx, [a, b]), 10n, 'nothing answered yet: one-block windows - a slow start, not 10 x 2,000');
+  a.logWindow.widest = 10;
+  b.logWindow.widest = 10;
+  assert.equal(chunkSize(g.ctx, [a, b]), 100n, '10 times the widest answered, not the window asked next');
+  a.logWindow.widest = a.logWindow.window = 1000;
+  b.logWindow.widest = b.logWindow.window = 100;
+  assert.equal(chunkSize(g.ctx, [a, b]), 1000n, 'the narrowest provider counts: keyless dRPC, 100-block windows, 10 requests');
+  assert.equal(chunkSize(g.ctx, [a]), 10_000n, 'only the providers it reads; Tenderly, 1,000-block windows: the block cap');
+  b.logWindow.window = 50; // refused since (a result-size ceiling): what it asks now
+  assert.equal(chunkSize(g.ctx, [b]), 500n);
+  assert.equal(chunkSize(g.ctx, [a], 5), 2000n, 'five addresses read a window: 2 windows a chunk');
+  assert.equal(chunkSize(g.ctx, [a], 40), 1000n, 'more addresses than requests: one window');
+  g.ctx.scanChunkBlocks = 4n;
+  assert.equal(chunkSize(g.ctx, [a, b]), 4n);
+  const D = ['0x' + '1'.repeat(40), '0x' + '2'.repeat(40)];
+  const zero = '0x' + '0'.repeat(40);
+  assert.equal(scannedAddresses({ factory: D[0], catalog: D[1], hook: zero, registry: null, distributors: D }), 4, 'the factory, the catalog, two distributors');
 });
 
 test('discovery resumes after the last chunk EVERY provider read: no gap, nothing read twice, one provider failing after the other succeeded', async () => {
@@ -163,6 +194,8 @@ test('the event scan resumes after the last chunk it handled: no gap, no alert t
   a.failBlock = 1009n;
   const g = w.make('guardian', { rpcs: [a, w.sim.rpc('b')] });
   g.ctx.scanChunkBlocks = CHUNK;
+  // windows known (2,000 blocks): the chunks are CHUNK blocks however many addresses it reads
+  for (const r of g.ctx.readers) r.logWindow.widest = r.logWindow.window;
   const events = () => g.ctx.alerts.raised.filter((x) => x.key.startsWith('event:')).map((x) => x.key);
 
   await assert.rejects(roleEvents(g.ctx, [L.D], w.sim.safe, {}), /header refused/);
@@ -281,4 +314,230 @@ test('a pass whose scan fails still sends the vetoes it owes', async () => {
   assert.match(r2.errors[0], /provider b: eth_getLogs/, js(r2.errors));
   assert.equal(r2.vetoed.length, 1, js(r2));
   assert.equal(w.sim.launch(L.D).pending.payableAt, 0n, 'vetoed on chain although the scan failed');
+});
+
+/** A guardian world whose keeper's two providers invent a mint to THIEF:
+ *  its root (epoch 1, pending) does not verify. */
+function wrongRoot(): W {
+  const w = opsWorld();
+  const L = w.launches[0];
+  const mint = (r: unknown, p: any[]) => {
+    if (!Array.isArray(r) || String(p[0].address).toLowerCase() !== L.token || p[0].topics?.[0] !== TOPICS.Transfer) return r;
+    const blk = L.sharingSince + 1n;
+    if (blk < BigInt(p[0].fromBlock) || blk > BigInt(p[0].toBlock)) return r;
+    return [...r, { address: L.token, topics: [TOPICS.Transfer, '0x' + '0'.repeat(64), '0x' + THIEF.slice(2).padStart(64, '0')], data: '0x' + (10n ** 30n).toString(16).padStart(64, '0'), blockNumber: '0x' + blk.toString(16), blockHash: w.sim.hashOf(blk), transactionHash: keccak256(toHex('forged')), logIndex: '0x3e7', removed: false }].sort((x: any, y: any) => (BigInt(x.blockNumber) === BigInt(y.blockNumber) ? Number(BigInt(x.logIndex) - BigInt(y.logIndex)) : BigInt(x.blockNumber) < BigInt(y.blockNumber) ? -1 : 1));
+  };
+  const liar = (label: string) => lying(w.sim.rpc(label), label, (m, p, r) => (m === 'eth_getLogs' ? mint(r, p) : r));
+  return Object.assign(w, { forger: w.make('keeper', { holder: 'forger', rpcs: [liar('a'), liar('b')] }) });
+}
+
+/** A free tier: eth_getLogs over at most `ceiling` blocks (a wider range is
+ *  refused as dRPC refuses it), and `perPass` requests between two refusal
+ *  spells - past them every eth_getLogs is refused "rate limit" until the
+ *  next pass, a spell longer than any backoff. */
+function freeTier(w: W, label: string, o: { ceiling: bigint; perPass: number }) {
+  const inner = w.sim.rpc(label);
+  const r = {
+    label,
+    used: 0,
+    async request(a: { method: string; params?: unknown[] }) {
+      if (a.method === 'eth_getLogs') {
+        if (++r.used > o.perPass) throw new RpcError('You reached Public endpoint rate limit, please upgrade to paid plan', { status: 429, code: 15 });
+        const p = (a.params as any[])[0];
+        if (BigInt(p.toBlock) - BigInt(p.fromBlock) + 1n > o.ceiling) throw new RpcError('ranges over 10000 blocks are not supported on free plan', { code: 35 });
+      }
+      return inner.request(a);
+    },
+  };
+  return r;
+}
+
+test('ADVERSARIAL: a free tier of 5 blocks a request and 30 requests a pass - every scan moves on every pass, the first included, until the guardian is clean', async () => {
+  const w = opsWorld();
+  mineTo(w, 1400n); // 400 blocks behind: 80 requests at 5 blocks, more than two passes allow
+  const b = freeTier(w, 'b', { ceiling: 5n, perPass: 30 });
+  const g = w.make('guardian', { rpcs: [w.sim.rpc('a'), b] }); // SCAN_CHUNK_BLOCKS: 10,000
+  let waited = 0;
+  for (const r of g.ctx.readers) r.logWindow.opts.sleep = async (ms) => void (waited += ms);
+  const at = () => ({ discovery: discoveredThrough(g.ctx), bound: g.ctx.store.get<Record<string, { block: bigint }>>('boundDistributors', {})['1:b']?.block ?? 999n });
+  const safe = w.sim.safe;
+  const seen: string[] = [];
+  let clean = false;
+  for (let pass = 1; pass <= 20 && !clean; pass++) {
+    b.used = 0;
+    const before = at();
+    const r = await watchTick(g.ctx, g.keys.guardian);
+    const after = at();
+    seen.push(`pass ${pass}: discovery ${after.discovery}, bound on b ${after.bound}, ok ${r.ok}, ${r.errors[0] ?? ''}`.slice(0, 220));
+    if (r.ok) {
+      clean = true;
+      assert.deepEqual(r.errors, []);
+      break;
+    }
+    if (pass === 1) assert.ok(after.discovery > 999n, `the first pass of a fresh process keeps a chunk too (${seen.join(' | ')})`);
+    if (before.discovery < safe) assert.ok(after.discovery > before.discovery, `the discovery moved on in every pass (${seen.join(' | ')})`);
+    else assert.ok(after.bound > before.bound, `then the bound distributors on b moved on in every pass (${seen.join(' | ')})`);
+    assert.ok(r.errors.some((e) => /provider b: eth_getLogs refused 8 times in a row .*rate limit/.test(e)), js(r.errors));
+  }
+  assert.ok(clean, `caught up, and a pass is clean (${seen.join(' | ')})`);
+  assert.equal(discoveredThrough(g.ctx), safe);
+  assert.equal(g.ctx.readers[1].logWindow.cap, 5, 'the ceiling found');
+  assert.ok(waited > 0, 'the spells were waited for before each pass gave up');
+});
+
+test('a refusal spell is waited out - 7 tries, 63.5 s - before a scan gives up; --getlogs-tries changes it', async () => {
+  const w = opsWorld();
+  mineTo(w, 1015n);
+  let n = 0;
+  let spell = 6;
+  const b = { label: 'b', request: async (a: { method: string; params?: unknown[] }) => {
+    if (a.method === 'eth_getLogs' && ++n >= 2 && n < 2 + spell) throw new RpcError('You reached Public endpoint rate limit, please upgrade to paid plan', { status: 429, code: 15 });
+    return w.sim.rpc('b').request(a);
+  } };
+  const g = w.make('guardian', { rpcs: [w.sim.rpc('a'), b] });
+  const slept: number[] = [];
+  for (const r of g.ctx.readers) r.logWindow.opts.sleep = async (ms) => void slept.push(ms);
+  assert.equal(g.ctx.readers[1].logWindow.opts.tries, 7);
+  await discover(g.ctx, w.sim.safe, { allProviders: true });
+  assert.deepEqual(slept, [500, 1000, 2000, 4000, 8000, 16000], 'six refusals in a row, 31.5 s: waited out');
+  assert.equal(discoveredThrough(g.ctx), w.sim.safe);
+
+  const g2 = w.make('guardian', { rpcs: [w.sim.rpc('a'), b] });
+  for (const r of g2.ctx.readers) r.logWindow.opts.sleep = async () => {};
+  n = 0;
+  spell = 8;
+  await assert.rejects(discover(g2.ctx, w.sim.safe, { allProviders: true }), /^LogWindowError: provider b: eth_getLogs refused 8 times in a row|provider b: eth_getLogs refused 8 times in a row/);
+  assert.equal(w.make('guardian', { logTries: 9 }).ctx.readers[0].logWindow.opts.tries, 9, '--getlogs-tries reaches every reader');
+});
+
+test('the vetoes owed go out FIRST in a pass, before any scan reads a block', async () => {
+  const w = wrongRoot();
+  const L = w.launches[0];
+  w.pass(3601);
+  assert.equal((await tick(w, (w as any).forger)).published.length, 1);
+  const calls: string[] = [];
+  const rec = (label: string) => {
+    const inner = w.sim.rpc(label);
+    return { label, request: async (a: { method: string; params?: unknown[] }) => {
+      calls.push(`${label} ${a.method} ${a.method === 'eth_getLogs' ? String((a.params as any[])[0].address).toLowerCase() : ''}`);
+      return inner.request(a);
+    } };
+  };
+  const g = w.make('guardian', { rpcs: [rec('a'), rec('b')] });
+  w.sim.baseFee = 200_000_000_000n; // above the guardian's cap: the veto is owed
+  const r1 = await watchTick(g.ctx, g.keys.guardian);
+  assert.equal(r1.results[0]?.verdict, 'mismatch', js(r1.results));
+  assert.equal(r1.vetoed.length, 0);
+  w.sim.baseFee = 5_000_000n;
+  w.pass(60);
+  calls.length = 0;
+  const r2 = await watchTick(g.ctx, g.keys.guardian);
+  assert.equal(r2.vetoed.length, 1, js(r2));
+  assert.equal(w.sim.launch(L.D).pending.payableAt, 0n);
+  const sent = calls.findIndex((c) => / eth_sendRawTransaction /.test(c));
+  const scan = calls.findIndex((c) => c.endsWith(` ${w.sim.addr.graduator}`) || c.endsWith(` ${w.sim.addr.factory}`));
+  assert.ok(sent >= 0 && scan > sent, `sent at call ${sent}, the first scan at ${scan}: ${js(calls.slice(0, 12))}`);
+});
+
+test('a backlog is read across passes: each stops its scans at guardian.passTimeoutSec, still checks, says how far behind, and reads no role event or head block past the discovery', async () => {
+  const w = opsWorld({ safeLag: 3n });
+  const k = w.make('keeper');
+  w.pass(3601);
+  assert.equal((await tick(w, k)).published.length, 1);
+  mineTo(w, 1030n);
+  const G = w.sim.addr.graduator;
+  const F = w.sim.addr.factory;
+  const seen: Seen[] = [];
+  // every Graduator read on provider a takes 100 s of the pass
+  const slow = tapped(w, 'a', seen);
+  const inner = slow.request;
+  slow.request = async (x: any) => {
+    if (x.method === 'eth_getLogs' && String(x.params[0].address).toLowerCase() === G) w.clock.t += 100_000;
+    return inner(x);
+  };
+  const g = w.make('guardian', { rpcs: [slow, tapped(w, 'b', seen)] });
+  g.ctx.scanChunkBlocks = CHUNK;
+  for (const r of g.ctx.readers) r.logWindow.widest = r.logWindow.window;
+  assert.equal(w.cfg.guardian.passTimeoutSec, 300);
+  const safe = w.sim.safe;
+  const r1 = await watchTick(g.ctx, g.keys.guardian);
+  const found = discoveredThrough(g.ctx);
+  assert.equal(found, 1011n, 'three chunks of the discovery, 300 s: then the scans stop');
+  assert.equal(r1.ok, false);
+  assert.ok(r1.errors.some((e) => new RegExp(`history scans behind the safe head ${safe}: the discovery through 1011`).test(e)), js(r1.errors));
+  assert.equal(r1.results[0]?.verdict, 'ok', `the pass still checked the pending root: ${js(r1.results)}`);
+  assert.ok(g.ctx.store.get<bigint>('eventsBlock') <= found, 'the role events never past the discovery');
+  assert.ok(seen.filter((s) => s.address === F).every((s) => s.to <= found), 'no role event read past the discovery');
+  assert.ok(seen.filter((s) => s.address === G).every((s) => s.to <= safe), 'nothing above the safe head read while the discovery is behind');
+
+  let passes = 1;
+  let last = found;
+  for (;;) {
+    const r = await watchTick(g.ctx, g.keys.guardian);
+    passes++;
+    if (r.ok) break;
+    assert.ok(passes < 15, js(r.errors));
+    assert.ok(discoveredThrough(g.ctx) > last || discoveredThrough(g.ctx) >= w.sim.safe, `every pass moves on: ${js(r.errors)}`);
+    last = discoveredThrough(g.ctx);
+  }
+  assert.equal(discoveredThrough(g.ctx), w.sim.safe);
+  assert.equal(g.ctx.store.get<bigint>('eventsBlock'), w.sim.safe);
+});
+
+test('a check past its deadline stops at its next read: an eth_getLogs refused "busy" is not waited out', async () => {
+  const w = opsWorld();
+  const ctl = new AbortController();
+  const slept: number[] = [];
+  const busy = { label: 'a', request: async (a: { method: string; params?: unknown[] }) => {
+    if (a.method === 'eth_getLogs') throw new RpcError('rate limit exceeded', { status: 429 });
+    return w.sim.rpc('a').request(a);
+  } };
+  const r = new ChainReader(busy, { logWindow: { tries: 7, sleep: async (ms) => {
+    slept.push(ms);
+    if (slept.length === 2) ctl.abort(new Error('the deadline passed'));
+  } } });
+  await assert.rejects(stoppable(r, ctl.signal).logs({ address: w.sim.addr.graduator }, 1000n, 1010n), (e: any) => e instanceof RequestStopped && /the deadline passed/.test(e.message));
+  assert.deepEqual(slept, [500, 1000], 'stopped at its next read, not after the 63.5 s backoff');
+  // a request withdrawn for a reason that reads like a timeout is not asked again either
+  const ctl2 = new AbortController();
+  ctl2.abort(new Error('timed out'));
+  const r2 = new ChainReader(w.sim.rpc('a'), { sleep: async () => { throw new Error('asked again'); } });
+  await assert.rejects(stoppable(r2, ctl2.signal).request('eth_chainId', []), (e: any) => e instanceof RequestStopped && /timed out/.test(e.message));
+});
+
+test('a bound-distributor scan stopped short by the pass budget answers nothing, not a part of the list', async () => {
+  const w = opsWorld();
+  const L2 = launchAt(w, 1008n, 'second');
+  mineTo(w, 1015n);
+  const g = w.make('guardian');
+  g.ctx.scanChunkBlocks = CHUNK;
+  for (const r of g.ctx.readers) r.logWindow.widest = r.logWindow.window;
+  const T = w.sim.safe;
+  assert.equal(await boundDistributors(g.ctx, T, T, g.ctx.now()), undefined, 'one chunk each, then the budget is over');
+  const kept = g.ctx.store.get<Record<string, { block: bigint }>>('boundDistributors', {});
+  assert.deepEqual([kept['0:a']?.block, kept['1:b']?.block], [1003n, 1003n], 'the chunk each read is kept');
+  assert.deepEqual(await boundDistributors(g.ctx, T, T), [w.launches[0].D, L2.D]);
+});
+
+test('the role events count a chunk in requests too: one eth_getLogs a window for each address they read', async () => {
+  const w = opsWorld();
+  mineTo(w, 1100n);
+  const L = w.launches[0];
+  const seen: Seen[] = [];
+  const g = w.make('guardian', { rpcs: [tapped(w, 'a', seen), w.sim.rpc('b')] });
+  const a = g.ctx.readers[0];
+  a.logWindow.widest = a.logWindow.window = a.logWindow.cap = 10; // a provider of 10-block windows
+  const k = scannedAddresses({ factory: w.cfg.distributorFactory, catalog: w.cfg.catalog, hook: w.cfg.hook, registry: w.cfg.registry, distributors: [L.D] });
+  assert.ok(k >= 3 && k <= 5, `the factory, the catalog, the distributor and what else is set: ${k}`);
+  await roleEvents(g.ctx, [L.D], w.sim.safe, {});
+  const chunk = 10n * (SCAN_CHUNK_REQUESTS / BigInt(k));
+  const through = g.log.records().filter((r) => r.msg === 'history scan' && r.scan === 'role events').map((r) => BigInt(r.through));
+  assert.equal(through[0], w.cfg.eventsFromBlock + chunk - 1n, `chunks of ${chunk} blocks: ${k} addresses a window`);
+  let start = w.cfg.eventsFromBlock;
+  for (const z of through) {
+    const n = seen.filter((s) => s.label === 'a' && s.from >= start && s.to <= z).length;
+    assert.ok(n <= Number(SCAN_CHUNK_REQUESTS), `at most ${SCAN_CHUNK_REQUESTS} requests a chunk: ${n} for ${start}..${z}`);
+    start = z + 1n;
+  }
+  assert.equal(g.ctx.store.get<bigint>('eventsBlock'), w.sim.safe);
 });

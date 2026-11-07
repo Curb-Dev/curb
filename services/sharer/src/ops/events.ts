@@ -64,6 +64,13 @@ export interface Watched {
 const ZERO = '0x0000000000000000000000000000000000000000';
 const live = (a: Address | null | undefined): a is Address => !!a && a !== ZERO;
 
+/** How many addresses scanEvents reads - one eth_getLogs a window each:
+ *  the factory, the catalog, the hook and the registry when set, every
+ *  distributor. */
+export function scannedAddresses(o: Watched): number {
+  return 1 + [o.catalog, o.hook, o.registry].filter(live).length + o.distributors.length;
+}
+
 export async function scanEvents(r: ChainReader, o: Watched, from: bigint, to: bigint): Promise<ChainEvent[]> {
   if (to < from) return [];
   const out: ChainEvent[] = [];

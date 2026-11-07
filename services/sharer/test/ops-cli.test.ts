@@ -120,3 +120,17 @@ test('the keeper status line says where each launch is AFTER the tick acted', as
   assert.equal(l2.active, '1', js(l2));
   assert.notEqual(l2.pending, '1', js(l2));
 });
+
+test('--getlogs-tries: a whole number from 1 to 10, for the modes that read history only', async () => {
+  const w = opsWorld();
+  for (const bad of ['0', '11', '2.5', 'many']) {
+    const r = await runCli(w, ['verify', '--once', `--getlogs-tries=${bad}`]);
+    assert.equal(r.code, 2, js(r));
+    assert.ok(r.err.some((l) => /--getlogs-tries must be a whole number from 1 to 10/.test(l)), js(r.err));
+  }
+  const c = await runCli(w, ['check', '--getlogs-tries=3']);
+  assert.equal(c.code, 2);
+  assert.ok(c.err.some((l) => /unknown option --getlogs-tries/.test(l)), js(c.err));
+  const ok = await runCli(w, ['verify', '--once', '--getlogs-tries=9'], { ...w.raw, verifier: { guardianSilentAfterSec: 0 } });
+  assert.equal(ok.code, 0, js(ok));
+});

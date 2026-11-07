@@ -173,7 +173,7 @@ export const MUTANTS: Mutant[] = [
   m('L4 range refusals', L, "if (/range|too many blocks|limit exceeded/i.test(text)) return 'range';", '', 'block-range refusals'),
   m('L5 busy gives up after tries', L, 'if (busy > o.tries) throw', 'if (busy > o.tries + 1) throw', 'busy refusal'),
   m('L6 backoff doubles', L, 'await o.sleep(o.backoffMs * 2 ** (busy - 1));', 'await o.sleep(o.backoffMs);', 'busy refusal'),
-  m('L7 window halves', L, 'win.window = Math.max(o.min, Math.floor(span / 2));', 'win.window = Math.max(o.min, span - 1);', 'range ceiling holds'),
+  m('L7 window halves', L, 'const half = Math.max(o.min, Math.floor(span / 2));', 'const half = Math.max(o.min, span - 1);', 'range ceiling holds'),
   m('L8 ceiling remembered', L, '      win.cap = win.window;\n', '', 'range ceiling holds'),
   m('L9 size ceiling flagged', L, "win.capIsSize = kind === 'size';", 'win.capIsSize = false;', 'grows back'),
   m('L10 only a size ceiling regrows', L, '} else if (win.capIsSize && ++win.served >= o.sizeRegrow && win.cap < o.max) {', '} else if (++win.served >= o.sizeRegrow && win.cap < o.max) {', 'range ceiling holds'),
@@ -185,6 +185,10 @@ export const MUTANTS: Mutant[] = [
   m('L16 repeated log', L, 'if (BigInt(out[i].blockNumber) === BigInt(out[i - 1].blockNumber) && BigInt(out[i].logIndex) === BigInt(out[i - 1].logIndex)) {', 'if (false) {', 'answers are checked'),
   m('L17 answer is a list', L, 'if (!Array.isArray(logs)) throw new Error(`${who}: eth_getLogs answered something that is not a list`);', '', 'answers are checked'),
   m('L18 the refusing provider not named', L, "const who = `provider ${rpc.label ?? 'rpc'}`;", "const who = 'provider';", 'names the provider by its label'),
+  m("L19 a withdrawn request asked again", L, "      if (e instanceof RequestStopped) throw e;\n", "", "past its deadline stops at its next read"),
+  m("L20 the widest range answered not recorded", L, "    if (Number(end - cursor + 1n) > win.widest) win.widest = Number(end - cursor + 1n);\n", "", "between the widest range answered", "ADVERSARIAL"),
+  m("L21 a range ceiling halved below a range answered", L, "      win.window = kind === 'range' && win.widest > half && win.widest < span ? win.widest : half;", "      win.window = half;", "between the widest range answered"),
+  m("L22 a result-size ceiling taken for a range one", L, "kind === 'range' && win.widest > half", "win.widest > half", "between the widest range answered"),
 
   // ---------------------------------------------------------------- reader
   m('R1 429 and 5xx are transient', R, "if (cur.status === 429 || (typeof cur.status === 'number' && cur.status >= 500) || cur.code === 429) return true;", '', 'reader:'),
@@ -216,6 +220,7 @@ export const MUTANTS: Mutant[] = [
   m('Q11 an answer is at most 160 bytes', Q, 'const c = size > BigInt(PROBE_RETURN_CAP) ? PROBE_RETURN_CAP : Number(size);', 'const c = Number(size);', 'reads back'),
   m('Q12 the success bit', Q, 'const success = h >> 255n === 1n;', 'const success = h !== 0n;', 'reads back'),
   m('R18 an unmined transaction is none', R, 'if (!t || t.blockNumber == null) return null;', 'if (!t) return null;', 'not mined is not counted'),
+  m("R20 a withdrawn request retried as transient", R, "  if (e instanceof RequestStopped) return false;\n", "", "past its deadline stops at its next read"),
   m('R19 an unknown transaction is none', R, 'if (!t || t.blockNumber == null) return null;', 'if (t.blockNumber == null) return null;', 'never landed'),
 
   // ---------------------------------------------------------------- indexer

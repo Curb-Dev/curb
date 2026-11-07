@@ -54,8 +54,10 @@
 // boundDistributors) - on every pass, up to the safe head, before any check
 // starts, so no check spends its deadline scanning history. The scans that
 // do read history (the discovery, the role events, that list) keep their
-// progress chunk by chunk, so a backlog is read across passes even when
-// each pass is cut short.
+// progress chunk by chunk, and together start no chunk after
+// guardian.passTimeoutSec: a backlog is read across passes, each of which
+// still checks the roots it knows of, writes its heartbeat and says how far
+// behind it is (not clean until it has caught up).
 //
 // A PASS IS BOUNDED IN TIME, AND A VETO DOES NOT WAIT FOR IT. The URI is
 // chosen by whoever holds the publisher key, so a copy may trickle forever
@@ -79,8 +81,9 @@
 // is not frozen; a freeze until it holds - frozen, with no unfreeze
 // announced, since one announced ripens on time and every root still
 // pending then becomes payable (a freeze() cancels it) - for a day at most.
-// A pass whose scans fail still sends what it owes before it ends. The
-// freeze goes first. Each root's state is re-read on every provider
+// What earlier passes decided is sent first in a pass, before any scan
+// (which may fail, or read a backlog for its whole budget). The freeze goes
+// first. Each root's state is re-read on every provider
 // just before sending, in batches, so a vetoMany names only roots still
 // pending; one that would revert, or was mined and reverted, falls back to
 // one veto() per root; a reverted receipt is never a success. The guardian
@@ -107,7 +110,7 @@ import { diffSharingConfig } from './config.ts';
 import { opsFactoryAbi } from './abis.ts';
 import type { CopyCheck, EpochFiles } from './files.ts';
 import type { OpsContext, VetoSeen } from './keeper.ts';
-import { boundDistributors, discover, roleEvents } from './keeper.ts';
+import { boundDistributors, discover, discoveredThrough, roleEvents } from './keeper.ts';
 import { commonHead, readFactory, readRoots, readRootsMany, isVetoer, stoppable } from './chainview.ts';
 import type { ReadyCall } from './alerts.ts';
 import { errorText } from './log.ts';
@@ -466,6 +469,22 @@ function checking(ctx: OpsContext): Set<string> {
   return s;
 }
 
+/** Which history scans have not reached the safe head, and how far each got
+ *  (null when all have): said in the pass's errors, so a guardian reading a
+ *  backlog shows in its heartbeat where it is. */
+export function scansBehind(ctx: OpsContext, safe: bigint): string | null {
+  const { cfg, store } = ctx;
+  const bound = store.get<Record<string, { block: bigint }>>('boundDistributors', {});
+  const at: [string, bigint][] = [
+    ['the discovery', discoveredThrough(ctx)],
+    ['the role events', store.get<bigint>('eventsBlock', cfg.eventsFromBlock - 1n)],
+    ...ctx.readers.map((r, i): [string, bigint] => [`the bound distributors on provider ${r.label}`, bound[`${i}:${r.label}`]?.block ?? cfg.sharing.graduatorFromBlock - 1n]),
+  ];
+  const late = at.filter(([, b]) => b < safe);
+  if (!late.length) return null;
+  return `history scans behind the safe head ${safe}: ${late.map(([w, b]) => `${w} through ${b} (${safe - b} blocks left)`).join(', ')}; the next pass reads on from there`;
+}
+
 /** One pass of `verify` (guardian = null) or `guardian` (its vetoer key). */
 export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Promise<WatchReport> {
   const rep: WatchReport = { ok: true, results: [], vetoed: [], froze: null, errors: [], unchecked: 0, passMs: 0 };
@@ -488,28 +507,41 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
         rep.errors.push(...hbErrors);
       }
     }
+    // ---- 1. what the guardian already owes: vetoes and a freeze decided on
+    // earlier passes that have not landed - FIRST, before any scan. They need
+    // none (settleOwed re-reads every root it sends for on every provider),
+    // and a scan may fail, or read a backlog for as long as it is allowed.
+    if (guardian) {
+      try {
+        await settleOwed(ctx, guardian, rep);
+      } catch (e) {
+        rep.ok = false;
+        rep.errors.push(`owed vetoes: ${errorText(e)}`);
+        log.error('owed vetoes not settled', { error: errorText(e) });
+      }
+    }
+
     const latest = await commonHead(ctx.readers, 'latest');
     const safe = await commonHead(ctx.readers, 'safe');
+    // THE HISTORY SCANS ARE BOUNDED IN TIME TOO: together they start no new
+    // chunk after guardian.passTimeoutSec (each reads one at least), and
+    // what they have read is kept (keeper.ts eachChunk). A backlog - after
+    // any outage, on a free provider's small window - is then read over
+    // many passes, each of which still checks the roots it knows of and
+    // writes its heartbeat, instead of one pass that checks nothing and is
+    // silent for hours. Such a pass is not clean, and says how far behind.
+    const until = ctx.now() + cfg.guardian.passTimeoutSec * 1000;
     let ds: Address[];
     try {
-      ds = await discover(ctx, safe.number, { allProviders: true, head: latest.number });
-      await roleEvents(ctx, ds, safe.number, { guardian });
+      ds = await discover(ctx, safe.number, { allProviders: true, head: latest.number, until });
+      // never past the discovery: a block read with a distributor missing is not read again
+      const found = discoveredThrough(ctx);
+      await roleEvents(ctx, ds, found < safe.number ? found : safe.number, { guardian }, until);
     } catch (e) {
-      // A SCAN THAT FAILS DOES NOT HOLD BACK WHAT IS OWED. The vetoes and the
-      // freeze decided on earlier passes need no scan: settleOwed re-reads
-      // every root it sends for on every provider. The pass then ends, not
-      // clean, as before. (Its progress is kept chunk by chunk: keeper.ts.)
+      // the pass ends, not clean; its progress is kept chunk by chunk
       rep.ok = false;
       rep.errors.push(errorText(e));
       log.error('watch tick failed', { error: errorText(e) });
-      if (guardian) {
-        try {
-          await settleOwed(ctx, guardian, rep);
-        } catch (e2) {
-          rep.errors.push(`owed vetoes: ${errorText(e2)}`);
-          log.error('owed vetoes not settled', { error: errorText(e2) });
-        }
-      }
       return rep;
     }
     // EVERY PROVIDER'S LIST OF BOUND DISTRIBUTORS, BROUGHT UP TO THE SAFE
@@ -520,11 +552,17 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
     // unverifiable. A failure here does not stop the pass (it is not clean):
     // a check scans what is left itself.
     try {
-      await boundDistributors(ctx, safe.number, safe.number);
+      await boundDistributors(ctx, safe.number, safe.number, until);
     } catch (e) {
       rep.ok = false;
       rep.errors.push(`the bound distributors: ${errorText(e)}`);
       log.error('the bound distributors not brought up to the safe head', { error: errorText(e) });
+    }
+    const behind = scansBehind(ctx, safe.number);
+    if (behind) {
+      rep.ok = false;
+      rep.errors.push(behind);
+      log.warn('history scans behind', { error: behind });
     }
     const f = await readFactory(r0, cfg.distributorFactory, latest.number);
     if (guardian && !(await isVetoer(r0, cfg.distributorFactory, guardian.address, latest.number))) {
@@ -535,17 +573,6 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
       balanceWei = await guardian.balance();
       if (balanceWei < cfg.guardian.lowEthWei) {
         await ctx.alerts.raise({ key: 'low-eth:guardian', severity: 'warn', title: 'The guardian key is LOW ON ETH', text: `${guardian.address} holds ${balanceWei} wei (alert below ${cfg.guardian.lowEthWei}). Fund it: a veto it cannot pay for leaves only the Safe signers to veto inside the hour.` }, { cooldownSec: cfg.alerts.reminderSec });
-      }
-    }
-
-    // ---- 1. what the guardian already owes: vetoes and a freeze that have not landed
-    if (guardian) {
-      try {
-        await settleOwed(ctx, guardian, rep);
-      } catch (e) {
-        rep.ok = false;
-        rep.errors.push(`owed vetoes: ${errorText(e)}`);
-        log.error('owed vetoes not settled', { error: errorText(e) });
       }
     }
 

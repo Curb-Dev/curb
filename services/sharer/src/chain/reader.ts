@@ -4,7 +4,7 @@
 
 import { decodeFunctionResult, encodeFunctionData, type Abi } from 'viem';
 import { decodeProbeAnswer, PROBE_FROM, PROBE_REQUEST_GAS, probeRequest } from './probe.ts';
-import { getLogsAdaptive, LogWindow, type LogFilter, type LogWindowOptions, type RawLog } from './logs.ts';
+import { getLogsAdaptive, LogWindow, RequestStopped, type LogFilter, type LogWindowOptions, type RawLog } from './logs.ts';
 import type { Rpc } from './rpc.ts';
 
 export interface BlockHeader {
@@ -62,8 +62,10 @@ function isHash(x: unknown): x is string {
 }
 
 /** A transport failure worth asking again: a 429 or 5xx, a timeout, a dropped
- *  connection, a page that is not JSON. A revert or a refused method is not. */
+ *  connection, a page that is not JSON. A revert or a refused method is not,
+ *  nor a request its caller withdrew (RequestStopped). */
 export function isTransient(e: unknown): boolean {
+  if (e instanceof RequestStopped) return false;
   let cur: any = e;
   for (let d = 0; cur && d < 8; d++) {
     if (cur.status === 429 || (typeof cur.status === 'number' && cur.status >= 500) || cur.code === 429) return true;
