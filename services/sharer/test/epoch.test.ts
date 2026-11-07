@@ -326,9 +326,21 @@ test('a stateless restart loads the active epoch from its published file, checke
   const w = vectorWorld(v);
   const one = reader(w.chain, 'a');
   const r1 = (await prepareEpoch([one], w.config, req(w, 0), { allowSingleProvider: true })).result as EpochResult;
-  w.applyResult(0, r1);
-  // The publish of epoch 1, as the distributor logs it.
+  // The publish of epoch 1, as the distributor logs it, in the block after
+  // T1: its payableAt is that block's time plus the veto hour, and the
+  // active root keeps it, so the restart finds the event by it. Every block
+  // up to the restart's has a header (one without a transfer keeps the
+  // time before it).
   const T1 = w.attempts[0].toBlock;
+  const at = w.attempts[1].toBlock;
+  let last = w.chain.headers.get(T1)!.timestamp;
+  for (let b = T1; b <= at; b++) {
+    const h = w.chain.headers.get(b);
+    if (h) last = h.timestamp;
+    else w.chain.setBlock(b, last);
+  }
+  const payableAt = w.chain.headers.get(T1 + 1n)!.timestamp + 3600n;
+  w.applyResult(0, r1, Number(payableAt));
   const uri = w.attempts[0].uri;
   const enc = (n: bigint) => n.toString(16).padStart(64, '0');
   const uriHex = Buffer.from(uri, 'utf8').toString('hex');
@@ -342,14 +354,13 @@ test('a stateless restart loads the active epoch from its published file, checke
     enc(r1.root.cumKeeper0) +
     r1.root.contentHash.slice(2) +
     enc(9n * 32n) +
-    enc(T1 + 100n) +
+    enc(payableAt) +
     enc(BigInt(uri.length)) +
     uriHex.padEnd(Math.ceil(uriHex.length / 64) * 64, '0');
   w.chain.addLog({ address: w.D, topics: [TOPICS.RootPublished, '0x' + enc(1n)], data, block: T1 + 1n, logIndex: 0n, txHash: '0x' + 'cd'.repeat(32) });
   w.chain.txs.set('0x' + 'cd'.repeat(32), { hash: '0x' + 'cd'.repeat(32), from: '0x00000000000000000000000000000000000beef1', to: '0xfac7000000000000000000000000000000000001', input: '0x', block: T1 + 1n });
   const files = new Map([[uri, r1.fileBytes]]);
   const fetchFile = async (u: string) => files.get(u)!;
-  const at = w.attempts[1].toBlock;
   const loaded = await loadActiveState(one, w.config.graduator, w.D, fetchFile, at);
   // the file commits to the complete state; it does not list it
   assert.equal(loaded.state!.balancesAtEnd, null);

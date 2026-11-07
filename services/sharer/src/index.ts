@@ -55,6 +55,9 @@ export {
   readDistributorState,
   readDecimals,
   readEpochHistory,
+  rootPublishedIn,
+  findRootPublished,
+  VETO_WINDOW_SEC,
 } from './chain/indexer.ts';
 export type { SharingSwitch, LaunchRecord, LaunchMeta, ProbeResult, FeedPair, RootView, DistributorState, PublishedRoot } from './chain/indexer.ts';
 export * as abis from './chain/abis.ts';

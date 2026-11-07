@@ -101,7 +101,7 @@ import type { Address, EpochIndex } from '../calc/types.ts';
 import { canonicalJson } from '../calc/encoding.ts';
 import { parseEpochIndex, verifyEpochFile } from '../calc/file.ts';
 import { ChunkUnavailable, chunkFetcher, fetchChunks } from '../epoch-chunks.ts';
-import { readEpochHistory, type PublishedRoot, type RootView } from '../chain/indexer.ts';
+import { findRootPublished, type PublishedRoot, type RootView } from '../chain/indexer.ts';
 import type { ChainReader } from '../chain/reader.ts';
 import { recomputeEpochFile, ProviderDisagreement, EpochNotReady, type SharerConfig } from '../epoch.ts';
 import { loadActiveState } from '../state.ts';
@@ -142,10 +142,6 @@ export function reasonOf(word: string): string {
  *  never a reason to freeze; counting it would let one later mismatch -
  *  perhaps this host's own config out of step - freeze every launch. */
 const REPEAT_REASONS = new Set<string>([REASONS.RECOMPUTE, REASONS.INVALID].map((r) => reasonWord(r).toLowerCase()));
-
-/** The factory's SHARING_VETO_WINDOW: a root's RootPublished is in the block
- *  whose timestamp is its payableAt minus this. */
-export const VETO_WINDOW_SEC = 3600n;
 
 /** A failed veto pages again this often while its root is still pending. */
 const VETO_RETRY_PAGE_SEC = 300;
@@ -303,30 +299,6 @@ export function readyCalls(factory: Address, items: { d: Address; epoch: bigint 
 
 // ---------------------------------------------------------------- the event of a root
 
-/** The RootPublished of `root` on one provider, or null when that provider
- *  has none. publish() refuses a toBlock at or past its own block, and the
- *  event carries payableAt = its block's timestamp + the veto window, so the
- *  block is found by its timestamp (a bisection over the headers after
- *  toBlock) and only that block is asked for logs: a root published a year
- *  ago costs as little as one published a minute ago. */
-export async function publishedEvent(r: ChainReader, d: Address, root: RootView, head: bigint): Promise<PublishedRoot | null> {
-  const at = root.payableAt - VETO_WINDOW_SEC;
-  let lo = root.toBlock + 1n;
-  let hi = head;
-  if (root.payableAt === 0n || lo > hi || (await r.block(hi)).timestamp < at) return null;
-  while (lo < hi) {
-    const mid = (lo + hi) / 2n;
-    if ((await r.block(mid)).timestamp < at) lo = mid + 1n;
-    else hi = mid;
-  }
-  // the first block at that timestamp, and any after it sharing it
-  if ((await r.block(lo)).timestamp !== at) return null;
-  let to = lo;
-  while (to < head && (await r.block(to + 1n)).timestamp === at) to++;
-  const { published } = await readEpochHistory(r, d, lo, to);
-  return published.find((p) => p.epoch === root.epoch && p.payableAt === root.payableAt && p.merkleRoot === root.merkleRoot && p.contentHash === root.contentHash) ?? null;
-}
-
 /** The event of `root` as EVERY provider (`readers`, this host's) reports
  *  it, or why it cannot be trusted: missing on one of them, or different
  *  between them. Agreed events are cached by (distributor, epoch). */
@@ -336,7 +308,7 @@ async function eventEverywhere(ctx: OpsContext, readers: ChainReader[], d: Addre
   const hit = cache[key];
   if (hit && hit.payableAt === root.payableAt && hit.merkleRoot === root.merkleRoot && hit.contentHash === root.contentHash) return { p: hit, problem: null };
   const found: (PublishedRoot | null)[] = [];
-  for (const r of readers) found.push(await publishedEvent(r, d, root, head));
+  for (const r of readers) found.push(await findRootPublished(r, d, root, head));
   const id = (p: PublishedRoot | null) => (p ? `${p.block}:${p.txHash}:${p.uri}` : 'none');
   const say = () => readers.map((r, i) => `${r.label}: ${found[i] ? `block ${found[i]!.block}, ${found[i]!.uri}` : 'no event'}`).join('; ');
   if (found.some((p) => id(p) !== id(found[0]))) return { p: null, problem: `this host's providers disagree on the RootPublished of epoch ${root.epoch} (${say()})` };

@@ -481,4 +481,47 @@ export async function readEpochHistory(r: ChainReader, D: Address, fromBlock: bi
   return { published, vetoed };
 }
 
+/** The factory's SHARING_VETO_WINDOW: a root's RootPublished is in a block
+ *  whose timestamp is its payableAt minus this. */
+export const VETO_WINDOW_SEC = 3600n;
+
+/** Every RootPublished in the blocks of the second `root` was published in,
+ *  on one provider (empty when it has none there). publish() refuses a
+ *  toBlock at or past its own block and stamps payableAt = its block's
+ *  timestamp + the veto window, and _activate copies the pending root whole,
+ *  so the active root keeps that payableAt too. The block is found by its
+ *  timestamp - a bisection over the headers in (toBlock, head] - and only
+ *  that second's blocks are asked for logs.
+ *
+ *  NO LAUNCH'S HISTORY IS READ. A scan from sharingSince cost one request
+ *  per window of every block since sharing began (some 430 a day on a
+ *  1,000-block window, every check and every keeper epoch): a launch that
+ *  had shared for two days could no longer be checked in time. This costs a
+ *  few dozen headers, whatever the launch's age. */
+export async function rootPublishedIn(r: ChainReader, D: Address, root: RootView, head: bigint): Promise<PublishedRoot[]> {
+  const at = root.payableAt - VETO_WINDOW_SEC;
+  let lo = root.toBlock + 1n;
+  let hi = head;
+  if (root.payableAt === 0n || lo > hi || (await r.block(hi)).timestamp < at) return [];
+  while (lo < hi) {
+    const mid = (lo + hi) / 2n;
+    if ((await r.block(mid)).timestamp < at) lo = mid + 1n;
+    else hi = mid;
+  }
+  // the first block at that timestamp, and any after it sharing it
+  if ((await r.block(lo)).timestamp !== at) return [];
+  let to = lo;
+  while (to < head && (await r.block(to + 1n)).timestamp === at) to++;
+  const { published } = await readEpochHistory(r, D, lo, to);
+  return published;
+}
+
+/** The RootPublished of `root` on one provider: the one in its own second
+ *  with its epoch, payableAt, root and content hash; null when that provider
+ *  has none. */
+export async function findRootPublished(r: ChainReader, D: Address, root: RootView, head: bigint): Promise<PublishedRoot | null> {
+  const found = await rootPublishedIn(r, D, root, head);
+  return found.find((p) => p.epoch === root.epoch && p.payableAt === root.payableAt && p.merkleRoot === root.merkleRoot && p.contentHash === root.contentHash) ?? null;
+}
+
 export { isAddr };
