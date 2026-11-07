@@ -352,9 +352,14 @@ PER QUOTE ASSET - ONE STACK EACH
   read back off its factory as above, and equal to the record; each record is
   byte for byte the run's broadcast file. The dollar line is the asset
   preflight's, at the Chainlink answer it read (the feed's answer at the block
-  before the stack's first transaction). The registry admits none of the
-  three until the Safe's call (DEPLOY.txt step 6), and launcherCount() stays
-  14 until then.
+  before the stack's first transaction). The policy Safe admitted the three
+  on 7 November 2026 (DEPLOY.txt step 6), one addLauncher each, Safe A nonces
+  1 to 3, each signed by two of its three owners with the safeTxHash the
+  owner's runbook had computed beforehand from Safe A's own
+  getTransactionHash; launcherCount() is 17 since. Read back the same night
+  with both records (DEPLOY.txt step 7): check-deployment.sh against
+  base-rpc.publicnode.com, deployments/base-mainnet/run.json and the three
+  asset records, --accepted: "check-deployment: ok, 611 checks passed".
 
   MSTRc   quote 0xb2000000000000000000004884b426556b92883d   phantom 3090000000   threshold 8370000000
     CurbLaunchFactory   0x1F4C53c4a053957771D6105Ae89836e187352920
@@ -368,7 +373,11 @@ PER QUOTE ASSET - ONE STACK EACH
                         PonsV2BuybackVault  0x76ae5dbfa1436d8c35c463db4710e2c3f11486116cf27ec4c431de37355b607c
                         CurbLaunchFactory   0xf4648e43e8102221e854c9357eff1091895017139d3a317405a5d90dcb2da5b3
     priced at           Coinbase MSTR $128.815: starts at $3,980, graduates at $54,749
-    Safe addLauncher    not yet. data 0x3c4e094c0000000000000000000000001f4c53c4a053957771d6105ae89836e187352920
+    Safe addLauncher    tx 0x5935bd9ca93fa536624bc729ad56969e793731ccc445ba31853b38376b055db5
+                        block 54102073, 2026-11-07 00:19:50 UTC, Safe A nonce 1,
+                        relayed by Safe{Wallet}'s sponsored execution
+                        safeTxHash 0x3d50a200260958d48d0efba20482ff9d90ce8a6ff2ab293de93c415a4f8ed300
+                        data 0x3c4e094c0000000000000000000000001f4c53c4a053957771d6105ae89836e187352920
 
   SNDKc   quote 0xb200000000000000000000397293Cb8cda9a10c5   phantom 494000000   threshold 1340000000
     CurbLaunchFactory   0xA621783ADb6BD00b434389B830ca4ba9435F4920
@@ -382,7 +391,11 @@ PER QUOTE ASSET - ONE STACK EACH
                         PonsV2BuybackVault  0xe21540b7a5a8c768a75933b9d38da49894213b67a28be23064f97cd870230e12
                         CurbLaunchFactory   0xee13e26425427ffaf9846e2ef2a566ed80bbdb28d6c5e65f6e0353c4a3e19603
     priced at           Coinbase SNDK $836.949: starts at $4,135, graduates at $56,986
-    Safe addLauncher    not yet. data 0x3c4e094c000000000000000000000000a621783adb6bd00b434389b830ca4ba9435f4920
+    Safe addLauncher    tx 0xe47b6b389195bbfa4d3f475232aee6b12f850ec49463be5b2d8ee20edb3d68ac
+                        block 54104429, 2026-11-07 00:27:41 UTC, Safe A nonce 2,
+                        executed by its owner 0xB85c4Da703528d246C00f7D377a3d43374f904A0
+                        safeTxHash 0xef98a8850ea7a919c374333a19d3ce7abdf047aa53f810a9ff671b5fa27c82d0
+                        data 0x3c4e094c000000000000000000000000a621783adb6bd00b434389b830ca4ba9435f4920
 
   TSLAc   quote 0xb2000000000000000000001e800a7f5189430cD0   phantom 1160000000   threshold 3150000000
     CurbLaunchFactory   0x7187630659d1CbE88c936748222fBc0e724D8686
@@ -396,7 +409,11 @@ PER QUOTE ASSET - ONE STACK EACH
                         PonsV2BuybackVault  0xbc512d1d668cd55b3ee9b899ef07855968730ef71f3816aa57e91c29ff338cd2
                         CurbLaunchFactory   0x7aea55d8680b5c755f14c8e0689e487f529a82374dc2706f54a34b54e8b420de
     priced at           Coinbase TSLA $359.09: starts at $4,165, graduates at $57,504
-    Safe addLauncher    not yet. data 0x3c4e094c0000000000000000000000007187630659d1cbe88c936748222fbc0e724d8686
+    Safe addLauncher    tx 0x10d7ff532c3f3e56be20b6a457387ccca30b90916ed46d00dba327339514472a
+                        block 54104996, 2026-11-07 00:29:34 UTC, Safe A nonce 3,
+                        executed by its owner 0xB85c4Da703528d246C00f7D377a3d43374f904A0
+                        safeTxHash 0x39b6570dcf6dc17bb0855abf0942b1982ffc592e54219bfce1247e99f9abe4a7
+                        data 0x3c4e094c0000000000000000000000007187630659d1cbe88c936748222fbc0e724d8686
 
 
 ================================================================================
