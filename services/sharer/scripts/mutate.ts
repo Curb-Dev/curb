@@ -324,7 +324,9 @@ export const MUTANTS: Mutant[] = [
   m('P45 one cap over every launch', SS, '      if (this.entries.size <= 1 || this.held <= this.maxBalances) break;', '      if (this.entries.size <= 1 || (this.held <= this.maxBalances && this.entries.size <= 64)) break;', 'kept per launch'),
   m('P46 a rebuild per caller', P, '  return cache ? cache.once(chainId, token, prev.toBlock, prev.stateAtEnd, rebuild) : rebuild();', '  return rebuild();', 'one rebuild at a time'),
   m('P47 the replay ignores the signal', P, '      const logs = await replayTransfers(r, token, a, b);\n      signal?.throwIfAborted();', '      const logs = await replayTransfers(r, token, a, b);', 'aborted signal'),
-  m('P48 the signal not passed on', P, 'gatherEpoch(r, config, req, cache, { signal: opts.signal, rebuildStepBlocks: opts.rebuildStepBlocks })', 'gatherEpoch(r, config, req, cache, { rebuildStepBlocks: opts.rebuildStepBlocks })', 'aborted signal'),
+  // the providers are read at once (reader.ts onEveryProvider), each stopped
+  // by a signal of its own: the caller's must reach it
+  m('P48 the signal not passed on', R, "  else signal?.addEventListener('abort', outer, { once: true });\n", '', 'aborted signal'),
   m('P49 the recompute looks up any number of keeper txs', P, '  if (f.keeper.txs.length > MAX_KEEPER_TXS) throw new InputError(', '  if (false) throw new InputError(', 'more keeper transactions'),
   m('S34 any number of keeper txs attributed', S, '  if (txs.length > MAX_KEEPER_TXS) txs.length = MAX_KEEPER_TXS;', '', 'at most 512 keeper'),
 

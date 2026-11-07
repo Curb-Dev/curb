@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import { encodeAbiParameters, encodeEventTopics, keccak256, toHex } from 'viem';
 import { ChainReader } from '../src/chain/reader.ts';
 import { EVENTS, TOPICS } from '../src/chain/abis.ts';
+import { findRootPublished, readDistributorState } from '../src/chain/indexer.ts';
 import { prepareEpoch } from '../src/epoch.ts';
 import { loadActiveState } from '../src/state.ts';
 import { canonicalJson, type ActiveState, type EpochResult } from '../src/calc/index.ts';
@@ -158,6 +159,18 @@ test('the active root whose event is missing, or names another file, is refused'
   // the same epoch in the same second, naming other bytes
   x.w.chain.addLog(rootPublished(x.w.D, x.r3, x.w.attempts[2].uri, x.payableAt3, x.P3, keccak256(toHex('another file'))));
   await assert.rejects(x.load(), /does not match the active root/);
+});
+
+test("a root's event is the one with its root and its file: a forged one of the same epoch and second is passed over", async () => {
+  const x = await aged(30n);
+  const reader = () => new ChainReader(x.w.chain.rpc('a'), { tries: 0, logWindow: { tries: 0 } });
+  const active = (await readDistributorState(reader(), x.w.D, x.at)).active;
+  assert.equal(active.epoch, 3n);
+  // the same epoch, earlier in that second, naming another file
+  x.w.chain.addLog({ ...rootPublished(x.w.D, x.r3, 'ipfs://forged', x.payableAt3, x.P2, keccak256(toHex('forged'))), logIndex: 1n });
+  assert.equal((await findRootPublished(reader(), x.w.D, active, x.at))?.uri, x.w.attempts[2].uri);
+  x.w.chain.logs = x.w.chain.logs.filter((l) => !(l.block === x.P3 && l.topics[0] === TOPICS.RootPublished));
+  assert.equal(await findRootPublished(reader(), x.w.D, active, x.at), null, 'only the forged one: none');
 });
 
 /** Every eth_getLogs of `D`'s RootPublished in `calls`, as [from, to]. */

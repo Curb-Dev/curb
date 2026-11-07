@@ -53,6 +53,9 @@ const GR = 'src/ops/graduation.ts';
 const WR = 'src/ops/wiring.ts';
 const FR = 'scripts/config-from-run.ts';
 const WP = 'src/ops/writeprobe.ts';
+const RD = 'src/chain/reader.ts';
+const IX = 'src/chain/indexer.ts';
+const ST = 'src/state.ts';
 
 export const MUTANTS: Mutant[] = [
   // ---------------------------------------------------------------- keeper: who may act
@@ -132,7 +135,7 @@ export const MUTANTS: Mutant[] = [
   m("SP22 the hosts give a refusal spell up after 7.5 s", R, "= { tries: 7 };", "= { tries: 4 };", "refusal spell is waited out"),
   m("SP23 --getlogs-tries not handed to the readers", R, "...(o.logTries !== undefined ? { tries: o.logTries } : {})", "...{}", "refusal spell is waited out"),
   m("SP24 --getlogs-tries not checked", CL, "    if (logTries !== undefined && (!Number.isSafeInteger(logTries) || logTries < 1 || logTries > 10)) throw", "    if (false) throw", "--getlogs-tries"),
-  m("SP25 a check past its deadline read on as busy", CV, "      if (signal.aborted) return Promise.reject(new RequestStopped(signal.reason));", "      if (signal.aborted) return Promise.reject(signal.reason ?? new Error('stopped'));", "past its deadline stops at its next read"),
+  m("SP25 a check past its deadline read on as busy", RD, "      if (signal.aborted) return Promise.reject(new RequestStopped(signal.reason));", "      if (signal.aborted) return Promise.reject(signal.reason ?? new Error('stopped'));", "past its deadline stops at its next read"),
   m("T10 a transaction provider a refused not sent though another took it", T, "    if (!taken) throw first;", "    if (first) throw first;", "ANY provider takes it"),
   m("T11 a transaction no provider took counted as sent", T, "    if (!taken) throw first;\n", "", "ANY provider takes it", "re-broadcasts it"),
   m("T12 the refusal another provider overrode not logged", T, "    if (refused.length) this.log.warn(", "    if (false) this.log.warn(", "ANY provider takes it"),
@@ -257,9 +260,9 @@ export const MUTANTS: Mutant[] = [
   m('G4 a root check bounded only by the pass', V, '  const checkMs = () => Math.min(cfg.guardian.checkTimeoutSec * 1000, checksLeft());', '  const checkMs = () => checksLeft();', 'never finish arriving'),
   m('G5 the pass without a deadline', V, '        else if (checksLeft() <= 0) {', '        else if (false) {', 'never finish arriving'),
   m('G6 a pass past its deadline called clean', V, '    if (overrun) {\n      rep.ok = false;', '    if (false) {\n      rep.ok = false;', 'never finish arriving'),
-  m("G7 a root's event looked up over the whole history", V, '  const { published } = await readEpochHistory(r, d, lo, to);', '  const { published } = await readEpochHistory(r, d, 0n, head);', "reads no launch's history"),
+  m("G7 a root's event looked up over the whole history", IX, '  const { published } = await readEpochHistory(r, D, lo, to);', '  const { published } = await readEpochHistory(r, D, 0n, head);', "reads no launch's history"),
   m('G8 the roots read on one provider', V, '  const per = await Promise.all(ctx.readers.map(async (r) => ({ label: r.label, ...(await readRootsMany(', '  const per = await Promise.all(ctx.readers.slice(0, 1).map(async (r) => ({ label: r.label, ...(await readRootsMany(', 'hides a pending root'),
-  m('G9 the event read on one provider', V, '  for (const r of readers) found.push(', '  for (const r of readers.slice(0, 1)) found.push(', 'leaves a RootPublished out'),
+  m('G9 the event read on one provider', V, '  const found = await onEveryProvider(readers, (r) =>', '  const found = await onEveryProvider(readers.slice(0, 1), (r) =>', 'leaves a RootPublished out'),
   m('G10 a root pending on one provider only ignored', V, '      pending: each[0].pending.payableAt !== 0n ? each[0].pending : (shown?.pending ?? null),', '      pending: each[0].pending.payableAt !== 0n ? each[0].pending : null,', 'hides a pending root'),
   m("G11 an owed veto not sent before the checks and the scans", V, "    // and a scan may fail, or read a backlog for as long as it is allowed.\n    if (guardian) {", "    // and a scan may fail, or read a backlog for as long as it is allowed.\n    if (false) {", 'owed veto goes out at the start', 'scan fails still sends the vetoes it owes', 'go out FIRST'),
   m('G12 a reverted receipt taken for a veto', V, "    if (!sent.receipt.status) {\n      ctx.log.warn('a veto was mined and REVERTED'", "    if (false) {\n      ctx.log.warn('a veto was mined and REVERTED'", 'mined and REVERTS'),
@@ -290,6 +293,19 @@ export const MUTANTS: Mutant[] = [
   // with or without it - removing it is equivalent where a test can see)
   m('N9a a freeze owed only when not frozen', V, "            if ((malicious || repeat) && !holds) oweFreeze(", "            if ((malicious || repeat) && !frozenNow) oweFreeze(", 'which cancels the unfreeze'),
   m('N9b an owed freeze dropped while an unfreeze is announced', V, '  if (fz.frozen && fz.unfreezeAt === 0n) {\n    ctx.store.delete(\'owedFreeze\');', '  if (fz.frozen) {\n    ctx.store.delete(\'owedFreeze\');', 'which cancels the unfreeze'),
+  // ---------------------------------------------------------------- free RPC, step 1 (F: the B, C
+  // and D of the design of 7 November 2026)
+  // B: the active root's event in its own second, never the launch's history
+  m('FB1 the active root looked up over the history again', ST, '  const published = await rootPublishedIn(r, D, st.active, block);', "  const published = (await (await import('./chain/indexer.ts')).readEpochHistory(r, D, 0n, block)).published;", 'as after one day', 'not the history'),
+  m('FB2 a vetoed root of the same second taken for the active one', ST, '  const ev = published.filter((p) => p.epoch === st.active.epoch);', '  const ev = published;', 'as after one day'),
+  m("FB3 a root's event matched by its epoch alone", IX, 'p.epoch === root.epoch && p.payableAt === root.payableAt && p.merkleRoot === root.merkleRoot && p.contentHash === root.contentHash', 'p.epoch === root.epoch', 'forged one of the same epoch'),
+  m("FB4 the keeper's URI looked up over the history again", K, '  const p = await findRootPublished(ctx.readers[0], d, root, head);', "  const p = (await (await import('../chain/indexer.ts')).readEpochHistory(ctx.readers[0], d, 0n, head)).published.find((x) => x.epoch === root.epoch) ?? null;", 'not the history'),
+  // C: the providers read at once
+  m('FC1 the providers read one after the other again', RD, '    const settled = await Promise.allSettled(readers.map(one));', '    const settled: PromiseSettledResult<T>[] = [];\n    for (const r of readers) settled.push((await Promise.allSettled([one(r)]))[0]);', 'read at once', '2-s deadline'),
+  m("FC2 a provider's being stopped thrown for the failure", RD, '    if (failed.length) throw failed.find((e) => !stopped(e)) ?? failed[0];', '    if (failed.length) throw failed[0];', 'its own error is the one thrown'),
+  m('FC3 the other provider read on after a failure', RD, '      if (!ctl.signal.aborted) ctl.abort(failedFirst);\n', '', 'stops the other at its next request'),
+  // D: every read waits out a refusal spell
+  m('FD1 only eth_getLogs waits out a refusal spell', R, '{ logWindow, tries: logWindow.tries }', '{ logWindow }', 'every read waits out a refusal spell', 'refusal spell inside a check'),
   m('LB1 a lease kept from the keeper never a failure', K, '  if (age <= ctx.cfg.lease.blockedAfterSec) return;', '  return;', 'lease another holder keeps'),
   m('LB2 a blocked streak never ends', K, "    if (!blocked) store.delete('leaseBlocked');", '', 'standby run that keeps'),
   m('LB3 a lease kept from the keeper fails at once', K, '  if (age <= ctx.cfg.lease.blockedAfterSec) return;', '  if (age < 0) return;', 'standby run that keeps', 'lease another holder keeps'),
