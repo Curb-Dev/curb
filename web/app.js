@@ -877,12 +877,14 @@ function loadCfg() {
   // reads config.js's own endpoint and lens (prefill.js halfLink): the factory
   // is one config.js publishes and the endpoint is config.js's own, so both
   // halves come from the same place. That is the link an agent hands a person
-  // (web/agents/curb.md). Any other factory, a hidden one, or a pair saved in
-  // this browser is half a link as before. Without prefill.js, today's rule.
+  // (web/agents/curb.md). Any other factory, a hidden one, one written other
+  // than as "0x" and 40 hex digits, a factory named twice, or a pair saved in
+  // this browser is half a link as before. Every ?factory= value goes in, as
+  // written: this page reads the first, raw. Without prefill.js, today's rule.
   mixedEndpoint = window.CurbPrefill
     ? window.CurbPrefill.halfLink({
       production: PRODUCTION, restatesSaved, namesWhat, rpcNamed: namesWhere, lensNamed: !!q.get("lens"),
-      factory: q.get("factory") || "", siteFactories: SITE.factories || [], hiddenFactories: SITE.hiddenFactories || [],
+      factories: q.getAll("factory"), siteFactories: SITE.factories || [], hiddenFactories: SITE.hiddenFactories || [],
       readsSitePair: readsSitePair(),
     })
     : !restatesSaved && ((namesWhat && !namesWhere) || (namesWhere && !namesWhat));

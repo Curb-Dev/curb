@@ -21,6 +21,8 @@ const STUB = fs.readFileSync(path.join(WEB, "wallet-stub.js"), "utf8");
 const WETH = "0x4200000000000000000000000000000000000006";
 const NVDAC = "0xb20000000000000000000078ee7ce2fe4908108c";
 const DEAD = "0x000000000000000000000000000000000000dEaD";
+/// The full-flow stack's deployer, which owns its sharing catalog (sharing.spec.js OWNER).
+const CATALOG_OWNER = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
 const WORDS = "Trading and launching aren't available in the United States.";
 const REFUSED = WORDS + " Nothing was sent.";
 const UNREAD = "This page couldn't check where you're visiting from, so nothing was sent. Try again in a moment.";
@@ -30,6 +32,9 @@ const CHECK = "Check every field before you create";
 const HALF = "only half of where to look";
 const NOT_OURS = "THIS IS NOT THE DEPLOYMENT THIS PRODUCT PUBLISHES";
 const NOT_OFFERED = "This link names a factory this site does not offer, so nothing from it was filled in.";
+const TWO_FACTORIES = "This link names more than one factory, so nothing from it was filled in.";
+const HOLDERS_LINE = "This link chose Holders: if you keep that, your creator share is 0% for good and goes to whoever " +
+  "holds the token. Choose You to keep it.";
 const OTHER_ENDPOINT = "http://other-endpoint.test:8701";
 
 test.describe.configure({ mode: "serial" });
@@ -494,4 +499,83 @@ test("P12: without prefill.js the page fills nothing, and a factory link warns a
   await expect(p.locator("#prefillNote")).toBeHidden();
   expect(await p.evaluate(() => window.CurbApp.prefill())).toBe(null);
   await close(p);
+});
+
+// ================================================================== P13
+/// The share card, as the page draws it.
+const shareCard = (p) => p.evaluate(() => ({
+  holders: document.getElementById("nShare").checked, you: document.getElementById("earnYouPick").checked,
+  disabled: document.getElementById("nShare").disabled, terms: !document.getElementById("shareTerms").hidden,
+  unavailable: document.getElementById("shareUnavailable").hidden ? "" : document.getElementById("shareUnavailable").textContent,
+}));
+test("P13: earn=holders picks Holders, the guide's own link: the five statements show and the note says what Holders gives away; with no version approved it goes back to You and says why", async () => {
+  test.setTimeout(120_000);
+  const WETHF = await factoryFor(WETH);
+  const link = { factory: WETHF, name: "Share Cat", symbol: "SHCT", tax: "2", earn: "holders" };
+  // 1. THE CATALOG APPROVES A VERSION (the full-flow stack's): Holders stays chosen.
+  expect(/^0x0{40}$/.test(addrOf(await ethCall(STATE.app.catalog, sel("recommended()")))),
+    "the stack's catalog recommends no version, so this proves nothing").toBe(false);
+  const p = await newPage();
+  await openForm(p, link);
+  await expect(p.locator("#nName")).toHaveValue("Share Cat");
+  await factoryRead(p);
+  await expect.poll(() => p.evaluate(() => !!(window.CurbApp.state.ctx.sharing || {}).known), { timeout: 30_000 }).toBe(true);
+  await expect.poll(() => shareCard(p), { timeout: 30_000 }).toEqual({ holders: true, you: false, disabled: false, terms: true, unavailable: "" });
+  await expect(p.locator("#sumYours")).toContainText("to holders");
+  const note = await noteText(p);
+  expect(note).toContain(FILLED + ": the paired asset, the name, the symbol, the creator tax and who earns it.");
+  expect(note.split("\n")[1], "the Holders line is not right under what was filled").toBe(HOLDERS_LINE);
+  await close(p);
+  // AND earn=you DOES NOT SAY IT.
+  const y = await newPage();
+  await openForm(y, { ...link, earn: "you" });
+  await expect(y.locator("#earnYouPick")).toBeChecked();
+  expect(await noteText(y)).not.toContain("This link chose Holders");
+  await close(y);
+
+  // 2. THE CATALOG APPROVES NONE (its owner retired the version, in a snapshot
+  // of its own): the link's Holders goes back to You, and the card says why.
+  const recommended = addrOf(await ethCall(STATE.app.catalog, sel("recommended()")));
+  const snap = await rpc("evm_snapshot", []);
+  try {
+    const hash = await rpc("eth_sendTransaction", [{ from: CATALOG_OWNER, to: STATE.app.catalog,
+      data: sel("retire(address)") + word(BigInt(recommended)) }]);
+    await expect.poll(async () => ((await rpc("eth_getTransactionReceipt", [hash])) || {}).status, { timeout: 20_000 }).toBe("0x1");
+    expect(BigInt(await ethCall(STATE.app.catalog, sel("isApproved(address)") + word(BigInt(recommended)))),
+      "the version is still approved, so this proves nothing").toBe(0n);
+    const q = await newPage();
+    await openForm(q, link);
+    await expect(q.locator("#nName")).toHaveValue("Share Cat");
+    await factoryRead(q);
+    await expect.poll(() => shareCard(q), { timeout: 30_000 }).toEqual({
+      holders: false, you: true, disabled: true, terms: false,
+      unavailable: "Holder sharing is not available yet: no distributor version is approved.",
+    });
+    await expect(q.locator("#sumYours")).not.toContainText("to holders");
+    await close(q);
+  } finally {
+    expect(await rpc("evm_revert", [snap]), "P13's snapshot was not reverted").toBe(true);
+  }
+});
+
+// ================================================================== P14
+test("P14: a factory written other than as the page reads it, or named twice, is half a link and fills nothing - the note and the warning agree", async () => {
+  const WETHF = await factoryFor(WETH);
+  const STOCKF = await factoryFor(NVDAC);
+  for (const [what, query, said] of [
+    ["an upper-case 0X", "factory=0X" + WETHF.slice(2).toUpperCase() + "&name=Moon&symbol=MOON", NOT_OFFERED],
+    ["spaces around it", "factory=%20" + WETHF + "%20&name=Moon&symbol=MOON", NOT_OFFERED],
+    ["two listed factories", "factory=" + WETHF + "&factory=" + STOCKF + "&name=Moon&symbol=MOON", TWO_FACTORIES],
+  ]) {
+    const p = await newPage();
+    await p.goto("/launchpad?" + query);
+    await p.waitForFunction(() => !!window.CurbApp, null, { timeout: 8_000 });
+    await expect(p.locator("#linkWarn"), what).toContainText(HALF, { timeout: 20_000 });
+    await expect(p.locator("#nName"), what).toHaveValue("");
+    await expect(p.locator("#nSymbol"), what).toHaveValue("");
+    const note = await noteText(p);
+    expect(note, what).toContain(said);
+    expect(note, what).not.toContain(FILLED);
+    await close(p);
+  }
 });

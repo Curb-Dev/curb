@@ -55,7 +55,7 @@ test('the limits are app.js\'s own, so a link is held to what the form is', () =
 });
 
 test('U1: the values a link may carry are filled', () => {
-  for (const name of ["Na'vidia", 'Güzel Kedi', 'Moon Cat', 'x'.repeat(32), 'A.B, C-D & E! (F)? +#:', 'Котик 2']) {
+  for (const name of ["Na'vidia", 'Güzel Kedi', 'Moon Cat', 'x'.repeat(32), 'A.B, C-D & E! (F)? +#', 'Котик 2', 'Γάτα', 'Dr. Pepper', 'Web3.0', 'ㄱ 한글']) {
     assert.equal(one('name', name), name, `name ${JSON.stringify(name)}`);
   }
   for (const s of ['A', 'MCAT', 'moon', 'Ab1', '0123456789']) assert.equal(one('symbol', s), s, `symbol ${s}`);
@@ -74,7 +74,13 @@ test('U1: the values a link may carry are filled', () => {
 test('U2: each value outside its rule is refused on its own, and the others still fill', () => {
   const bad: Record<string, string[]> = {
     name: ['x'.repeat(33), '', ' Moon', 'Moon ', 'Moon 🐱', '<img>', 'Moon"', 'a/b', 'a@b', '100%', 'a\tb', 'a\nb',
-      'a\u0000b', 'a\u007fb', 'a\u0085b', 'a\u{200b}b', 'a\u{202e}b', 'a\u{2066}b', '\u{feff}Moon', 'e\u{301}'],
+      'a\u0000b', 'a\u007fb', 'a\u0085b', 'a\u{200b}b', 'a\u{202e}b', 'a\u{2066}b', '\u{feff}Moon', 'e\u{301}',
+      // LETTERS THAT RENDER AS NOTHING (the Hangul fillers), alone or beside others.
+      '\u{3164}', '\u{3164}\u{3164}', 'Moon\u{3164}Cat', '\u{115f}', '\u{1160}', 'a\u{ffa0}b',
+      // A WEB ADDRESS in a name shown on every card, and the ":" of one.
+      'Claim at evil.com', 'evil.co', 'x.рф', 'Go to bit.ly now', 'a:b', 'https:',
+      // LATIN MIXED WITH CYRILLIC OR GREEK: the look-alikes.
+      '\u{0421}urb', 'Moon \u{041a}otik', 'C\u{03bf}in'],
     symbol: ['x'.repeat(11), '', 'M CAT', '$CAT', 'CAT!', 'ÇAT'],
     tax: ['0.99', '5.01', '6', '0', '01', '1.', '.5', '1,5', '1.555', '+1', '-1', '1e0', '0x1', '１', 'NaN', 'Infinity', ' 1', '1 '],
     earn: ['Holders', 'HOLDERS', 'creator', '', '1', 'true', 'You'],
@@ -98,7 +104,13 @@ test('U3: a key given twice is not used', () => {
     assert.deepEqual([...r.refused].map((x: string[]) => [...x]), [[k, 'twice']]);
   }
   // A FACTORY NAMED TWICE fills nothing at all: which one would be the asset?
-  assert.equal(P.parse(q(`factory=${LISTED}&factory=${LISTED}&name=Moon`), PAGE).blocked, 'factory');
+  // And it says so in its own words, not "a factory this site does not offer".
+  for (const two of [`factory=${LISTED}&factory=${LISTED}&name=Moon`, `factory=${LISTED}&factory=${OTHER}&name=Moon`]) {
+    const r = P.parse(q(two), PAGE);
+    assert.equal(r.blocked, 'factories');
+    assert.deepEqual([...r.filled], []);
+    assert.deepEqual([...P.notice(r, PAGE)], ['This link names more than one factory, so nothing from it was filled in.']);
+  }
 });
 
 test('U4: the tax band is the caller\'s, not written a second time in prefill.js', () => {
@@ -142,6 +154,27 @@ function scramble(k: string, r: () => number): string {
   return out;
 }
 
+test('U5a: the keys a link can never set, and what each is called, are written down here too, so a key taken out of NEVER is caught', () => {
+  // U5 draws its keys and its expected warnings from NEVER itself, so it
+  // cannot see an entry go. This list is its own oracle.
+  assert.deepEqual(JSON.parse(JSON.stringify(P.NEVER)), [
+    ['the creator wallet', ['creatorwallet', 'creator', 'ncreator', 'beneficiary', 'wallet', 'payto', 'recipient', 'receiver', 'to']],
+    ['the dev buy', ['devbuy', 'dev', 'ndevbuy', 'devpct', 'ndevpct', 'devslider', 'ndevslider', 'firstbuy', 'buy', 'amount', 'value']],
+    ['slippage', ['slippage', 'poolslippage', 'slip']],
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(P.LINK_DOES_NOT_FILL)), [
+    ['the description', ['desc', 'ndesc', 'description']],
+    ['the links', ['site', 'nsite', 'website', 'x', 'nx', 'twitter', 'tg', 'ntg', 'telegram']],
+    ['the image', ['image', 'img', 'logo', 'nimagefile', 'tokenuri', 'uri']],
+  ]);
+  // AND THE WARNING, FOR EACH ALONE.
+  for (const k of ['recipient', 'Beneficiary', 'pay_to', 'receiver', 'to']) {
+    assert.match(P.notice(parse({ [k]: OTHER }), PAGE).join(' '), /tried to set the creator wallet\./, k);
+  }
+  for (const k of ['amount', 'first-buy', 'value']) assert.match(P.notice(parse({ [k]: '1' }), PAGE).join(' '), /tried to set the dev buy\./, k);
+  assert.match(P.notice(parse({ slip: '50' }), PAGE).join(' '), /tried to set slippage\./);
+});
+
 test('U5: over 2,000 random links, only name, symbol, tax and earn are ever filled, and every key a link can never set is reported', () => {
   const r = rng(20261107);
   const pool = [...FORM_IDS, ...NEVER_KEYS, ...NOT_FILLED_KEYS, 'name', 'symbol', 'tax', 'earn', 'factory', 'utm_source', 'ref', '__proto__', 'constructor'];
@@ -151,7 +184,8 @@ test('U5: over 2,000 random links, only name, symbol, tax and earn are ever fill
     const sp = new URLSearchParams();
     const sent: string[] = [];
     for (let j = 0; j < n; j++) {
-      const base = r() < 0.15 ? Math.random().toString(36).slice(2, 7) : pool[Math.floor(r() * pool.length)];
+      // EVERY DRAW FROM THE SEEDED r(), so a failure can be run again exactly.
+      const base = r() < 0.15 ? Math.floor(r() * 36 ** 5).toString(36) : pool[Math.floor(r() * pool.length)];
       const key = r() < 0.5 ? scramble(base, r) : base;
       // not rpc, lens or token, which fill nothing at all (U6)
       if (/^(rpc|lens|token)$/i.test(key)) continue;
@@ -180,6 +214,13 @@ test('U6: nothing is filled when the link names rpc, lens or token, an unlisted,
     ['a hidden factory', { ...fill, factory: HIDDEN }, {}, 'factory'],
     ['a malformed factory', { ...fill, factory: LISTED.slice(0, 41) }, {}, 'factory'],
     ['a factory with junk after it', { ...fill, factory: LISTED + 'x' }, {}, 'factory'],
+    // WRITTEN OTHER THAN app.js READS IT: the page would read the raw value,
+    // which is no factory of the site's (isAddr refuses "0X", and a space is
+    // not part of an address).
+    ['a listed factory with an upper-case 0X', { ...fill, factory: '0X' + LISTED.slice(2).toUpperCase() }, {}, 'factory'],
+    ['a listed factory with a space before it', { ...fill, factory: ' ' + LISTED }, {}, 'factory'],
+    ['a listed factory with a space after it', { ...fill, factory: LISTED + ' ' }, {}, 'factory'],
+    ['a listed factory with a tab after it', { ...fill, factory: LISTED + '\t' }, {}, 'factory'],
     ['off production', fill, { production: false }, 'production'],
     ['a token page', fill, { tokenView: true }, 'tokenView'],
     ['no form', fill, { formThere: false }, 'tokenView'],
@@ -223,7 +264,20 @@ test('the notice says what was filled and what was not, by rule, and never echoe
   assert.deepEqual([...P.notice(parse({ name: 'A' }), PAGE)], ['Filled in from a link: the name. Check every field before you create. A launch cannot be changed afterwards.']);
   assert.match(P.notice(parse({ tax: '9' }), PAGE).join(' '), /must be a percent from 1 to 5, with at most 2 decimals/);
   assert.match(P.notice(parse({ name: '<b>' }), PAGE).join(' '), /must be 1 to 32 letters, digits, spaces/);
+  assert.match(P.notice(parse({ name: 'evil.com' }), PAGE).join(' '),
+    /\. , ' - & ! \? \( \) \+ #, with no space at either end, nothing that looks like a web address, and no Latin letters mixed with Cyrillic or Greek ones\./);
   assert.deepEqual([...P.notice(parse({}), PAGE)], []);
+  // HOLDERS, CHOSEN BY A LINK, IS SAID ON ITS OWN LINE, right under what was
+  // filled: it gives the creator's share to whoever holds the token, for good.
+  const holders = 'This link chose Holders: if you keep that, your creator share is 0% for good and goes to whoever holds the ' +
+    'token. Choose You to keep it.';
+  assert.deepEqual([...P.notice(parse({ factory: LISTED, name: 'Moon', earn: 'holders' }), PAGE)], [
+    'Filled in from a link: the paired asset, the name and who earns it. Check every field before you create. A launch cannot be changed afterwards.',
+    holders,
+  ]);
+  assert.ok(!P.notice(parse({ name: 'Moon', earn: 'you' }), PAGE).includes(holders));
+  assert.ok(!P.notice(parse({ name: 'Moon', earn: 'Holders' }), PAGE).includes(holders), 'a refused Holders is not said to be chosen');
+  assert.ok(!P.notice(parse({ name: 'Moon', earn: 'holders' }, { readsSitePair: false }), PAGE).includes(holders), 'nothing filled, nothing chosen');
   assert.match(P.notice(parse({ to: OTHER }), PAGE).join(' '), /tried to set the creator wallet\. A link can never set that, so it was ignored/);
 });
 
@@ -245,16 +299,21 @@ test('U7: parse never throws, on 2,000 random Unicode strings in every position'
   }
 });
 
-test('U8: halfLink gives today\'s answer in every case but one: in production, a listed, not hidden factory and no endpoint or lens, on the site\'s own pair', () => {
+test('U8: halfLink gives today\'s answer in every case but one: in production, a listed, not hidden factory named once as written and no endpoint or lens, on the site\'s own pair', () => {
   const today = (o: any) => !o.restatesSaved && ((o.namesWhat && !o.rpcNamed) || (o.rpcNamed && !o.namesWhat));
-  const factories: [string, string][] = [['none', ''], ['listed', LISTED], ['listed, upper case', '0x' + 'AB'.repeat(20)], ['unlisted', OTHER], ['hidden', HIDDEN], ['malformed', LISTED.slice(0, 30)]];
+  // EVERY ?factory= VALUE, as app.js loadCfg passes them (q.getAll).
+  const factories: [string, string[]][] = [['none', []], ['listed', [LISTED]], ['listed, upper-case hex', ['0x' + 'AB'.repeat(20)]],
+    ['unlisted', [OTHER]], ['hidden', [HIDDEN]], ['malformed', [LISTED.slice(0, 30)]],
+    ['upper-case 0X', ['0X' + LISTED.slice(2)]], ['a space around it', [' ' + LISTED + ' ']],
+    ['listed, twice', [LISTED, LISTED]], ['listed, then unlisted', [LISTED, OTHER]]];
   let exceptions = 0, cases = 0;
   for (const production of [false, true]) for (const rpcNamed of [false, true]) for (const lensNamed of [false, true])
-    for (const [fname, factory] of factories) for (const restatesSaved of [false, true]) for (const readsSitePair of [false, true]) {
-      const namesWhat = !!factory || lensNamed;
-      const o = { production, restatesSaved, namesWhat, rpcNamed, lensNamed, factory, siteFactories: [LISTED, HIDDEN], hiddenFactories: [HIDDEN], readsSitePair };
+    for (const [fname, named] of factories) for (const restatesSaved of [false, true]) for (const readsSitePair of [false, true]) {
+      // AS loadCfg TELLS IT: the first value names a contract.
+      const namesWhat = !!named[0] || lensNamed;
+      const o = { production, restatesSaved, namesWhat, rpcNamed, lensNamed, factories: named, siteFactories: [LISTED, HIDDEN], hiddenFactories: [HIDDEN], readsSitePair };
       const got = P.halfLink(o);
-      const exception = production && !rpcNamed && !lensNamed && fname.startsWith('listed') && !restatesSaved && readsSitePair;
+      const exception = production && !rpcNamed && !lensNamed && (fname === 'listed' || fname === 'listed, upper-case hex') && !restatesSaved && readsSitePair;
       cases++;
       if (exception) {
         exceptions++;
@@ -264,6 +323,9 @@ test('U8: halfLink gives today\'s answer in every case but one: in production, a
         assert.equal(got, today(o), `today's answer: ${JSON.stringify(o)}`);
       }
     }
-  assert.equal(cases, 2 * 2 * 2 * 6 * 2 * 2);
+  assert.equal(cases, 2 * 2 * 2 * 10 * 2 * 2);
   assert.equal(exceptions, 2);
+  // NO LIST AT ALL (an old caller): no exception.
+  assert.equal(P.halfLink({ production: true, restatesSaved: false, namesWhat: true, rpcNamed: false, lensNamed: false, factory: LISTED,
+    siteFactories: [LISTED], hiddenFactories: [], readsSitePair: true }), true);
 });
