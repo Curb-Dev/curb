@@ -554,8 +554,11 @@ Measured on 7 November 2026:
   keyless dRPC's 100 blocks and 1 request a second even the shortest epoch
   (an hour, 360 requests) takes six minutes, and Tenderly's 1,000 blocks
   stop at epochs of about a day. Every such root would be unverifiable and
-  **vetoed after its grace**, honest or not. Before any launch turns holder
-  sharing on, one of these is decided and done:
+  **vetoed after its grace**, honest or not. When that happens is not the
+  owner's to choose: a creator turns holder sharing on from the launch form,
+  or later from the launch's page, whenever the catalog approves a version
+  (on 7 November 2026 it recommends and approves one). So, now rather than when a launch asks, one of these is
+  decided and done:
   1. a provider with `eth_getLogs` windows of 10,000 blocks or more and a
      full archive for **both** lines (a paid plan, or a free one that offers
      them) - nothing else changes;

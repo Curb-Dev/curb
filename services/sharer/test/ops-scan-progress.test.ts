@@ -572,3 +572,30 @@ test('the role events count a chunk in requests too: one eth_getLogs a window fo
   }
   assert.equal(g.ctx.store.get<bigint>('eventsBlock'), w.sim.safe);
 });
+
+test('the role events of a pass never go past the blocks its discovery has read', async () => {
+  const w = opsWorld();
+  mineTo(w, 1100n);
+  const G = w.sim.addr.graduator;
+  const F = w.sim.addr.factory;
+  const seen: Seen[] = [];
+  const a = tapped(w, 'a', seen);
+  const inner = a.request;
+  // every Graduator read on provider a takes the whole budget of the pass:
+  // the discovery stops after its first chunk
+  a.request = async (x: any) => {
+    if (x.method === 'eth_getLogs' && String(x.params[0].address).toLowerCase() === G) w.clock.t += 400_000;
+    return inner(x);
+  };
+  const g = w.make('guardian', { rpcs: [a, tapped(w, 'b', seen)] });
+  const [ra, rb] = g.ctx.readers;
+  ra.logWindow.widest = ra.logWindow.window; // a has answered 2,000 blocks: the role events read thousands a chunk
+  rb.logWindow.widest = 1; // b only 1: the discovery reads 10 a chunk
+  const r = await watchTick(g.ctx, g.keys.guardian);
+  const found = discoveredThrough(g.ctx);
+  assert.equal(found, 1009n, 'one chunk of the discovery, then the budget is over');
+  assert.equal(r.ok, false);
+  assert.equal(g.ctx.store.get<bigint>('eventsBlock'), found, 'the role events read up to the discovery and no further: a block read with a distributor missing is never read again');
+  const factory = seen.filter((s) => s.address === F);
+  assert.ok(factory.length > 0 && factory.every((s) => s.to <= found), js(factory));
+});
