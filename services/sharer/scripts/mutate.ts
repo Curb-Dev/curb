@@ -45,6 +45,7 @@ const XL = 'scripts/index-launches.ts';
 const WD = '../../web/agents/deployment.json';
 const WL = '../../web/llms.txt';
 const WG = '../../web/agents/curb.md';
+const TA = 'test/site-agents.test.ts';
 const off = (cond: string) => [cond, 'if (false)'] as const;
 
 export const MUTANTS: Mutant[] = [
@@ -395,6 +396,9 @@ export const MUTANTS: Mutant[] = [
   m('K63 a web address spelled out, spaced before the dot or bracketed', WP, 'if (WEB_DOT.test(looks) || WEB_SPELLED.test(looks) || WEB_SPACED.test(looks)) return null;', 'if (WEB_DOT.test(looks) || WEB_SPACED.test(looks)) return null;', 'U2:'),
   m('K64 a web address spaced after the dot', WP, 'if (WEB_DOT.test(looks) || WEB_SPELLED.test(looks) || WEB_SPACED.test(looks)) return null;', 'if (WEB_DOT.test(looks) || WEB_SPELLED.test(looks)) return null;', 'U2:'),
   m('K65 a name read as written, not as it looks', WP, '    const looks = v.normalize("NFKC");', '    const looks = v;', 'U2:'),
+  // INCIDENT.txt's hide step keeps the tests green (the 7 November verifier's Low 1).
+  m('K66 A1 shows its rule on the real files, whatever they hide', TA, '  const c = unhidden(site, d);', '  const c = { site, d };', 'A10:'),
+  m('K67 A8 checks the example link though its asset is hidden', TA, '  if (!hidden) {\n    const link = new URL(nvda.launchUrl + EXAMPLE);', '  if (true) {\n    const link = new URL(nvda.launchUrl + EXAMPLE);', 'A10:'),
 
   // ---------------------------------------------------------------- restart
   m('ST1 no active epoch, no state', ST, "if (st.active.epoch === 0n) return", 'if (false) return', 'no state to load'),

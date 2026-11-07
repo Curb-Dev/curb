@@ -49,37 +49,51 @@ function hiddenMarksAgree(site: any, d: any): string | null {
   return null;
 }
 
-test('A1: deployment.json names config.js\'s chain, lens, registry and exactly its factories, in its order, one asset each, marked hidden exactly as config.js hides them', () => {
-  assert.equal(D.schema, 'curb.deployment/1');
-  assert.equal(D.chainId, SITE.chainId);
-  assert.equal(D.contracts.lens, lc(SITE.lens));
-  assert.equal(D.contracts.registry, lc(SITE.registry));
-  assert.deepEqual(D.assets.map((a: any) => a.factory), SITE.factories.map(lc));
-  const tokens = D.assets.map((a: any) => a.token);
+/** A copy of config.js and deployment.json with nothing hidden: where A1
+ *  shows its rule by example, whatever an incident hides in the real files. */
+const unhidden = (site: any, d: any) => ({
+  site: { ...site, hiddenFactories: [] },
+  d: { ...d, assets: d.assets.map((a: any) => ({ ...a, hidden: false })) },
+});
+
+/** A1, on any config.js and deployment.json: the real ones, and A10's. */
+function checkA1(site: any, d: any): void {
+  assert.equal(d.schema, 'curb.deployment/1');
+  assert.equal(d.chainId, site.chainId);
+  assert.equal(d.contracts.lens, lc(site.lens));
+  assert.equal(d.contracts.registry, lc(site.registry));
+  assert.deepEqual(d.assets.map((a: any) => a.factory), site.factories.map(lc));
+  const tokens = d.assets.map((a: any) => a.token);
   assert.equal(new Set(tokens).size, tokens.length, 'two factories on one asset');
   // A FACTORY config.js HIDES STAYS (the registry keeps it, and
   // check-agent-deployment.js holds the file to the registry) with hidden: true,
   // so agents leave it out; every hidden factory is one of config.js's, so
   // index-launches.ts finds its asset here with no read.
-  for (const a of D.assets) assert.equal(typeof a.hidden, 'boolean', a.symbol);
-  assert.equal(hiddenMarksAgree(SITE, D), null);
-  // THE RULE ITSELF, on an incident's config.js: hide NVDAc's factory.
-  const nvda = D.assets.find((a: any) => a.symbol === 'NVDAc');
-  const incident = { ...SITE, hiddenFactories: [nvda.factory.toUpperCase().replace('0X', '0x')] };
-  assert.match(String(hiddenMarksAgree(incident, D)), /^NVDAc: hidden is false, config.js hides it$/);
-  const marked = { ...D, assets: D.assets.map((a: any) => (a === nvda ? { ...a, hidden: true } : a)) };
+  for (const a of d.assets) assert.equal(typeof a.hidden, 'boolean', a.symbol);
+  assert.equal(hiddenMarksAgree(site, d), null);
+  // THE RULE ITSELF, on a copy with nothing hidden (INCIDENT.txt may have
+  // hidden assets in the real files): hide NVDAc's factory in config.js.
+  const c = unhidden(site, d);
+  const nvda = c.d.assets.find((a: any) => a.symbol === 'NVDAc');
+  const incident = { ...c.site, hiddenFactories: [nvda.factory.toUpperCase().replace('0X', '0x')] };
+  assert.match(String(hiddenMarksAgree(incident, c.d)), /^NVDAc: hidden is false, config.js hides it$/);
+  const marked = { ...c.d, assets: c.d.assets.map((a: any) => (a === nvda ? { ...a, hidden: true } : a)) };
   assert.equal(hiddenMarksAgree(incident, marked), null);
-  assert.match(String(hiddenMarksAgree(SITE, marked)), /^NVDAc: hidden is true, config.js offers it$/);
-  assert.match(String(hiddenMarksAgree({ ...SITE, hiddenFactories: ['0x' + '12'.repeat(20)] }, D)), /is not one of config\.js's factories/);
+  assert.match(String(hiddenMarksAgree(c.site, marked)), /^NVDAc: hidden is true, config.js offers it$/);
+  assert.match(String(hiddenMarksAgree({ ...c.site, hiddenFactories: ['0x' + '12'.repeat(20)] }, c.d)), /is not one of config\.js's factories/);
   // AND THE CONTRACTS AS ADDRESSES.txt RECORDS THEM.
   const book = readFileSync(join(REPO, 'ADDRESSES.txt'), 'utf8');
   const named = (label: string) => lc(new RegExp('^\\s*' + label.replace('$', '\\$') + '\\s+(0x[0-9a-fA-F]{40})\\s*$', 'm').exec(book)![1]);
-  assert.deepEqual(D.contracts, {
+  assert.deepEqual(d.contracts, {
     registry: named('LaunchRegistry'), lens: named('LaunchLens'), graduator: named('Graduator'), feeHook: named('FeeHook'),
     router: named('CurbRouter'), sharingCatalog: named('SharingCatalog'), curbToken: named('$CURB token'),
   });
-  for (const a of Object.values(D.contracts) as string[]) assert.match(a, /^0x[0-9a-f]{40}$/);
-  for (const a of D.assets) for (const k of ['token', 'factory']) assert.match(a[k], /^0x[0-9a-f]{40}$/);
+  for (const a of Object.values(d.contracts) as string[]) assert.match(a, /^0x[0-9a-f]{40}$/);
+  for (const a of d.assets) for (const k of ['token', 'factory']) assert.match(a[k], /^0x[0-9a-f]{40}$/);
+}
+
+test('A1: deployment.json names config.js\'s chain, lens, registry and exactly its factories, in its order, one asset each, marked hidden exactly as config.js hides them', () => {
+  checkA1(SITE, D);
 });
 
 test('A2: each asset\'s dollar feed is prices.js\'s for its token, and kind is "stock" exactly for app.js\'s equities', () => {
@@ -251,17 +265,18 @@ const EXAMPLE = '&name=Moon%20Cat&symbol=MCAT&tax=2&earn=you';
 /** What agents are told about earn=holders wherever the grammar is. */
 const HOLDERS_DELAY = 'Holder payouts depend on CURB\'s keeper and guardian publishing and checking each epoch, so they can be delayed.';
 
-test('A8: the link grammar in deployment.json and curb.md is exactly prefill.js\'s keys and the factory, with app.js\'s limits', () => {
+/** A8, on any config.js and deployment.json: the real ones, and A10's. */
+function checkA8(site: any, d: any): void {
   const box: any = { window: {}, URLSearchParams };
   vm.runInNewContext(read('prefill.js'), box);
   const KEYS: string[] = [...box.window.CurbPrefill.KEYS];
-  assert.deepEqual(Object.keys(D.launchLink.params), ['factory', ...KEYS]);
+  assert.deepEqual(Object.keys(d.launchLink.params), ['factory', ...KEYS]);
   const lim = { name: appNumber('NAME_MAX'), symbol: appNumber('SYMBOL_MAX'), min: appNumber('TAX_MIN_BPS') / 100, max: appNumber('TAX_MAX_BPS') / 100 };
-  assert.match(D.launchLink.params.name, new RegExp(`^1 to ${lim.name} characters`));
-  assert.match(D.launchLink.params.symbol, new RegExp(`^1 to ${lim.symbol} characters`));
-  assert.match(D.launchLink.params.tax, new RegExp(`${lim.min} to ${lim.max}, at most 2 decimals`));
-  assert.equal(D.launchLink.params.earn, 'you or holders. ' + HOLDERS_DELAY);
-  for (const n of ['creator wallet', 'dev buy', 'slippage', 'recipient', 'rpc', 'lens', 'token']) assert.ok(D.launchLink.never.includes(n), n);
+  assert.match(d.launchLink.params.name, new RegExp(`^1 to ${lim.name} characters`));
+  assert.match(d.launchLink.params.symbol, new RegExp(`^1 to ${lim.symbol} characters`));
+  assert.match(d.launchLink.params.tax, new RegExp(`${lim.min} to ${lim.max}, at most 2 decimals`));
+  assert.equal(d.launchLink.params.earn, 'you or holders. ' + HOLDERS_DELAY);
+  for (const n of ['creator wallet', 'dev buy', 'slippage', 'recipient', 'rpc', 'lens', 'token']) assert.ok(d.launchLink.never.includes(n), n);
   // curb.md's table of keys.
   const table = GUIDE.split('### Launch link')[1].split('\n### ')[0];
   const keys = [...table.matchAll(/^\| `(\w+)` \|/gm)].map((x) => x[1]);
@@ -273,23 +288,55 @@ test('A8: the link grammar in deployment.json and curb.md is exactly prefill.js\
   // HOLDERS STAYS A CHOICE, said with its delay where the grammar is.
   const earnRow = table.split('\n').find((l) => l.startsWith('| `earn` |')) ?? '';
   assert.ok(earnRow.endsWith(' ' + HOLDERS_DELAY + ' |'), earnRow);
-  // THE LINK THE GUIDE'S EXAMPLE BUILDS is one prefill.js fills whole.
-  const nvda = D.assets.find((a: any) => a.symbol === 'NVDAc');
-  const link = new URL(nvda.launchUrl + EXAMPLE);
-  const r = box.window.CurbPrefill.parse(link.searchParams, { production: true, tokenView: false, formThere: true, readsSitePair: true,
-    siteFactories: SITE.factories, hiddenFactories: SITE.hiddenFactories, nameMax: lim.name, symbolMax: lim.symbol, taxMinBps: lim.min * 100, taxMaxBps: lim.max * 100 });
-  assert.deepEqual([...r.filled], ['factory', 'name', 'symbol', 'tax', 'earn']);
-  assert.equal(r.values.earn, 'you');
+  // THE LINK THE GUIDE'S EXAMPLE BUILDS is one prefill.js fills whole - while
+  // its asset is offered. Hidden (INCIDENT.txt), agents leave it out (Hand off
+  // a launch, step 1) and the form fills nothing from it, so there is nothing
+  // to check; A1 says whether the two files agree that it is hidden.
+  const nvda = d.assets.find((a: any) => a.symbol === 'NVDAc');
+  const hidden = nvda.hidden || (site.hiddenFactories || []).map(lc).includes(nvda.factory);
+  if (!hidden) {
+    const link = new URL(nvda.launchUrl + EXAMPLE);
+    const r = box.window.CurbPrefill.parse(link.searchParams, { production: true, tokenView: false, formThere: true, readsSitePair: true,
+      siteFactories: site.factories, hiddenFactories: site.hiddenFactories, nameMax: lim.name, symbolMax: lim.symbol, taxMinBps: lim.min * 100, taxMaxBps: lim.max * 100 });
+    assert.deepEqual([...r.filled], ['factory', 'name', 'symbol', 'tax', 'earn']);
+    assert.equal(r.values.earn, 'you');
+  }
   assert.ok(GUIDE.includes('`' + EXAMPLE + '`'));
   // EVERY EXAMPLE LINK THE KIT GIVES KEEPS THE TAX WITH ITS CREATOR: an earn=
   // in a link is earn=you, in every file an agent reads and in prefill.js's own.
   const kit: [string, string][] = [['llms.txt', LLMS], ['curb.md', GUIDE], ['docs.md', DOCS_AGENTS],
-    ['deployment.json', JSON.stringify(D)], ['prefill.js', read('prefill.js')]];
+    ['deployment.json', JSON.stringify(d)], ['prefill.js', read('prefill.js')]];
   for (const [name, text] of kit) {
     // (curb.md's grammar line, earn=<you|holders>, is no example.)
     for (const m of text.matchAll(/[?&]earn=(?!<you\|holders>)([^&\s`"')]*)/g)) assert.equal(m[1], 'you', `${name}: ${m[0]}`);
   }
   assert.ok([...GUIDE.matchAll(/[?&]earn=you\b/g)].length >= 1 && [...read('prefill.js').matchAll(/[?&]earn=you\b/g)].length === 1);
+}
+
+test('A8: the link grammar in deployment.json and curb.md is exactly prefill.js\'s keys and the factory, with app.js\'s limits', () => {
+  checkA8(SITE, D);
+});
+
+test('A10: following INCIDENT.txt - an asset hidden in config.js and deployment.json alike, TSLAc, NVDAc (the guide\'s example) or both - keeps A1 and A8 green; hidden in one file only, A1 names it', () => {
+  /** The real files with `symbols` hidden in config.js, in deployment.json, or both. */
+  const hide = (symbols: string[], where: 'both' | 'config' | 'deployment' = 'both') => {
+    const factories = D.assets.filter((a: any) => symbols.includes(a.symbol)).map((a: any) => a.factory);
+    assert.equal(factories.length, symbols.length, symbols.join());
+    return {
+      site: where === 'deployment' ? SITE : { ...SITE, hiddenFactories: [...(SITE.hiddenFactories || []), ...factories] },
+      d: where === 'config' ? D : { ...D, assets: D.assets.map((a: any) => (symbols.includes(a.symbol) ? { ...a, hidden: true } : a)) },
+    };
+  };
+  for (const symbols of [['TSLAc'], ['NVDAc'], ['TSLAc', 'NVDAc']]) {
+    const { site, d } = hide(symbols);
+    checkA1(site, d);
+    checkA8(site, d);
+  }
+  // HALF THE STEP: A1 is red and says which asset and which way.
+  const configOnly = hide(['TSLAc'], 'config');
+  assert.throws(() => checkA1(configOnly.site, configOnly.d), /TSLAc: hidden is false, config\.js hides it/);
+  const deploymentOnly = hide(['NVDAc'], 'deployment');
+  assert.throws(() => checkA1(deploymentOnly.site, deploymentOnly.d), /NVDAc: hidden is true, config\.js offers it/);
 });
 
 test('A9: vercel.json and _headers send Access-Control-Allow-Origin: * for /llms.txt and /agents/*', () => {
