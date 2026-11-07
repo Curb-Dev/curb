@@ -267,18 +267,34 @@ export class TxSender {
     }
   }
 
+  /** Handed to every provider. SENT WHEN ANY ONE OF THEM TOOK IT: a signed
+   *  transaction is the same wherever it enters the network, and settle()
+   *  finds its receipt, or replaces it when it is not mined. A provider that
+   *  refuses while another takes it is logged, not thrown: a public endpoint
+   *  that does not relay transactions (unknown, for Tenderly's gateway on
+   *  7 November 2026) must not turn every veto sent through the other into
+   *  "the guardian could NOT veto". Refused by all, provider a's refusal is
+   *  thrown. */
   private async broadcast(raw: string): Promise<void> {
     let first: unknown = null;
+    let taken = false;
+    const refused: string[] = [];
     for (const [i, r] of this.readers.entries()) {
       try {
         await r.request('eth_sendRawTransaction', [raw]);
+        taken = true;
       } catch (e) {
         const m = String((e as Error)?.message ?? e);
-        if (/already known|known transaction|nonce too low|already imported/i.test(m)) continue;
+        if (/already known|known transaction|nonce too low|already imported/i.test(m)) {
+          taken = true;
+          continue;
+        }
         if (i === 0) first = e;
+        refused.push(`provider ${r.label}: ${m.slice(0, 200)}`);
       }
     }
-    if (first) throw first;
+    if (!taken) throw first;
+    if (refused.length) this.log.warn('a provider refused the transaction another took', { refused });
   }
 
   private async signAndRecord(entry: JournalEntry, fees: { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }): Promise<string> {

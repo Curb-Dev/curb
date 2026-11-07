@@ -21,6 +21,7 @@
 //   - a refusal spell of up to 63.5 s is waited out (7 tries);
 //   - the vetoes owed go out first in a pass, before any scan; the scans of
 //     a pass stop at guardian.passTimeoutSec, and the pass still checks;
+//   - a veto any provider takes is sent;
 //   - a check past its deadline stops at its next read, not after a backoff.
 
 import { test } from 'node:test';
@@ -482,6 +483,36 @@ test('a backlog is read across passes: each stops its scans at guardian.passTime
   }
   assert.equal(discoveredThrough(g.ctx), w.sim.safe);
   assert.equal(g.ctx.store.get<bigint>('eventsBlock'), w.sim.safe);
+});
+
+test('a veto goes out when ANY provider takes it: provider a refusing the transaction is logged, not "could NOT veto"', async () => {
+  for (const both of [false, true]) {
+    const w = wrongRoot();
+    const L = w.launches[0];
+    w.pass(3601);
+    assert.equal((await tick(w, (w as any).forger)).published.length, 1);
+    const noSend = (label: string) => {
+      const inner = w.sim.rpc(label);
+      return { label, request: async (a: { method: string; params?: unknown[] }) => {
+        if (a.method === 'eth_sendRawTransaction') throw new RpcError('Internal server error', { code: -32603 });
+        return inner.request(a);
+      } };
+    };
+    const g = w.make('guardian', { rpcs: [noSend('a'), both ? noSend('b') : w.sim.rpc('b')] });
+    const r = await watchTick(g.ctx, g.keys.guardian);
+    assert.equal(r.results[0]?.verdict, 'mismatch', js(r.results));
+    if (!both) {
+      assert.equal(r.vetoed.length, 1, js(r));
+      assert.equal(w.sim.launch(L.D).pending.payableAt, 0n, 'vetoed on chain, through provider b');
+      assert.ok(!r.errors.some((e) => /Internal server error|could NOT veto/i.test(e)), js(r.errors));
+      const warn = g.log.records().find((x) => x.msg === 'a provider refused the transaction another took');
+      assert.ok(warn && /^provider a: Internal server error/.test(String(warn.refused?.[0])), js(warn));
+    } else {
+      assert.equal(r.vetoed.length, 0, 'taken by none: not sent');
+      assert.notEqual(w.sim.launch(L.D).pending.payableAt, 0n);
+      assert.ok(r.errors.some((e) => /Internal server error/.test(e)), `provider a's refusal is the error: ${js(r.errors)}`);
+    }
+  }
 });
 
 test('a check past its deadline stops at its next read: an eth_getLogs refused "busy" is not waited out', async () => {
