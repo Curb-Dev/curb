@@ -872,8 +872,25 @@ function loadCfg() {
   const namesWhat = !!(q.get("factory") || q.get("lens"));
   // Half of a saved pair, restated, is not half a link: the other half is the
   // one saved with it.
-  mixedEndpoint = !restatesSaved && ((namesWhat && !namesWhere) || (namesWhere && !namesWhat));
+  // NOR, IN PRODUCTION, IS A LINK THAT NAMES ONE OF THE SITE'S OWN FACTORIES
+  // (listed in config.js, not hidden) AND NO ENDPOINT OR LENS, on a page that
+  // reads config.js's own endpoint and lens (prefill.js halfLink): the factory
+  // is one config.js publishes and the endpoint is config.js's own, so both
+  // halves come from the same place. That is the link an agent hands a person
+  // (web/agents/curb.md). Any other factory, a hidden one, or a pair saved in
+  // this browser is half a link as before. Without prefill.js, today's rule.
+  mixedEndpoint = window.CurbPrefill
+    ? window.CurbPrefill.halfLink({
+      production: PRODUCTION, restatesSaved, namesWhat, rpcNamed: namesWhere, lensNamed: !!q.get("lens"),
+      factory: q.get("factory") || "", siteFactories: SITE.factories || [], hiddenFactories: SITE.hiddenFactories || [],
+      readsSitePair: readsSitePair(),
+    })
+    : !restatesSaved && ((namesWhat && !namesWhere) || (namesWhere && !namesWhat));
 }
+
+/// Whether the form reads config.js's own endpoint and lens: not a link's, not
+/// a pair saved in this browser.
+const readsSitePair = () => !!DEFAULT_LENS && String(chainCfg.rpc).trim() === DEFAULT_RPC && same(chainCfg.lens, DEFAULT_LENS);
 
 let rpcId = 0;
 /// THE ENDPOINT IS AN ARGUMENT, not a global read at call time.
@@ -10016,6 +10033,60 @@ function initFeesPanel(d) {
   }).observe(box, { attributes: true, attributeFilter: ["hidden", "data-owed"] });
 }
 
+/// WHAT A PREFILLED LINK PUT IN THE FORM (prefill.js parse), or null before
+/// init asked. For the tests: CurbApp.prefill().
+let prefill = null;
+
+/// A PREFILLED LAUNCH LINK, APPLIED (prefill.js): the name, the symbol, the
+/// creator tax and who earns it, each checked against its rule there - and the
+/// paired asset, which loadCfg read from ?factory= as it always has. Only in
+/// production, only on the form, only when the link names none of the chain's
+/// whereabouts and the page reads config.js's own endpoint and lens.
+///
+/// AFTER THE PRODUCTION FORM WAS BLANKED AND AFTER loadCfg, so a link's value
+/// is what stands - one order, no second branch. Each value is written as a
+/// person's typing writes it: the field's own event fires, so the tax is held
+/// in its band and Holders goes back to You when no version is approved
+/// (renderShare), exactly as for a click. Nothing else: no connect, no press,
+/// no storage, no change to the URL. The creator wallet, the dev buy, the
+/// description, the links, the image, slippage and the chain's whereabouts are
+/// never touched - prefill.js reads no key for them.
+function applyPrefill(q) {
+  const note = $("prefillNote");
+  if (!window.CurbPrefill) return;
+  const o = {
+    production: PRODUCTION, tokenView: TOKEN_VIEW, formThere: !!$("create-launch"), readsSitePair: readsSitePair(),
+    siteFactories: SITE.factories || [], hiddenFactories: SITE.hiddenFactories || [],
+    nameMax: NAME_MAX, symbolMax: SYMBOL_MAX, taxMinBps: Number(TAX_MIN_BPS), taxMaxBps: Number(TAX_MAX_BPS),
+  };
+  const r = window.CurbPrefill.parse(q, o);
+  prefill = r;
+  const v = r.values;
+  for (const [key, id] of [["name", "nName"], ["symbol", "nSymbol"], ["tax", "nTax"]]) {
+    if (v[key] === undefined || !$(id)) continue;
+    $(id).value = v[key];
+    $(id).dispatchEvent(new Event("input"));
+  }
+  if (v.earn !== undefined) {
+    const pick = $(v.earn === "holders" ? "nShare" : "earnYouPick");
+    if (pick) {
+      pick.checked = true;
+      pick.dispatchEvent(new Event("change"));
+    }
+  }
+  if (r.filled.length) {
+    renderTaxSplit();
+    renderLaunchSummary();
+  }
+  // SAID IN PLAIN TEXT, ONE SENTENCE A LINE (white-space: pre-line in
+  // app.html): textContent, never markup - and no value from the link is ever
+  // in it.
+  if (!note) return;
+  const lines = window.CurbPrefill.notice(r, o);
+  note.textContent = lines.join("\n");
+  note.hidden = !lines.length;
+}
+
 /// Every dev-buy field back to "no dev buy": the amount, the share, the slider.
 function resetDevBuy() {
   devPctPending = null;
@@ -10373,6 +10444,9 @@ async function init() {
       renderLaunchSummary();
     });
   }
+  // A PREFILLED LINK, once every field's listener is wired and after the
+  // production form was blanked: what it fills is written as typing writes it.
+  applyPrefill(siteQuery());
   renderLaunchSummary();
 
   for (const id of ["curveAmount", "curveSide", "slippage", "curveVia"]) $(id).addEventListener("input", () => renderCurveQuote());
@@ -10429,6 +10503,8 @@ window.CurbApp = {
   // graduatorKey is exposed for the same reason the rest of this is: so a test
   // can ask what the page believes rather than infer it from behaviour.
   get state() { return { account, chainCfg, ctx, view, viewFor, meta, busy, graduatorAddr, graduatorKey: graduatorFromLens, symbolTrouble, resumeRuns, owedPending }; },
+  // WHAT A PREFILLED LINK FILLED, REFUSED AND WARNED ABOUT (prefill.js parse).
+  prefill: () => prefill,
   // For the token view (token.js): the same names the page prints.
   displaySymbol, tokenPageHref, quoteAssetInEth, assetLogo,
   // THE CURB ROUTER: its pinned address and code hash, and the last verdict on
