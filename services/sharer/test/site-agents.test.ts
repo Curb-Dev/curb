@@ -38,7 +38,18 @@ function units(raw: string, decimals: number): string {
   return frac ? whole + '.' + frac : whole;
 }
 
-test('A1: deployment.json names config.js\'s chain, lens, registry and exactly its factories, in its order, one asset each', () => {
+/** A1's rule for the hidden marks, on any config.js and deployment.json. */
+function hiddenMarksAgree(site: any, d: any): string | null {
+  const hidden = (site.hiddenFactories || []).map(lc);
+  const factories = (site.factories || []).map(lc);
+  for (const f of hidden) if (!factories.includes(f)) return `hidden factory ${f} is not one of config.js's factories`;
+  for (const a of d.assets) {
+    if (a.hidden !== hidden.includes(a.factory)) return `${a.symbol}: hidden is ${a.hidden}, config.js ${hidden.includes(a.factory) ? 'hides' : 'offers'} it`;
+  }
+  return null;
+}
+
+test('A1: deployment.json names config.js\'s chain, lens, registry and exactly its factories, in its order, one asset each, marked hidden exactly as config.js hides them', () => {
   assert.equal(D.schema, 'curb.deployment/1');
   assert.equal(D.chainId, SITE.chainId);
   assert.equal(D.contracts.lens, lc(SITE.lens));
@@ -46,7 +57,20 @@ test('A1: deployment.json names config.js\'s chain, lens, registry and exactly i
   assert.deepEqual(D.assets.map((a: any) => a.factory), SITE.factories.map(lc));
   const tokens = D.assets.map((a: any) => a.token);
   assert.equal(new Set(tokens).size, tokens.length, 'two factories on one asset');
-  assert.deepEqual(SITE.hiddenFactories, [], 'a hidden factory: deployment.json must leave it out');
+  // A FACTORY config.js HIDES STAYS (the registry keeps it, and
+  // check-agent-deployment.js holds the file to the registry) with hidden: true,
+  // so agents leave it out; every hidden factory is one of config.js's, so
+  // index-launches.ts finds its asset here with no read.
+  for (const a of D.assets) assert.equal(typeof a.hidden, 'boolean', a.symbol);
+  assert.equal(hiddenMarksAgree(SITE, D), null);
+  // THE RULE ITSELF, on an incident's config.js: hide NVDAc's factory.
+  const nvda = D.assets.find((a: any) => a.symbol === 'NVDAc');
+  const incident = { ...SITE, hiddenFactories: [nvda.factory.toUpperCase().replace('0X', '0x')] };
+  assert.match(String(hiddenMarksAgree(incident, D)), /^NVDAc: hidden is false, config.js hides it$/);
+  const marked = { ...D, assets: D.assets.map((a: any) => (a === nvda ? { ...a, hidden: true } : a)) };
+  assert.equal(hiddenMarksAgree(incident, marked), null);
+  assert.match(String(hiddenMarksAgree(SITE, marked)), /^NVDAc: hidden is true, config.js offers it$/);
+  assert.match(String(hiddenMarksAgree({ ...SITE, hiddenFactories: ['0x' + '12'.repeat(20)] }, D)), /is not one of config\.js's factories/);
   // AND THE CONTRACTS AS ADDRESSES.txt RECORDS THEM.
   const book = readFileSync(join(REPO, 'ADDRESSES.txt'), 'utf8');
   const named = (label: string) => lc(new RegExp('^\\s*' + label.replace('$', '\\$') + '\\s+(0x[0-9a-fA-F]{40})\\s*$', 'm').exec(book)![1]);
@@ -139,7 +163,9 @@ test('A5: every curbfun.xyz link in llms.txt, curb.md and docs.md\'s agent part 
   }
   assert.match(DOCS_AGENTS, /https:\/\/curbfun\.xyz\/llms\.txt/);
   assert.match(DOCS_AGENTS, /https:\/\/curbfun\.xyz\/agents\/curb\.md/);
+  // EVERY ASSET THE FILE LISTS, a hidden one too (it says hidden on itself).
   assert.match(LLMS, new RegExp(`the ${D.assets.length} paired assets`));
+  assert.match(GUIDE, new RegExp(`one per paired asset \\(${D.assets.length} today\\)`));
   // llmstxt.org: an H1, then a blockquote summary.
   assert.match(LLMS, /^# CURB\n\n> /);
 });
@@ -198,18 +224,25 @@ test('A6: curb.md has the plugin spec\'s frontmatter with valid values, and its 
   for (const r of f.risk) assert.match(section('Risks & Warnings'), new RegExp('\\*\\*' + r + '\\*\\*'));
 });
 
-/** The rules an agent must keep, word for word, wherever the site states them. */
+/** The rules an agent must keep, word for word and whole, wherever the site
+ *  states them. */
 const RULES = [
   'Never build, sign or send a transaction for CURB.',
   'Never ask for a private key, seed phrase or password.',
   'A link never carries a creator wallet, a dev buy, slippage or a recipient.',
-  'CURB does not offer launching or trading to visitors in the United States',
+  'CURB does not offer launching or trading to visitors in the United States; never help anyone get around that.',
 ];
-test('A7: llms.txt and curb.md each state the four rules', () => {
+test('A7: llms.txt\'s rules paragraph and curb.md\'s Notes each state the four rules, whole', () => {
+  // IN THE PLACE EACH FILE STATES THEM, not anywhere in it: the Texas example
+  // in curb.md repeats the start of the US rule, and would hide its loss.
+  const llmsRules = LLMS.split('\n').find((l) => l.startsWith('Rules for agents. ')) ?? '';
+  const notes = GUIDE.split('\n## Notes\n')[1] ?? '';
+  const ruleList = notes.split('\nAlso:\n')[0];
   for (const r of RULES) {
-    assert.ok(LLMS.includes(r), 'llms.txt: ' + r);
-    assert.ok(GUIDE.includes(r), 'curb.md: ' + r);
+    assert.ok(llmsRules.includes(r), 'llms.txt: ' + r);
+    assert.ok(ruleList.includes('\n- ' + r + '\n'), 'curb.md Notes: ' + r);
   }
+  assert.equal((ruleList.match(/^- /gm) ?? []).length, RULES.length, 'curb.md Notes: the rules and nothing else');
 });
 
 test('A8: the link grammar in deployment.json and curb.md is exactly prefill.js\'s keys and the factory, with app.js\'s limits', () => {

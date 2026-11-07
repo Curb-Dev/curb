@@ -10,7 +10,8 @@
 // It checks, for the file:
 //   - the lens's registry and graduator, and the graduator's sharing catalog,
 //     are the ones the file names, and every contract it names has code;
-//   - the registry's launchers are exactly the assets' factories;
+//   - the registry's launchers are exactly the assets' factories (a factory
+//     the site hides stays in the file, with hidden: true);
 //   - each factory's registry, graduator, hook, quote asset, supply, tax band
 //     and graduation threshold are the file's;
 //   - each asset's decimals() and symbol() are the file's, and its threshold
@@ -140,6 +141,10 @@ async function check(file, url) {
     want(g.supply === d.launchTerms.supply, at + ": supply() is " + g.supply);
     want(g.taxMin === d.launchTerms.taxBps.min && g.taxMax === d.launchTerms.taxBps.max, at + ": the tax band is " + g.taxMin + "-" + g.taxMax);
     want(a.launchUrl === d.site + "/launchpad?factory=" + a.factory, at + ": launchUrl is " + a.launchUrl);
+    // A FACTORY THE SITE HIDES stays in the file (the registry keeps every
+    // launcher for good), marked: config.js decides, site-agents.test.ts A1
+    // holds the two together.
+    want(typeof a.hidden === "boolean", at + ": hidden is not true or false");
     if (a.usdFeed) {
       want(g.feed.description === a.usdFeed.description, at + ": the feed's description() is " + JSON.stringify(g.feed.description));
       want(g.feed.decimals === a.usdFeed.decimals, at + ": the feed's decimals() is " + g.feed.decimals);

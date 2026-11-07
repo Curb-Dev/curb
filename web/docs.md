@@ -839,5 +839,5 @@ AI assistants can read CURB's public data and give people a link to the launch f
 send transactions. Start with [llms.txt](https://curbfun.xyz/llms.txt) and the
 [agent guide](https://curbfun.xyz/agents/curb.md). The data:
 [deployment.json](https://curbfun.xyz/agents/deployment.json) (contracts, paired assets, graduation thresholds)
-and [launches.json](https://curbfun.xyz/sharing/8453/launches.json) (every launch, updated about every 15
-minutes).
+and [launches.json](https://curbfun.xyz/sharing/8453/launches.json) (every launch, written when something
+changed and at least every 6 hours).

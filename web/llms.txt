@@ -11,7 +11,7 @@ Rules for agents. Never build, sign or send a transaction for CURB. Never ask fo
 ## Data (GET, no key, CORS open)
 
 - [Deployment](https://curbfun.xyz/agents/deployment.json): contracts, the 17 paired assets, graduation thresholds, price feeds, launch links
-- [Launches](https://curbfun.xyz/sharing/8453/launches.json): every launch with status, curve progress, tax and holder payouts; updated about every 15 minutes when something changed, and at least every 6 hours
+- [Launches](https://curbfun.xyz/sharing/8453/launches.json): every launch with status, curve progress, tax and holder payouts; checked every 15 minutes, written when something changed and at least every 6 hours
 - [Stats](https://curbfun.xyz/sharing/8453/stats.json): trades, traders, holders and volumes per launch and per asset
 
 ## Docs

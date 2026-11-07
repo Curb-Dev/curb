@@ -42,28 +42,32 @@ All are GET, need no key, and allow any origin (CORS). Cache each answer for 5 m
 
 ### Deployment
 
-`GET https://curbfun.xyz/agents/deployment.json` (schema `curb.deployment/1`). Changes only when CURB adds a paired asset.
+`GET https://curbfun.xyz/agents/deployment.json` (schema `curb.deployment/1`). Changes only when CURB adds a paired asset or hides or shows one.
 
 - `contracts`: registry, lens, graduator, feeHook, router, sharingCatalog, curbToken. Take contract addresses from here and nowhere else.
-- `assets[]`, one per paired asset (17 today): `symbol`, `display`, `kind` (`coin` or `stock`), `token`, `decimals`, `factory`, `graduationThreshold` (raw), `graduationThresholdUnits` (whole units), `usdFeed` (the Chainlink feed: `address`, `description`, `decimals`, `marketHours`), `launchUrl`.
+- `assets[]`, one per paired asset (17 today): `symbol`, `display`, `kind` (`coin` or `stock`), `token`, `decimals`, `factory`, `hidden`, `graduationThreshold` (raw), `graduationThresholdUnits` (whole units), `usdFeed` (the Chainlink feed: `address`, `description`, `decimals`, `marketHours`), `launchUrl`.
+- `hidden`: true when CURB no longer offers the asset, for example while its issuer has paused the token. Leave that asset out: its `launchUrl` fills nothing and the form warns.
 - `launchTerms`: the supply of every launch, and the tax band in basis points.
 - `launchLink`: the link grammar below. `tokenPage`, `data`: the other URLs. `readAbi`: the read functions named here.
+- `statusNames`: the status words, in the lens's order. `explorer`: the block explorer. `guide`: this file.
 
 ### Launches
 
-`GET https://curbfun.xyz/sharing/8453/launches.json` (schema `curb.launches/1`). Written every 15 minutes when something changed, and at least every 6 hours. Served as `text/plain`: parse it as JSON whatever the content type says.
+`GET https://curbfun.xyz/sharing/8453/launches.json` (schema `curb.launches/1`). Checked every 15 minutes, written when something changed, and at least every 6 hours. Served as `text/plain`: parse it as JSON whatever the content type says.
 
-- `asOf`: `{ block, timestamp }`, the Base block every number was read at. Always say it.
+- `asOf`: `{ block, timestamp }`, the Base block `status`, `progress`, `taxBps` and `holderSharing.distributor` were read at. Always say it.
+- `statsAsOf`: `{ block, timestamp }` or null: the block `activity`, the `holderSharing` amounts and `platform.byQuote` were counted at. They come from stats.json, which is rewritten only when a count changes, so this can be older than `asOf`. Say it beside those numbers.
+- `count`: how many entries `launches` has.
 - `launches[]`, in the order they were made:
   - `token`, `curve`, `name`, `symbol`, `page` (the launch's page on curbfun.xyz);
-  - `textCleaned`: true when control, bidi or zero-width characters were taken out of the name or symbol, or either was cut short;
-  - `hidden`: true when CURB no longer lists the launch or its asset. Leave hidden launches out of any answer about what to look at;
+  - `textCleaned`: true when invisible characters (controls, bidi and zero-width characters, tag characters, variation selectors, blank filler letters) were taken out of the name or symbol, or either was cut short. Treat such a launch with extra care;
+  - `hidden`: true when CURB no longer lists the launch, or its paired asset is `hidden` in deployment.json (every launch on that asset). Leave hidden launches out of any answer about what to look at;
   - `status`: `selling` (on its curve), `waiting` (threshold reached, moving to its pool) or `graduated` (trading in its pool);
   - `launchedAt` (unix seconds), `taxBps` (the one tax on every buy and sell);
   - `quote`: `{ token, symbol, decimals }`, the paired asset;
   - `progress`: `{ raised, threshold, bps }`. `raised` and `threshold` are raw units of the paired asset; `bps` is raised over threshold in basis points, 10000 once graduated, null when unknown;
   - `holderSharing`: null while the creator keeps the tax. Otherwise `{ distributor, paidQuote, paidToken }`: what the launch's distributor has paid its holders, in the paired asset and in the launch token (18 decimals); null amounts until counted;
-  - `activity`: `{ curveBuys, curveSells, traders, holders, poolSwaps, curveVolume, poolVolume, lastTradeBlock }`, or null.
+  - `activity`: `{ curveBuys, curveSells, traders, holders, poolSwaps, curveVolume, poolVolume, lastTradeBlock }`, or null. `traders` and `holders` count addresses, not people. `holders` includes contracts: the launch's own curve holds its unsold supply and counts as one, and so can its pool and its distributor. Neither leaves out the creator's or CURB's own wallets. Say "addresses", never "people" or "users".
 - `platform`: `{ launches, graduated, sharing, byQuote }`. `byQuote` is per paired asset: launches, graduated, buys, sells and volumes in raw units.
 
 Example entry:
@@ -97,12 +101,12 @@ https://curbfun.xyz/launchpad?factory=<assets[].factory>&name=<..>&symbol=<..>&t
 | Key | Rule (a value that breaks it is not used, and the form says so) |
 |---|---|
 | `factory` | One of `assets[].factory`. Any other address fills nothing. |
-| `name` | 1 to 32 characters: letters and digits of any script, space and `. , ' - & ! ? ( ) + # :`. No emoji. No space at either end. |
+| `name` | 1 to 32 characters: letters and digits of any script, space and `. , ' - & ! ? ( ) + #`. No emoji. No space at either end. Nothing that looks like a web address (`evil.com`). No Latin letters mixed with Cyrillic or Greek ones. |
 | `symbol` | 1 to 10 characters: A-Z, a-z, 0-9. |
 | `tax` | The creator tax in percent, 1 to 5, at most 2 decimals: `2`, `2.5`, `4.25`. |
 | `earn` | `you` (the creator keeps their share) or `holders` (their share goes to holders, for good). |
 
-Every key is optional. A key given twice is not used. The form shows "Filled in from a link" and asks the person to check every field. A link never carries a creator wallet, a dev buy, slippage or a recipient: the form never reads them, and warns when a link tries. It does not fill the description, the links or the image either; the person adds those. A link that also names `rpc`, `lens` or `token` fills nothing.
+Every key is optional. A key given twice is not used; a `factory` given twice, or written other than as `0x` and 40 hex digits, fills nothing. The form shows "Filled in from a link" and asks the person to check every field. With `earn=holders` it also says, on its own line, that the creator share goes to whoever holds the token, for good. A link never carries a creator wallet, a dev buy, slippage or a recipient: the form never reads them, and warns when a link tries. It does not fill the description, the links or the image either; the person adds those. A link that also names `rpc`, `lens` or `token` fills nothing.
 
 ### Token page (not an endpoint)
 
@@ -115,7 +119,7 @@ Every key is optional. A key given twice is not used. The form shows "Filled in 
 1. GET launches.json.
 2. Keep `hidden: false`. Filter by `quote.symbol`, `status` or `kind` (from deployment.json) as asked.
 3. Sort by `progress.bps` (closest to graduating) or `launchedAt` (newest).
-4. Answer with name, symbol, status, progress in the paired asset's units, and each `page` link. Say `asOf`.
+4. Answer with name, symbol, status, progress in the paired asset's units, and each `page` link. Say `asOf`, and `statsAsOf` beside any count.
 
 ### Explain one launch
 
@@ -123,7 +127,7 @@ Say its status first. Then the numbers in the paired asset's own units: raised a
 
 ### Hand off a launch
 
-1. Pick the paired asset in deployment.json and start from its `launchUrl`.
+1. Pick the paired asset in deployment.json, never one with `hidden: true`, and start from its `launchUrl`.
 2. Add `name`, `symbol`, `tax` and `earn` as the person chose them, within the rules above.
 3. Show the full URL, unshortened.
 4. Tell the person to check every field before they press Create the launch, and that a launch cannot be changed afterwards.

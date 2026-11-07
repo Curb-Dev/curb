@@ -27,6 +27,7 @@
       "token": "0x4200000000000000000000000000000000000006",
       "decimals": 18,
       "factory": "0xe866bb6c86651cdc16f413f38468aa1ab0dbb479",
+      "hidden": false,
       "graduationThreshold": "4470000000000000000",
       "graduationThresholdUnits": "4.47",
       "usdFeed": {
@@ -44,6 +45,7 @@
       "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
       "decimals": 6,
       "factory": "0xc27daceedab2183803ff52583990c898a3625700",
+      "hidden": false,
       "graduationThreshold": "10800000000",
       "graduationThresholdUnits": "10800",
       "usdFeed": {
@@ -61,6 +63,7 @@
       "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
       "decimals": 8,
       "factory": "0xb3d9489bed1cc90aa5ae4b95ff14c57b9e1b24e6",
+      "hidden": false,
       "graduationThreshold": "13200000",
       "graduationThresholdUnits": "0.132",
       "usdFeed": {
@@ -78,6 +81,7 @@
       "token": "0xcb585250f852c6c6bf90434ab21a00f02833a4af",
       "decimals": 6,
       "factory": "0x0181320908d883edf173c2be73039864ea26ac48",
+      "hidden": false,
       "graduationThreshold": "8150000000",
       "graduationThresholdUnits": "8150",
       "usdFeed": {
@@ -95,6 +99,7 @@
       "token": "0xb2000000000000000000008501b13360000cb2ec",
       "decimals": 8,
       "factory": "0x3c7de020ae176ea1a1df600da6d24e7285a2e340",
+      "hidden": false,
       "graduationThreshold": "874000000",
       "graduationThresholdUnits": "8.74",
       "usdFeed": {
@@ -112,6 +117,7 @@
       "token": "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b",
       "decimals": 18,
       "factory": "0x92df0356c222b2e1c7969cdf36ffa7c92b944d80",
+      "hidden": false,
       "graduationThreshold": "16100000000000000000000",
       "graduationThresholdUnits": "16100",
       "usdFeed": {
@@ -129,6 +135,7 @@
       "token": "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
       "decimals": 18,
       "factory": "0xcc289d77e27302e6939866182ec04a68e0b7084c",
+      "hidden": false,
       "graduationThreshold": "11600000000000000000000",
       "graduationThresholdUnits": "11600",
       "usdFeed": {
@@ -146,6 +153,7 @@
       "token": "0xb2000000000000000000002d0ba3164cc74f58b7",
       "decimals": 8,
       "factory": "0xb508ae03e35dcf80affbb3ade3fa8344b8cc80b7",
+      "hidden": false,
       "graduationThreshold": "3110000000",
       "graduationThresholdUnits": "31.1",
       "usdFeed": {
@@ -163,6 +171,7 @@
       "token": "0xb20000000000000000000078ee7ce2fe4908108c",
       "decimals": 8,
       "factory": "0xb0b5855e450da582a48a926ab48d9cba679bdf63",
+      "hidden": false,
       "graduationThreshold": "5000000000",
       "graduationThresholdUnits": "50",
       "usdFeed": {
@@ -180,6 +189,7 @@
       "token": "0xb2000000000000000000007b9fcbd005511acbd5",
       "decimals": 8,
       "factory": "0xef88f9a5a6d7cb6a03fdcfe490f55b3761c50cc5",
+      "hidden": false,
       "graduationThreshold": "7450000000",
       "graduationThresholdUnits": "74.5",
       "usdFeed": {
@@ -197,6 +207,7 @@
       "token": "0xb200000000000000000000d9192b6b456483c2e8",
       "decimals": 8,
       "factory": "0xb1d89cf60cef341edb072af10f9564227508a5e9",
+      "hidden": false,
       "graduationThreshold": "4290000000",
       "graduationThresholdUnits": "42.9",
       "usdFeed": {
@@ -214,6 +225,7 @@
       "token": "0xb200000000000000000000ab99cfa739e253872b",
       "decimals": 8,
       "factory": "0xa19dbaf4a7b817d5b2096d92c8b5f15707cc5572",
+      "hidden": false,
       "graduationThreshold": "2010000000",
       "graduationThresholdUnits": "20.1",
       "usdFeed": {
@@ -231,6 +243,7 @@
       "token": "0xb200000000000000000000c2e324d24d7eecd1fb",
       "decimals": 8,
       "factory": "0x4d1acd603d551d279180aec03ab936203abb14d3",
+      "hidden": false,
       "graduationThreshold": "3150000000",
       "graduationThresholdUnits": "31.5",
       "usdFeed": {
@@ -248,6 +261,7 @@
       "token": "0xb2000000000000000000008bc8786b856e61707c",
       "decimals": 8,
       "factory": "0xc20102c48bf7421d7893affe1005f55d4fadf334",
+      "hidden": false,
       "graduationThreshold": "1470000000",
       "graduationThresholdUnits": "14.7",
       "usdFeed": {
@@ -265,6 +279,7 @@
       "token": "0xb2000000000000000000004884b426556b92883d",
       "decimals": 8,
       "factory": "0x1f4c53c4a053957771d6105ae89836e187352920",
+      "hidden": false,
       "graduationThreshold": "8370000000",
       "graduationThresholdUnits": "83.7",
       "usdFeed": {
@@ -282,6 +297,7 @@
       "token": "0xb200000000000000000000397293cb8cda9a10c5",
       "decimals": 8,
       "factory": "0xa621783adb6bd00b434389b830ca4ba9435f4920",
+      "hidden": false,
       "graduationThreshold": "1340000000",
       "graduationThresholdUnits": "13.4",
       "usdFeed": {
@@ -299,6 +315,7 @@
       "token": "0xb2000000000000000000001e800a7f5189430cd0",
       "decimals": 8,
       "factory": "0x7187630659d1cbe88c936748222fbc0e724d8686",
+      "hidden": false,
       "graduationThreshold": "3150000000",
       "graduationThresholdUnits": "31.5",
       "usdFeed": {
@@ -314,7 +331,7 @@
     "base": "https://curbfun.xyz/launchpad",
     "params": {
       "factory": "one of assets[].factory; or start from assets[].launchUrl",
-      "name": "1 to 32 characters: letters, digits, space and . , ' - & ! ? ( ) + # : - no space at either end",
+      "name": "1 to 32 characters: letters, digits, space and . , ' - & ! ? ( ) + # - no space at either end, nothing like a web address, no Latin letters mixed with Cyrillic or Greek",
       "symbol": "1 to 10 characters: A-Z, a-z, 0-9",
       "tax": "creator tax in percent, 1 to 5, at most 2 decimals, for example 2 or 2.5",
       "earn": "you or holders"

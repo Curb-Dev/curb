@@ -110,7 +110,17 @@ THE LEVERS, AND THE LIMIT OF EACH
       cannot               stop its trading, or a direct link or explorer
                            from reaching it
     hiddenFactories        takes a paired asset out of the create form and the
-                           lists - the halt PRE_MAINNET D4 describes
+                           lists - the halt PRE_MAINNET D4 describes. In the
+                           same commit, set that asset's "hidden": true in
+                           web/agents/deployment.json (the entry stays: the
+                           registry keeps the factory, and
+                           check-agent-deployment.js wants every launcher
+                           there), so AI agents stop handing out its launch
+                           link. The next history-index run marks its
+                           launches hidden in launches.json.
+                           services/sharer/test/site-agents.test.ts A1 checks
+                           the two agree; set it back to false to show the
+                           asset again
       cannot               stop anyone launching on that factory directly, or
                            trading what exists
     featured               the only launches a ?featured= link may put in the
@@ -213,7 +223,8 @@ PLAYBOOKS
     happened) - say so when a copy circulates.
   AN ISSUER STOPPING AN ASSET (a pause, a blocklist)
     Nothing of ours routes around it (PRE_MAINNET D7). hiddenFactories for
-    that asset, a banner naming it, and nothing else to sign. A full curve
+    that asset (with its "hidden": true in web/agents/deployment.json, THE
+    LEVERS above), a banner naming it, and nothing else to sign. A full curve
     whose escrow is blocked: rescueCurveFees, then graduate. The platform
     Safe (the platform recipient) may rescue at once and is the quickest way
     out; anyone else an hour after Graduator.noteReady(token), which the

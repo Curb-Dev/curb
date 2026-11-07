@@ -44,6 +44,7 @@ const WP = '../../web/prefill.js';
 const XL = 'scripts/index-launches.ts';
 const WD = '../../web/agents/deployment.json';
 const WL = '../../web/llms.txt';
+const WG = '../../web/agents/curb.md';
 const off = (cond: string) => [cond, 'if (false)'] as const;
 
 export const MUTANTS: Mutant[] = [
@@ -335,11 +336,11 @@ export const MUTANTS: Mutant[] = [
 
   // ---------------------------------------------------------------- the agent kit
   // A prefilled launch link (web/prefill.js): the half-link exception and each rule.
-  m('K1 the half-link exception without the listed check', WP, '    (o.siteFactories || []).map(lc).includes(f) && !(o.hiddenFactories || []).map(lc).includes(f) &&\n', '    !(o.hiddenFactories || []).map(lc).includes(f) &&\n', 'U8:'),
-  m('K2 the half-link exception without the hidden check', WP, ' && !(o.hiddenFactories || []).map(lc).includes(f) &&\n    !!o.readsSitePair;', ' &&\n    !!o.readsSitePair;', 'U8:'),
-  m('K3 the half-link exception without the page pair', WP, '&&\n    !!o.readsSitePair;', '&&\n    true;', 'U8:'),
+  m('K1 the half-link exception without the listed check', WP, '  return (listed || []).map(lc).includes(l) && !(hidden || []).map(lc).includes(l);', '  return !(hidden || []).map(lc).includes(l);', 'U8:'),
+  m('K2 the half-link exception without the hidden check', WP, '  return (listed || []).map(lc).includes(l) && !(hidden || []).map(lc).includes(l);', '  return (listed || []).map(lc).includes(l);', 'U8:'),
+  m('K3 the half-link exception without the page pair', WP, 'offered(named[0], o.siteFactories, o.hiddenFactories) && !!o.readsSitePair;', 'offered(named[0], o.siteFactories, o.hiddenFactories) && true;', 'U8:'),
   m('K4 the half-link exception off production too', WP, 'const own = !!o.production && ', 'const own = ', 'U8:'),
-  m('K5 the half-link exception with an endpoint or lens named', WP, '!o.rpcNamed && !o.lensNamed && ADDR.test(f)', 'ADDR.test(f)', 'U8:'),
+  m('K5 the half-link exception with an endpoint or lens named', WP, '!o.rpcNamed && !o.lensNamed && named.length === 1 &&', 'named.length === 1 &&', 'U8:'),
   m('K6 any name of 1-32 characters', WP, 'return NAME_CHARS.test(v) ? v : null;', 'return /^.{1,32}$/su.test(v) ? v : null;', 'U2:'),
   m('K7 a name of 33 characters', WP, 'if (v.length < 1 || v.length > o.nameMax) return null;', 'if (v.length < 1 || v.length > o.nameMax + 1) return null;', 'U2:'),
   m('K8 a space at either end of a name', WP, '    if (/^ | $/.test(v)) return null;\n', '', 'U2:'),
@@ -357,15 +358,36 @@ export const MUTANTS: Mutant[] = [
   // The launches file for agents (scripts/index-launches.ts).
   m('K28 progress not capped', XL, 'return Number(b > 10_000n ? 10_000n : b);', 'return Number(b);', 'L6:'),
   m('K29 raised and threshold swapped', XL, '      raised: v.realQuoteReserve.toString(),\n      threshold: v.graduationThreshold.toString(),', '      raised: v.graduationThreshold.toString(),\n      threshold: v.realQuoteReserve.toString(),', 'L1:'),
-  m('K30 bidi controls kept in names', XL, '\\u{202a}-\\u{202e}', '', 'L3:'),
+  m('K30 format characters (bidi, zero-width, tag characters) kept in names', XL, '\\p{Cc}\\p{Cf}\\p{Cs}', '\\p{Cc}\\p{Cs}', 'L3:'),
   m('K31 written every run', XL, '): boolean {\n  if (!last) return true;', '): boolean {\n  if (!last || true) return true;', 'L4:'),
   m('K32 refreshed by a count of blocks', XL, 'return next.asOf.timestamp - last.asOf.timestamp >= REFRESH_AFTER_S;', 'return next.asOf.block - last.asOf.block >= REFRESH_AFTER_S;', 'L4:'),
   m('K33 the fixed fields kept by token only', XL, 'if (was && was.curve === v.curve) {', 'if (was) {', 'L2:'),
   m('K34 the hidden lists ignored', XL, 'const hidden = hiddenLaunches.has(v.token) || hiddenQuotes.has(v.quote);', 'const hidden = false;', 'L7:'),
-  m('K35 a failed launch drops its last entry', XL, '      if (was) entries.push(was);\n', '', 'L8:'),
+  m('K35 a failed launch drops its last entry', XL, '      if (was) entries.push({ ...was, ...kept(was), hidden });\n', '', 'L8:'),
   // What the site tells agents, held to the files it is taken from.
   m('K37 a factory replaced in deployment.json', WD, '"factory": "0xe866bb6c86651cdc16f413f38468aa1ab0dbb479",', '"factory": "0xe866bb6c86651cdc16f413f38468aa1ab0dbb470",', 'A1:'),
   m('K38 a rule left out of llms.txt', WL, 'Never ask for a private key, seed phrase or password. ', '', 'A7:'),
+  // The review's findings (7 November 2026), each held by its own test.
+  m('K40 a factory trimmed and re-cased before the check', WP, '  const f = String(raw == null ? "" : raw);', '  const f = String(raw == null ? "" : raw).trim().replace(/^0X/, "0x");', 'U6:', 'U8:'),
+  m('K41 a factory named twice is still a whole link', WP, '!o.lensNamed && named.length === 1 &&', '!o.lensNamed && named.length >= 1 &&', 'U8:'),
+  m('K42 a factory named twice said to be not offered', WP, 'if (factories.length > 1) { out.blocked = "factories"; return out; }', 'if (factories.length > 1) { out.blocked = "factory"; return out; }', 'U3:'),
+  m('K43 blank filler letters in a name', WP, 'if (BLANK_LETTERS.test(v) || DOMAIN_LIKE.test(v)) return null;', 'if (DOMAIN_LIKE.test(v)) return null;', 'U2:'),
+  m('K44 a web address in a name', WP, 'if (BLANK_LETTERS.test(v) || DOMAIN_LIKE.test(v)) return null;', 'if (BLANK_LETTERS.test(v)) return null;', 'U2:'),
+  m('K45 Latin mixed with Cyrillic or Greek in a name', WP, '    if (LATIN.test(v) && LOOKALIKE.test(v)) return null;\n', '', 'U2:'),
+  m('K46 a ":" in a name', WP, "const NAME_CHARS = /^[\\p{L}\\p{N} .,'&!?()+#-]+$/u;", "const NAME_CHARS = /^[\\p{L}\\p{N} .,'&!?()+#:-]+$/u;", 'U2:'),
+  m('K47 Holders from a link not said on its own line', WP, '  if (r.values && r.values.earn === "holders") {', '  if (false) {', 'the notice says'),
+  m('K48 recipient taken out of the keys a link can never set', WP, '"payto", "recipient", "receiver"', '"payto", "receiver"', 'U5a:'),
+  m('K49 the Hangul fillers kept in names', XL, '\\u{2800}\\u{3164}\\u{ffa0}', '\\u{2800}\\u{ffa0}', 'L3:'),
+  m('K50 a kept name not cleaned again', XL, '        fixed = { ...kept(was), taxBps: was.taxBps };', '        fixed = { name: was.name, symbol: was.symbol, textCleaned: was.textCleaned, taxBps: was.taxBps };', 'L3:'),
+  m('K51 an entry kept after a failed read keeps its old hidden', XL, 'entries.push({ ...was, ...kept(was), hidden });', 'entries.push({ ...was, ...kept(was) });', 'L8:'),
+  m('K52 a hidden factory whose asset cannot be read is skipped', XL, '      throw new Error(`hidden factory ${f}: its paired asset could not be read, so nothing is written: ${(e as Error).message}`);', '      continue;', 'L7b:'),
+  m('K53 a hidden factory read from the chain though deployment.json names it', XL, '    if (known) { hiddenQuotes.add(known); continue; }\n', '', 'L7b:'),
+  m('K54 a stats.json that cannot be read gives null activity', XL, '    throw new Error(`stats.json could not be read, so nothing is written: ${(e as Error).message}`);', '    statsBytes = null;', 'L8:'),
+  m('K55 statsAsOf not carried', XL, '    statsAsOf: o.statsAsOf,', '    statsAsOf: null,', 'L1:'),
+  m('K59 stats.json\'s entry used whatever curve it counted', XL, 'const s = stats && stats.curve === curve ? stats : undefined;', 'const s = stats;', 'L1:'),
+  m('K56 the US rule cut short in llms.txt', WL, 'in the United States; never help anyone get around that.', 'in the United States.', 'A7:'),
+  m('K57 the US rule left out of curb.md\'s Notes', WG, '- CURB does not offer launching or trading to visitors in the United States; never help anyone get around that.\n', '', 'A7:'),
+  m('K58 a hidden mark in deployment.json that config.js does not set', WD, '"factory": "0xe866bb6c86651cdc16f413f38468aa1ab0dbb479",\n      "hidden": false,', '"factory": "0xe866bb6c86651cdc16f413f38468aa1ab0dbb479",\n      "hidden": true,', 'A1:'),
 
   // ---------------------------------------------------------------- restart
   m('ST1 no active epoch, no state', ST, "if (st.active.epoch === 0n) return", 'if (false) return', 'no state to load'),

@@ -281,27 +281,36 @@ FOR AI AGENTS - web/prefill.js, web/llms.txt, web/agents/
   used, and #prefillNote says which and why, in plain text, without echoing
   it. Every other key is ignored by construction: a link never fills the
   creator wallet, the dev buy, slippage, a recipient, the description, the
-  links or the image, and the note warns when a link tried. A link that also
-  names rpc, lens or token, a factory config.js does not list or hides, or a
-  page reading a pair saved in this browser fills nothing. The half-link rule
+  links or the image, and the note warns when a link tried. earn=holders gets
+  a line of its own: it gives the creator's share to whoever holds the token,
+  for good. A name is stricter than the form: no blank filler letters, nothing
+  like a web address, no Latin mixed with Cyrillic or Greek. A link that also
+  names rpc, lens or token, a factory config.js does not list or hides, a
+  factory written other than "0x" and 40 hex digits or named twice, or a page
+  reading a pair saved in this browser fills nothing. The half-link rule
   (app.js loadCfg) has one exception, decided in prefill.js halfLink: a link
-  naming a listed, not hidden factory and no endpoint or lens, on a page
-  reading config.js's own pair, is whole. Everything after the fill - the
-  region gate, the wallet, the confirmations, every send check - is the
-  hand-filled form's. services/sharer/test/site-prefill.test.ts tests
-  prefill.js on its own; web/e2e/prefill.spec.js (P1-P12) the page.
+  naming a listed, not hidden factory, once, exactly as written, and no
+  endpoint or lens, on a page reading config.js's own pair, is whole.
+  Everything after the fill - the region gate, the wallet, the confirmations,
+  every send check - is the hand-filled form's.
+  services/sharer/test/site-prefill.test.ts tests prefill.js on its own;
+  web/e2e/prefill.spec.js (P1-P14) the page.
   llms.txt and agents/curb.md: what CURB is, the read endpoints, the link
   grammar, the rules and the risks; curb.md in the Wallet MCP plugin format
   (integration http-api, chains [], submission none). agents/deployment.json
   (curb.deployment/1): the contracts, the 17 paired assets with their factory,
-  decimals, graduation threshold and Chainlink feed, and a launch link each.
-  Static: everything in it is immutable on chain or written in config.js.
+  decimals, graduation threshold and Chainlink feed, a launch link each, and
+  hidden (true exactly for config.js's hiddenFactories: INCIDENT.txt says to
+  set both). Static: everything in it is immutable on chain or written in
+  config.js.
   services/sharer/test/site-agents.test.ts holds it and the guides to
   config.js, prices.js, app.js and prefill.js; script/b20/check-agent-
   deployment.js holds it to Base (read-only; run it before publishing a
   change). The launches themselves are /sharing/8453/launches.json
   (curb.launches/1), written to the data repo by services/sharer/scripts/
-  index-launches.ts in the history-index workflow. vercel.json and _headers
+  index-launches.ts in the history-index workflow: lens fields at asOf,
+  stats.json's counts at statsAsOf; a run that cannot read stats.json or a
+  hidden factory's asset writes nothing. vercel.json and _headers
   send Access-Control-Allow-Origin: * on /llms.txt and /agents/*.
 
 THE WALLET STUB NOW SENDS FOR REAL

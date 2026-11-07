@@ -1742,8 +1742,15 @@ ADDING A QUOTE ASSET AFTER LAUNCH
      until step 7.
   5. THE SITE AND THE BOOK, ONE COMMIT: the asset's block in ADDRESSES.txt
      and its record, the new factory in web/config.js factories, docs.md's
-     Paired-asset addresses row; then check-publish-set.sh --addresses
-     ADDRESSES.txt, and publish. The site offers the asset only once the
+     Paired-asset addresses row; and what AI agents read: the asset's entry
+     in web/agents/deployment.json (in config.js's order, "hidden": false),
+     the count in web/llms.txt ("the 17 paired assets") and in
+     web/agents/curb.md ("(17 today)"), and web/README.txt's count -
+     services/sharer/test/site-agents.test.ts A1 and A5 hold them to
+     config.js. Then check-publish-set.sh --addresses ADDRESSES.txt, and
+     publish. After step 6, node script/b20/check-agent-deployment.js
+     <a Base RPC> must print ok: it fails while the registry does not yet
+     admit the new factory. The site offers the asset only once the
      registry admits it; config.js knowing it first keeps the foreign-link
      warning quiet from the first launch on it.
   6. LAST, THE SAFE: addLauncher, entered as raw data exactly as the asset
