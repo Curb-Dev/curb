@@ -146,6 +146,20 @@ test('history-index.yml: scheduled and manual only, default branch only, pinned 
   assert.match(y, /run: node scripts\/index-history\.ts\n/);
 });
 
+test('history-index.yml: the launches for agents run after the index, never turn it red, five minutes, no key', () => {
+  const y = wf('history-index.yml').replace(/^\s*#.*$/gm, '');
+  const steps = y.split(/\n      - /).slice(1);
+  const at = steps.findIndex((s) => /^name: Index the launches for agents\n/.test(s));
+  assert.ok(at > 0, 'the step is there');
+  assert.ok(/run: node scripts\/index-history\.ts\n/.test(steps[at - 1]), 'right after the history index');
+  assert.match(steps[at + 1], /^name: Announce public product events\n/, 'before the announcer');
+  assert.match(steps[at], /^name: Index the launches for agents\n\s+if: \$\{\{ !cancelled\(\) \}\}\n\s+continue-on-error: true\n\s+timeout-minutes: 5\n/);
+  assert.match(steps[at], /\n\s+CURB_SHARER_RPC_URLS: \$\{\{ secrets\.SHARING_RPC_URLS \}\}\n/);
+  assert.match(steps[at], /\n\s+CURB_SHARER_DATA_REPO_TOKEN: \$\{\{ secrets\.SHARING_DATA_REPO_TOKEN \}\}\n/);
+  assert.match(steps[at], /\n\s+run: node scripts\/index-launches\.ts\n/);
+  assert.ok(!/_KEY\b|secrets\.(?!SHARING_RPC_URLS|SHARING_DATA_REPO_TOKEN)\w+/.test(steps[at]), 'no other secret, no key');
+});
+
 test('the keeper workflow: the sharing-mainnet environment, the standby flag, the keys from secrets', () => {
   const y = wf('sharing-keeper.yml');
   assert.match(y, /environment: sharing-mainnet/);

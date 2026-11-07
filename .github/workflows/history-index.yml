@@ -13,6 +13,9 @@
 # screeners and the owner's weekly figures; and, for a launch that shares its
 # fees with its holders, what its distributor has paid them, read from the
 # chain each run - the one figure in it the site shows ("Paid to holders").
+# And sharing/<chain>/launches.json for AI agents (scripts/index-launches.ts):
+# every launch at one safe block, with its asset, curve progress and tax,
+# written when it changed and at least every six hours (web/agents/curb.md).
 #
 # The sharing-mainnet environment's RPC URLs and data repo token, as the
 # keeper uses them; no key is read. Never on a pull request; every action
@@ -60,6 +63,17 @@ jobs:
           CURB_SHARER_RPC_URLS: ${{ secrets.SHARING_RPC_URLS }}
           CURB_SHARER_DATA_REPO_TOKEN: ${{ secrets.SHARING_DATA_REPO_TOKEN }}
         run: node scripts/index-history.ts
+
+      # The launches for agents (scripts/index-launches.ts): sharing/<chain>/launches.json,
+      # written when something changed and at least every six hours. Never turns the run red.
+      - name: Index the launches for agents
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          CURB_SHARER_RPC_URLS: ${{ secrets.SHARING_RPC_URLS }}
+          CURB_SHARER_DATA_REPO_TOKEN: ${{ secrets.SHARING_DATA_REPO_TOKEN }}
+        run: node scripts/index-launches.ts
 
       # Public product announcements have their own bot and destination.
       # A Telegram/RPC/state failure is reported on this step but must never
