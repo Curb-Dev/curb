@@ -1,0 +1,354 @@
+{
+  "schema": "curb.deployment/1",
+  "chainId": 8453,
+  "site": "https://curbfun.xyz",
+  "explorer": "https://basescan.org",
+  "contracts": {
+    "registry": "0x86e9a01f3959a96469051ae1a73d5c09b0bac110",
+    "lens": "0xe6f85a3e97dd2f1a58acba7a68a663e1f66c52c8",
+    "graduator": "0xa9865e07ce4ec0ccf7a521b98640031285c92712",
+    "feeHook": "0xf85ce05c2ba8533d79f009fd3a3c8517aabda0cc",
+    "router": "0xea20c3266229a01cd0f45d9c7921a45d5b359561",
+    "sharingCatalog": "0xd337d59a1e300bf88f5566395c71df7d5651c5ef",
+    "curbToken": "0xf8bdcd06f7a5939c8b2340e27419facdf16a407e"
+  },
+  "launchTerms": {
+    "supply": "1000000000000000000000000000",
+    "taxBps": {
+      "min": 100,
+      "max": 500
+    }
+  },
+  "assets": [
+    {
+      "symbol": "WETH",
+      "display": "ETH",
+      "kind": "coin",
+      "token": "0x4200000000000000000000000000000000000006",
+      "decimals": 18,
+      "factory": "0xe866bb6c86651cdc16f413f38468aa1ab0dbb479",
+      "graduationThreshold": "4470000000000000000",
+      "graduationThresholdUnits": "4.47",
+      "usdFeed": {
+        "address": "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70",
+        "description": "ETH / USD",
+        "decimals": 8,
+        "marketHours": false
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xe866bb6c86651cdc16f413f38468aa1ab0dbb479"
+    },
+    {
+      "symbol": "USDC",
+      "display": "USDC",
+      "kind": "coin",
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "decimals": 6,
+      "factory": "0xc27daceedab2183803ff52583990c898a3625700",
+      "graduationThreshold": "10800000000",
+      "graduationThresholdUnits": "10800",
+      "usdFeed": {
+        "address": "0x7e860098f58bbfc8648a4311b374b1d669a2bc6b",
+        "description": "USDC / USD",
+        "decimals": 8,
+        "marketHours": false
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xc27daceedab2183803ff52583990c898a3625700"
+    },
+    {
+      "symbol": "cbBTC",
+      "display": "cbBTC",
+      "kind": "coin",
+      "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+      "decimals": 8,
+      "factory": "0xb3d9489bed1cc90aa5ae4b95ff14c57b9e1b24e6",
+      "graduationThreshold": "13200000",
+      "graduationThresholdUnits": "0.132",
+      "usdFeed": {
+        "address": "0x07da0e54543a844a80abe69c8a12f22b3aa59f9d",
+        "description": "cbBTC / USD",
+        "decimals": 8,
+        "marketHours": false
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xb3d9489bed1cc90aa5ae4b95ff14c57b9e1b24e6"
+    },
+    {
+      "symbol": "cbXRP",
+      "display": "cbXRP",
+      "kind": "coin",
+      "token": "0xcb585250f852c6c6bf90434ab21a00f02833a4af",
+      "decimals": 6,
+      "factory": "0x0181320908d883edf173c2be73039864ea26ac48",
+      "graduationThreshold": "8150000000",
+      "graduationThresholdUnits": "8150",
+      "usdFeed": {
+        "address": "0xeee1a9d5a0c36d99972c057cb959267e88ab9160",
+        "description": "CBXRP / USD",
+        "decimals": 8,
+        "marketHours": false
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0x0181320908d883edf173c2be73039864ea26ac48"
+    },
+    {
+      "symbol": "cbZEC",
+      "display": "cbZEC",
+      "kind": "coin",
+      "token": "0xb2000000000000000000008501b13360000cb2ec",
+      "decimals": 8,
+      "factory": "0x3c7de020ae176ea1a1df600da6d24e7285a2e340",
+      "graduationThreshold": "874000000",
+      "graduationThresholdUnits": "8.74",
+      "usdFeed": {
+        "address": "0x69e5bc4988a9af30ec827c5609c0d41028446ec0",
+        "description": "ZEC / USD",
+        "decimals": 18,
+        "marketHours": false
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0x3c7de020ae176ea1a1df600da6d24e7285a2e340"
+    },
+    {
+      "symbol": "VIRTUAL",
+      "display": "VIRTUAL",
+      "kind": "coin",
+      "token": "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b",
+      "decimals": 18,
+      "factory": "0x92df0356c222b2e1c7969cdf36ffa7c92b944d80",
+      "graduationThreshold": "16100000000000000000000",
+      "graduationThresholdUnits": "16100",
+      "usdFeed": {
+        "address": "0xeaf310161c9ef7c813a14f8fef6fb271434019f7",
+        "description": "VIRTUAL / USD",
+        "decimals": 8,
+        "marketHours": false
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0x92df0356c222b2e1c7969cdf36ffa7c92b944d80"
+    },
+    {
+      "symbol": "AERO",
+      "display": "AERO",
+      "kind": "coin",
+      "token": "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
+      "decimals": 18,
+      "factory": "0xcc289d77e27302e6939866182ec04a68e0b7084c",
+      "graduationThreshold": "11600000000000000000000",
+      "graduationThresholdUnits": "11600",
+      "usdFeed": {
+        "address": "0x4ec5970fc728c5f65ba413992cd5ff6fd70fcff0",
+        "description": "AERO / USD",
+        "decimals": 8,
+        "marketHours": false
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xcc289d77e27302e6939866182ec04a68e0b7084c"
+    },
+    {
+      "symbol": "GOOGLc",
+      "display": "GOOGLc",
+      "kind": "stock",
+      "token": "0xb2000000000000000000002d0ba3164cc74f58b7",
+      "decimals": 8,
+      "factory": "0xb508ae03e35dcf80affbb3ade3fa8344b8cc80b7",
+      "graduationThreshold": "3110000000",
+      "graduationThresholdUnits": "31.1",
+      "usdFeed": {
+        "address": "0x5bf49e0ffa937ce2fff033c739ad7c634c4d34f2",
+        "description": "Coinbase GOOGL",
+        "decimals": 8,
+        "marketHours": true
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xb508ae03e35dcf80affbb3ade3fa8344b8cc80b7"
+    },
+    {
+      "symbol": "NVDAc",
+      "display": "NVDAc",
+      "kind": "stock",
+      "token": "0xb20000000000000000000078ee7ce2fe4908108c",
+      "decimals": 8,
+      "factory": "0xb0b5855e450da582a48a926ab48d9cba679bdf63",
+      "graduationThreshold": "5000000000",
+      "graduationThresholdUnits": "50",
+      "usdFeed": {
+        "address": "0x04689a41629776563e6822f76f2e57d148d28513",
+        "description": "Coinbase NVDA",
+        "decimals": 8,
+        "marketHours": true
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xb0b5855e450da582a48a926ab48d9cba679bdf63"
+    },
+    {
+      "symbol": "SPCXc",
+      "display": "SPCXc",
+      "kind": "stock",
+      "token": "0xb2000000000000000000007b9fcbd005511acbd5",
+      "decimals": 8,
+      "factory": "0xef88f9a5a6d7cb6a03fdcfe490f55b3761c50cc5",
+      "graduationThreshold": "7450000000",
+      "graduationThresholdUnits": "74.5",
+      "usdFeed": {
+        "address": "0x6a634b235903c4ad6376892180d6ff8612e3fa68",
+        "description": "Coinbase SPCX",
+        "decimals": 8,
+        "marketHours": true
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xef88f9a5a6d7cb6a03fdcfe490f55b3761c50cc5"
+    },
+    {
+      "symbol": "AMZNc",
+      "display": "AMZNc",
+      "kind": "stock",
+      "token": "0xb200000000000000000000d9192b6b456483c2e8",
+      "decimals": 8,
+      "factory": "0xb1d89cf60cef341edb072af10f9564227508a5e9",
+      "graduationThreshold": "4290000000",
+      "graduationThresholdUnits": "42.9",
+      "usdFeed": {
+        "address": "0x06a8e4b3abb3b7543d8396fb2b763d22820cb295",
+        "description": "Coinbase AMZN",
+        "decimals": 8,
+        "marketHours": true
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xb1d89cf60cef341edb072af10f9564227508a5e9"
+    },
+    {
+      "symbol": "MSFTc",
+      "display": "MSFTc",
+      "kind": "stock",
+      "token": "0xb200000000000000000000ab99cfa739e253872b",
+      "decimals": 8,
+      "factory": "0xa19dbaf4a7b817d5b2096d92c8b5f15707cc5572",
+      "graduationThreshold": "2010000000",
+      "graduationThresholdUnits": "20.1",
+      "usdFeed": {
+        "address": "0xeb10a6c9aa7e537aed766c08c35dae35b321b18c",
+        "description": "Coinbase MSFT",
+        "decimals": 8,
+        "marketHours": true
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xa19dbaf4a7b817d5b2096d92c8b5f15707cc5572"
+    },
+    {
+      "symbol": "AAPLc",
+      "display": "AAPLc",
+      "kind": "stock",
+      "token": "0xb200000000000000000000c2e324d24d7eecd1fb",
+      "decimals": 8,
+      "factory": "0x4d1acd603d551d279180aec03ab936203abb14d3",
+      "graduationThreshold": "3150000000",
+      "graduationThresholdUnits": "31.5",
+      "usdFeed": {
+        "address": "0x787f13dea48db0897cbcdd985de77809d837f988",
+        "description": "Coinbase AAPL",
+        "decimals": 8,
+        "marketHours": true
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0x4d1acd603d551d279180aec03ab936203abb14d3"
+    },
+    {
+      "symbol": "METAc",
+      "display": "METAc",
+      "kind": "stock",
+      "token": "0xb2000000000000000000008bc8786b856e61707c",
+      "decimals": 8,
+      "factory": "0xc20102c48bf7421d7893affe1005f55d4fadf334",
+      "graduationThreshold": "1470000000",
+      "graduationThresholdUnits": "14.7",
+      "usdFeed": {
+        "address": "0x6526ae6797a76123638b863aee4dd27ba4e4b27d",
+        "description": "Coinbase META",
+        "decimals": 8,
+        "marketHours": true
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xc20102c48bf7421d7893affe1005f55d4fadf334"
+    },
+    {
+      "symbol": "MSTRc",
+      "display": "MSTRc",
+      "kind": "stock",
+      "token": "0xb2000000000000000000004884b426556b92883d",
+      "decimals": 8,
+      "factory": "0x1f4c53c4a053957771d6105ae89836e187352920",
+      "graduationThreshold": "8370000000",
+      "graduationThresholdUnits": "83.7",
+      "usdFeed": {
+        "address": "0xb3ce282cd188b35da0e38d8bc7d58e33173d202a",
+        "description": "Coinbase MSTR",
+        "decimals": 8,
+        "marketHours": true
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0x1f4c53c4a053957771d6105ae89836e187352920"
+    },
+    {
+      "symbol": "SNDKc",
+      "display": "SNDKc",
+      "kind": "stock",
+      "token": "0xb200000000000000000000397293cb8cda9a10c5",
+      "decimals": 8,
+      "factory": "0xa621783adb6bd00b434389b830ca4ba9435f4920",
+      "graduationThreshold": "1340000000",
+      "graduationThresholdUnits": "13.4",
+      "usdFeed": {
+        "address": "0x388b0dc46c0fb05a74bee0994fa5b02c6fcca2ea",
+        "description": "Coinbase SNDK",
+        "decimals": 8,
+        "marketHours": true
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0xa621783adb6bd00b434389b830ca4ba9435f4920"
+    },
+    {
+      "symbol": "TSLAc",
+      "display": "TSLAc",
+      "kind": "stock",
+      "token": "0xb2000000000000000000001e800a7f5189430cd0",
+      "decimals": 8,
+      "factory": "0x7187630659d1cbe88c936748222fbc0e724d8686",
+      "graduationThreshold": "3150000000",
+      "graduationThresholdUnits": "31.5",
+      "usdFeed": {
+        "address": "0xfaf869185383a24f8cb00e27bda6b63b9905dcb4",
+        "description": "Coinbase TSLA",
+        "decimals": 8,
+        "marketHours": true
+      },
+      "launchUrl": "https://curbfun.xyz/launchpad?factory=0x7187630659d1cbe88c936748222fbc0e724d8686"
+    }
+  ],
+  "launchLink": {
+    "base": "https://curbfun.xyz/launchpad",
+    "params": {
+      "factory": "one of assets[].factory; or start from assets[].launchUrl",
+      "name": "1 to 32 characters: letters, digits, space and . , ' - & ! ? ( ) + # : - no space at either end",
+      "symbol": "1 to 10 characters: A-Z, a-z, 0-9",
+      "tax": "creator tax in percent, 1 to 5, at most 2 decimals, for example 2 or 2.5",
+      "earn": "you or holders"
+    },
+    "encode": "encodeURIComponent each value",
+    "never": [
+      "creator wallet",
+      "dev buy",
+      "slippage",
+      "recipient",
+      "rpc",
+      "lens",
+      "token"
+    ]
+  },
+  "tokenPage": "https://curbfun.xyz/token/{token}",
+  "data": {
+    "launches": "https://curbfun.xyz/sharing/8453/launches.json",
+    "stats": "https://curbfun.xyz/sharing/8453/stats.json",
+    "history": "https://curbfun.xyz/sharing/8453/history/{token}.json",
+    "checked": "https://curbfun.xyz/sharing/8453/history/checked.json"
+  },
+  "readAbi": [
+    "function launchState(address token) view returns ((uint8 status, address curve, address quoteToken, address beneficiary, uint256 quoteReserve, uint256 tokenReserve, uint256 realQuoteReserve, uint256 graduationThreshold, uint256 totalSupply, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, uint64 launchedAt, address holderDistributor))",
+    "function launchPage(uint256 start, uint256 count) view returns (address[] tokens, (uint8 status, address curve, address quoteToken, address beneficiary, uint256 quoteReserve, uint256 tokenReserve, uint256 realQuoteReserve, uint256 graduationThreshold, uint256 totalSupply, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, uint64 launchedAt, address holderDistributor)[] views)",
+    "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
+    "function description() view returns (string)",
+    "function decimals() view returns (uint8)"
+  ],
+  "statusNames": [
+    "notFound",
+    "selling",
+    "waiting",
+    "graduated"
+  ],
+  "guide": "https://curbfun.xyz/agents/curb.md"
+}

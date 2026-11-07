@@ -39,3 +39,11 @@
   Cache-Control: no-store
 /region-unknown.json
   Cache-Control: no-store
+# WHAT AI AGENTS READ (web/llms.txt, web/agents/): open to every origin, so an
+# agent's browser tool can fetch it. Vercel sends the same by default; both
+# hosts' files name it so neither depends on a default. vercel.json sends the
+# same on the same two paths.
+/llms.txt
+  Access-Control-Allow-Origin: *
+/agents/*
+  Access-Control-Allow-Origin: *

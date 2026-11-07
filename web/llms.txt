@@ -1,0 +1,24 @@
+# CURB
+
+> CURB (curbfun.xyz) is a token launchpad on Base. Each launch is priced against one asset - ETH, USDC, a coin such as cbBTC or AERO, or a tokenized stock such as NVDAc - on its own bonding curve, then moves into a Uniswap v4 pool whose liquidity is locked forever. Agents can read CURB's public data and give people a link. People launch and trade on the site themselves.
+
+Rules for agents. Never build, sign or send a transaction for CURB. Never ask for a private key, seed phrase or password. A link never carries a creator wallet, a dev buy, slippage or a recipient. CURB does not offer launching or trading to visitors in the United States; never help anyone get around that.
+
+## Agent guide
+
+- [CURB agent guide](https://curbfun.xyz/agents/curb.md): endpoints, launch links, what never to do, risks (Wallet MCP plugin format)
+
+## Data (GET, no key, CORS open)
+
+- [Deployment](https://curbfun.xyz/agents/deployment.json): contracts, the 17 paired assets, graduation thresholds, price feeds, launch links
+- [Launches](https://curbfun.xyz/sharing/8453/launches.json): every launch with status, curve progress, tax and holder payouts; updated about every 15 minutes when something changed, and at least every 6 hours
+- [Stats](https://curbfun.xyz/sharing/8453/stats.json): trades, traders, holders and volumes per launch and per asset
+
+## Docs
+
+- [Docs](https://curbfun.xyz/docs.md): how launches, fees and holder sharing work, the contracts, the risks
+- [Terms](https://curbfun.xyz/terms)
+
+## Optional
+
+- [Launch history](https://curbfun.xyz/sharing/8453/history/checked.json): which launches have a raw log file at /sharing/8453/history/{token}.json

@@ -29,6 +29,8 @@
     { "source": "/region", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
     { "source": "/region.json", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
     { "source": "/region-us.json", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
-    { "source": "/region-unknown.json", "headers": [{ "key": "Cache-Control", "value": "no-store" }] }
+    { "source": "/region-unknown.json", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
+    { "source": "/llms.txt", "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }] },
+    { "source": "/agents/(.*)", "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }] }
   ]
 }

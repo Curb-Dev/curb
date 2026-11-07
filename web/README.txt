@@ -270,6 +270,40 @@ NOT OFFERED IN THE UNITED STATES - web/region.js, /region
   claims still open, and the fail-closed answers on app.html and launch.html;
   aero.spec.js A27 the Aerodrome route's steps and the held row.
 
+FOR AI AGENTS - web/prefill.js, web/llms.txt, web/agents/
+  An agent reads public data and hands a person a link; the person launches or
+  trades on the site. Nothing here builds, signs or sends anything, and no
+  calldata leaves the site.
+  PREFILLED LAUNCH LINKS (prefill.js, app.js applyPrefill). In production only
+  (config.js names a lens), /launchpad?factory=&name=&symbol=&tax=&earn= fills
+  the paired asset, the name, the symbol, the creator tax and who earns it,
+  each checked against a strict rule; a value that breaks its rule is not
+  used, and #prefillNote says which and why, in plain text, without echoing
+  it. Every other key is ignored by construction: a link never fills the
+  creator wallet, the dev buy, slippage, a recipient, the description, the
+  links or the image, and the note warns when a link tried. A link that also
+  names rpc, lens or token, a factory config.js does not list or hides, or a
+  page reading a pair saved in this browser fills nothing. The half-link rule
+  (app.js loadCfg) has one exception, decided in prefill.js halfLink: a link
+  naming a listed, not hidden factory and no endpoint or lens, on a page
+  reading config.js's own pair, is whole. Everything after the fill - the
+  region gate, the wallet, the confirmations, every send check - is the
+  hand-filled form's. services/sharer/test/site-prefill.test.ts tests
+  prefill.js on its own; web/e2e/prefill.spec.js (P1-P12) the page.
+  llms.txt and agents/curb.md: what CURB is, the read endpoints, the link
+  grammar, the rules and the risks; curb.md in the Wallet MCP plugin format
+  (integration http-api, chains [], submission none). agents/deployment.json
+  (curb.deployment/1): the contracts, the 17 paired assets with their factory,
+  decimals, graduation threshold and Chainlink feed, and a launch link each.
+  Static: everything in it is immutable on chain or written in config.js.
+  services/sharer/test/site-agents.test.ts holds it and the guides to
+  config.js, prices.js, app.js and prefill.js; script/b20/check-agent-
+  deployment.js holds it to Base (read-only; run it before publishing a
+  change). The launches themselves are /sharing/8453/launches.json
+  (curb.launches/1), written to the data repo by services/sharer/scripts/
+  index-launches.ts in the history-index workflow. vercel.json and _headers
+  send Access-Control-Allow-Origin: * on /llms.txt and /agents/*.
+
 THE WALLET STUB NOW SENDS FOR REAL
   web/wallet-stub.js gained `forward: true`: eth_sendTransaction and the receipt
   call go straight to the node, which holds the key and signs. A hash coming

@@ -20,7 +20,9 @@ or gives it to the launch's holders, for good.
    and offers to switch - to Base only: nothing is sent on any other network.
 2. **Launch.** Open [Launch a token](/launchpad). Add a name, symbol, image and links, pick a creator
    tax and who earns it - **You**, or **Holders** under **Who earns your tax** if your creator share should go to
-   your holders - add a dev buy if you want one, and pick a paired asset (ETH unless you choose another). Press **Create the launch** and confirm. Launching costs gas only, plus the dev buy if you chose one. When it is
+   your holders - add a dev buy if you want one, and pick a paired asset (ETH unless you choose another). A link
+   can open the form already filled in, and the form says so: a link fills only the name, the symbol, the tax, who
+   earns it and the paired asset, never the creator wallet, a dev buy or slippage. Check every field. Press **Create the launch** and confirm. Launching costs gas only, plus the dev buy if you chose one. When it is
    mined, the site takes you to your launch's page, with its swap box ready for a first trade.
 3. **Trade.** Find a launch on [Launches](/) or with the search in the top bar, and buy or sell on its
    page. Each card on Launches shows the token, its paired asset, its market cap in dollars, how close it is to
@@ -828,3 +830,14 @@ the wallet, or, on the phone itself, open the wallet from the list.
 - **The code is Reown's**, served from this site unchanged and loaded only when you pick Phone wallet, under the
   WalletConnect Community License Agreement (linked from the [terms](/terms)). Portions © 2025 Reown, Inc. All
   Rights Reserved.
+
+---
+
+## For AI agents
+
+AI assistants can read CURB's public data and give people a link to the launch form. They never build or
+send transactions. Start with [llms.txt](https://curbfun.xyz/llms.txt) and the
+[agent guide](https://curbfun.xyz/agents/curb.md). The data:
+[deployment.json](https://curbfun.xyz/agents/deployment.json) (contracts, paired assets, graduation thresholds)
+and [launches.json](https://curbfun.xyz/sharing/8453/launches.json) (every launch, updated about every 15
+minutes).

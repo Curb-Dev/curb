@@ -38,6 +38,14 @@ WHO IT IS FOR, AND IN WHAT ORDER
                             contracts, Events, Fee routes
     Contracts and security  CURB contracts, Paired-asset addresses,
                             Audits and security contact
+    Phone wallets (WalletConnect)
+    For AI agents           one paragraph: links to web/llms.txt and
+                            web/agents/, where what agents may and may not do
+                            is said. Last, and a section of its own: the
+                            contents column must show every entry down to
+                            Paired-asset addresses in a 1280 by 900 window
+                            (web/e2e/site.spec.js), and it has about 13px to
+                            spare, so a new entry above it costs one there.
 
   The user part (Overview to FAQ) stays at about 1,500-2,000 words. The
   owner's rule, 29 September 2026: like the competitors' docs - short, plain,

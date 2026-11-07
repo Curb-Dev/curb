@@ -43,6 +43,8 @@ const TYPES = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".txt": "text/plain; charset=utf-8",
+  // docs.md and the agent guide (web/agents/curb.md), as Vercel serves them.
+  ".md": "text/markdown; charset=utf-8",
 };
 
 /// THE HEADERS web/_headers GIVES EVERY PATH: the block under "/*", as

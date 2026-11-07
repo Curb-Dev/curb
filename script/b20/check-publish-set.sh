@@ -55,8 +55,9 @@ FORBIDDEN_DIRS="e2e test-results playwright-report node_modules"
 # ALWAYS IN IT: the root's page and the 404, the config every page reads first,
 # the bar, the two rewritten pages, the hosts' own files, and the region gate
 # with its three answers (web/region.js: on the site's own hosts, a page without
-# them sends nothing the gate holds).
-REQUIRED="browse.html 404.html config.js topbar.js app.html sharing.html vercel.json _headers _redirects og.png region.js region.json region-us.json region-unknown.json"
+# them sends nothing the gate holds), and what AI agents read (web/llms.txt,
+# web/agents/) with the rules the launch form fills a link by (web/prefill.js).
+REQUIRED="browse.html 404.html config.js topbar.js app.html sharing.html vercel.json _headers _redirects og.png region.js region.json region-us.json region-unknown.json prefill.js llms.txt agents/curb.md agents/deployment.json"
 
 fails=0
 fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
@@ -242,10 +243,12 @@ selftest() {
   t="$(mktemp -d)" || exit 2
   trap 'rm -rf "$t"' RETURN
   # A COPY OF THE TOP OF web/ - its files, no folders (e2e/ holds a junction to
-  # node_modules on some machines) - and a stand-in e2e/ and test-results/.
+  # node_modules on some machines) but agents/ - and a stand-in e2e/ and
+  # test-results/.
   fresh() {
-    rm -rf "$t/w" && mkdir -p "$t/w/e2e" "$t/w/test-results" "$t/w/assets"
+    rm -rf "$t/w" && mkdir -p "$t/w/e2e" "$t/w/test-results" "$t/w/assets" "$t/w/agents"
     find web -maxdepth 1 -type f -exec cp {} "$t/w/" \;
+    cp web/agents/* "$t/w/agents/"
     echo "x" > "$t/w/e2e/site.spec.js"
     echo "{}" > "$t/w/test-results/.last-run.json"
     echo "x" > "$t/w/assets/weth.svg"
@@ -294,6 +297,9 @@ selftest() {
 
   fresh; rm "$t/w/404.html"
   expect fail "no 404 page is refused" "404.html is not in the publish set"
+
+  fresh; rm "$t/w/agents/curb.md"
+  expect fail "no agent guide (agents/curb.md, which llms.txt and deployment.json link) is refused" "agents/curb.md is not in the publish set"
 
   fresh; perl -0777 -pi -e 's/(<script>\s*\n\s*\/\/ ONE PAGE)/$1 (edited)/' "$t/w/app.html"
   expect fail "an inline script edited without its hash in the policy is refused" "app.html has an inline script"
