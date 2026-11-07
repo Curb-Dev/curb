@@ -81,7 +81,8 @@ export class ChainReader {
   readonly rpc: Rpc;
   readonly label: string;
   readonly logWindow: LogWindow;
-  private readonly opts: Required<Omit<ReaderOptions, 'logWindow'>>;
+  /** How a request refused for a transient reason is asked again. */
+  readonly opts: Required<Omit<ReaderOptions, 'logWindow'>>;
   private readonly blocks = new Map<bigint, BlockHeader>();
   private readonly logTimes = new Map<bigint, bigint>();
 
