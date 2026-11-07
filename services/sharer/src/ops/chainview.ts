@@ -9,9 +9,7 @@ import type { Address } from '../calc/types.ts';
 import { canonicalJson } from '../calc/encoding.ts';
 import { priceValue, WAD } from '../calc/share.ts';
 import { distributorAbi, TOPICS } from '../chain/abis.ts';
-import type { ChainReader } from '../chain/reader.ts';
-import type { Rpc } from '../chain/rpc.ts';
-import { RequestStopped } from '../chain/logs.ts';
+import { stoppable, type ChainReader } from '../chain/reader.ts';
 import { readLaunchMeta, readPrice, readDecimals, type LaunchMeta, type RootView, type FeedPair } from '../chain/indexer.ts';
 import { ProviderDisagreement } from '../epoch.ts';
 import { feedAbi } from '../chain/abis.ts';
@@ -149,38 +147,9 @@ export async function readRootsMany(r: ChainReader, ds: Address[], block: bigint
   return out;
 }
 
-/** `r`, stopped by `signal`: once it aborts, a request in flight is
- *  abandoned and every later one throws at once, so a check abandoned at its
- *  deadline (the guardian's recompute, its event lookups) ends at its next
- *  read instead of running on in the background. Caches stay shared. What
- *  it throws is a RequestStopped, which no reader asks again (logs.ts): an
- *  eth_getLogs refused "busy" would otherwise wait out its whole backoff. */
-export function stoppable(r: ChainReader, signal: AbortSignal): ChainReader {
-  const inner = r.rpc;
-  const rpc: Rpc = {
-    label: inner.label,
-    request: (a) => {
-      if (signal.aborted) return Promise.reject(new RequestStopped(signal.reason));
-      return new Promise((resolve, reject) => {
-        const onAbort = () => reject(new RequestStopped(signal.reason));
-        signal.addEventListener('abort', onAbort, { once: true });
-        inner.request(a).then(
-          (v) => {
-            signal.removeEventListener('abort', onAbort);
-            resolve(v);
-          },
-          (e) => {
-            signal.removeEventListener('abort', onAbort);
-            reject(e);
-          },
-        );
-      });
-    },
-  };
-  const w = Object.create(r) as ChainReader;
-  Object.defineProperty(w, 'rpc', { value: rpc });
-  return w;
-}
+/** A reader stopped by a signal (chain/reader.ts: the epoch pipeline stops
+ *  its providers with it too). */
+export { stoppable };
 
 export async function readFactory(r: ChainReader, f: Address, block: bigint): Promise<FactoryView> {
   const rd = async <T>(fn: string): Promise<T> => r.read<T>(opsFactoryAbi, f, fn, [], block);

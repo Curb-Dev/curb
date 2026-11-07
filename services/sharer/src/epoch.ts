@@ -26,7 +26,7 @@ import {
   type FeedPair,
   type LaunchMeta,
 } from './chain/indexer.ts';
-import type { ChainReader } from './chain/reader.ts';
+import { onEveryProvider, type ChainReader } from './chain/reader.ts';
 import { transfersDigest } from './calc/encoding.ts';
 import { MAX_KEEPER_TXS } from './calc/share.ts';
 import { StateCache, defaultStateCache } from './state-store.ts';
@@ -425,13 +425,17 @@ export interface PrepareOptions extends RunOptions {
   signal?: AbortSignal;
 }
 
-/** Gathers from every provider, aborts on any disagreement, and computes. */
+/** Gathers from every provider, aborts on any disagreement, and computes.
+ *  The providers are read AT ONCE (chain/reader.ts onEveryProvider): an
+ *  epoch takes the slower one's time, not both; one that fails stops the
+ *  others, and its own error is the one thrown. They still share one
+ *  rebuild of a state the cache misses (StateCache.once), which is checked
+ *  against the active file's commitment as before. */
 export async function prepareEpoch(readers: ChainReader[], config: SharerConfig, req: EpochRequest, opts: PrepareOptions = {}): Promise<PreparedEpoch> {
   if (readers.length === 0) throw new Error('no provider');
   if (readers.length < 2 && !opts.allowSingleProvider) throw new Error('two providers are needed (allowSingleProvider to run on one)');
   const cache = opts.stateCache === undefined ? defaultStateCache : opts.stateCache;
-  const all: Gathered[] = [];
-  for (const r of readers) all.push(await gatherEpoch(r, config, req, cache, { signal: opts.signal, rebuildStepBlocks: opts.rebuildStepBlocks }));
+  const all: Gathered[] = await onEveryProvider(readers, (r, signal) => gatherEpoch(r, config, req, cache, { signal, rebuildStepBlocks: opts.rebuildStepBlocks }), opts.signal);
   opts.signal?.throwIfAborted();
   const base = fingerprint(all[0]);
   for (const g of all.slice(1)) {

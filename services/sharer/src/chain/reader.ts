@@ -255,3 +255,83 @@ export class ChainReader {
     return getLogsAdaptive(this.rpc, filter, from, to, this.logWindow);
   }
 }
+
+/** `r`, stopped by `signal`: once it aborts, a request in flight is
+ *  abandoned and every later one throws at once, so a check abandoned at its
+ *  deadline (the guardian's recompute, its event lookups) ends at its next
+ *  read instead of running on in the background. Caches stay shared. What
+ *  it throws is a RequestStopped, which no reader asks again (logs.ts): an
+ *  eth_getLogs refused "busy" would otherwise wait out its whole backoff. */
+export function stoppable(r: ChainReader, signal: AbortSignal): ChainReader {
+  const inner = r.rpc;
+  const rpc: Rpc = {
+    label: inner.label,
+    request: (a) => {
+      if (signal.aborted) return Promise.reject(new RequestStopped(signal.reason));
+      return new Promise((resolve, reject) => {
+        const onAbort = () => reject(new RequestStopped(signal.reason));
+        signal.addEventListener('abort', onAbort, { once: true });
+        inner.request(a).then(
+          (v) => {
+            signal.removeEventListener('abort', onAbort);
+            resolve(v);
+          },
+          (e) => {
+            signal.removeEventListener('abort', onAbort);
+            reject(e);
+          },
+        );
+      });
+    },
+  };
+  const w = Object.create(r) as ChainReader;
+  Object.defineProperty(w, 'rpc', { value: rpc });
+  return w;
+}
+
+/** What a provider is stopped with when another provider has failed: no
+ *  failure of its own. */
+class AnotherProviderFailed extends Error {
+  constructor() {
+    super('stopped: another provider failed first');
+    this.name = 'AnotherProviderFailed';
+  }
+}
+
+/** `work` on every provider AT ONCE, the answers in reader order. A check
+ *  takes the slower provider's time, not the sum of both: read one after
+ *  the other, a busy launch's hour-long epoch took about 70 s of a check's
+ *  120 on the free pair, and both providers' reads are needed anyway.
+ *
+ *  Nothing is compared here; the caller compares the answers as before. When
+ *  one provider fails, the others are of no use any more and are stopped at
+ *  their next request (each works through a stoppable reader). What is thrown
+ *  is the first failure, in reader order, that is a provider's own - never a
+ *  provider's being stopped because another failed - so the error is the one
+ *  a provider gave, whichever finished first. `signal` stops them all, and
+ *  then its reason is thrown. */
+export async function onEveryProvider<T>(readers: ChainReader[], work: (r: ChainReader, signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T[]> {
+  const ctl = new AbortController();
+  const failedFirst = new AnotherProviderFailed();
+  const outer = () => ctl.abort(signal!.reason);
+  if (signal?.aborted) ctl.abort(signal.reason);
+  else signal?.addEventListener('abort', outer, { once: true });
+  const one = async (r: ChainReader): Promise<T> => {
+    try {
+      return await work(stoppable(r, ctl.signal), ctl.signal);
+    } catch (e) {
+      if (!ctl.signal.aborted) ctl.abort(failedFirst);
+      throw e;
+    }
+  };
+  try {
+    const settled = await Promise.allSettled(readers.map(one));
+    signal?.throwIfAborted();
+    const failed = settled.flatMap((x) => (x.status === 'rejected' ? [x.reason] : []));
+    const stopped = (e: unknown) => e === failedFirst || (e instanceof RequestStopped && e.cause === failedFirst);
+    if (failed.length) throw failed.find((e) => !stopped(e)) ?? failed[0];
+    return settled.map((x) => (x as PromiseFulfilledResult<T>).value);
+  } finally {
+    signal?.removeEventListener('abort', outer);
+  }
+}

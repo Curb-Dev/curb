@@ -102,7 +102,7 @@ import { canonicalJson } from '../calc/encoding.ts';
 import { parseEpochIndex, verifyEpochFile } from '../calc/file.ts';
 import { ChunkUnavailable, chunkFetcher, fetchChunks } from '../epoch-chunks.ts';
 import { findRootPublished, type PublishedRoot, type RootView } from '../chain/indexer.ts';
-import type { ChainReader } from '../chain/reader.ts';
+import { onEveryProvider, type ChainReader } from '../chain/reader.ts';
 import { recomputeEpochFile, ProviderDisagreement, EpochNotReady, type SharerConfig } from '../epoch.ts';
 import { loadActiveState } from '../state.ts';
 import { distributorAbi, EVENTS, TOPICS } from '../chain/abis.ts';
@@ -307,8 +307,8 @@ async function eventEverywhere(ctx: OpsContext, readers: ChainReader[], d: Addre
   const cache = ctx.store.get<Record<string, PublishedRoot>>('publishedEvents', {});
   const hit = cache[key];
   if (hit && hit.payableAt === root.payableAt && hit.merkleRoot === root.merkleRoot && hit.contentHash === root.contentHash) return { p: hit, problem: null };
-  const found: (PublishedRoot | null)[] = [];
-  for (const r of readers) found.push(await findRootPublished(r, d, root, head));
+  // every provider at once, the answers in reader order
+  const found = await onEveryProvider(readers, (r) => findRootPublished(r, d, root, head));
   const id = (p: PublishedRoot | null) => (p ? `${p.block}:${p.txHash}:${p.uri}` : 'none');
   const say = () => readers.map((r, i) => `${r.label}: ${found[i] ? `block ${found[i]!.block}, ${found[i]!.uri}` : 'no event'}`).join('; ');
   if (found.some((p) => id(p) !== id(found[0]))) return { p: null, problem: `this host's providers disagree on the RootPublished of epoch ${root.epoch} (${say()})` };
