@@ -311,9 +311,12 @@ That is why part 11 looks at every plan's usage once a month.
   ever had a share in that launch (the file lists each one). A launch with
   2,000 such holders writes files of about 1 MB.
 - A launch gets an epoch when its income since the last one is worth at least
-  50 times the epoch's gas cost, or after 7 days with any income, and never
-  more than once an hour: a busy launch up to 24 a day, a quiet one about
-  once a week.
+  50 times the epoch's gas cost, or after `keeper.maxEpochWaitSec` with any
+  income, and never more than once an hour: a busy launch up to 24 a day. A
+  quiet one with any income gets one every `keeper.maxEpochWaitSec`: about
+  **one a day** while `deploy/sharer.json` sets it to 86,400 (part 6.2,
+  since 7 November 2026; 7 days by default), seven times the files, pins and
+  data-repo commits of a week. Size the plans for a day.
 - Files a month = the epochs of every launch with sharing, added up. Storage
   a month = those files times their size. For example, 20 launches with
   sharing, 2,000 holders each, 6 epochs a day: 3,600 files and about 3.6 GB a
@@ -449,7 +452,9 @@ latest (they are not kept: they may still be reorganised) - about 700 to
 **A check costs what its epoch's blocks cost, and nothing more.** A root is
 checked by recomputing its epoch on every provider, **the providers at the
 same time**, within `guardian.checkTimeoutSec` (300 s in
-`deploy/sharer.json`; 120 by default). On each provider it reads:
+`deploy/sharer.json`; 120 by default) - and a pending root's check ends
+`guardian.vetoLandingSec` (90 s) before the root can become payable at the
+latest, so that its veto can still land (part 10). On each provider it reads:
 
 - the token's `Transfer` logs and the distributor's logs over the epoch:
   two scans of its blocks;
@@ -462,12 +467,26 @@ same time**, within `guardian.checkTimeoutSec` (300 s in
   the launch, the price, and two for each of the keeper's transactions in
   the epoch.
 
-**Nothing grows with how long a launch has shared.** Until 7 November 2026
-every check and every new keeper epoch also scanned the distributor's logs
-since sharing began - about 430 requests a day of sharing at a 1,000-block
-window, so a launch could not be checked in time from its second day of
-sharing. Two things still replay a launch from its launch block: its
-**first** epoch, and a host whose state cache misses (a fresh `/data`).
+**No check, keeper epoch or verifier pass grows with how long a launch
+has shared.** Until 7 November 2026 every check and every new keeper epoch
+also scanned the distributor's logs since sharing began - about 430
+requests a day of sharing at a 1,000-block window, so a launch could not be
+checked in time from its second day of sharing. Two things still replay a
+launch from its launch block: its **first** epoch, and a host whose state
+cache misses (a fresh `/data`). Two commands outside those loops still read
+a whole history:
+- `rebuild` reads each distributor's logs since sharing began, twice (its
+  epochs and its PushSkipped). The GitHub keeper runs it on a cold cache,
+  in a 5-minute step: on Tenderly's keyless gateway that is about 870
+  requests for every day a launch has shared, so a launch that has shared
+  for more than about two days cuts the step short. That run then skips its
+  tick; the next run finds the cache warm and ticks (the keeper rebuilds
+  what it needs lazily, and reads each root's event in its own block);
+- `verify --distributor X --epoch N` (anyone's check of one epoch) reads
+  the RootPublished and RootVetoed of X since `graduatorFromBlock`: about
+  1,750 requests at a 1,000-block window on 7 November 2026, and 432 more
+  for every day after. Give it a provider with a wide window (publicnode:
+  50,000 blocks).
 
 The shortest epoch (`keeper.minEpochGapSec`, an hour) is 18,000 blocks: 36
 requests at a 1,000-block window, 360 at 100. A day is 432,000 blocks: 864
@@ -517,8 +536,14 @@ another number for every read; each one more doubles the wait). Until 7
 November 2026 only `eth_getLogs` waited; the other reads gave up after
 7.5 s, and a check reads headers 16 at once. A check that runs out of time
 stops at its next request all the same: a pause may run on, but the request
-after it is withdrawn, never sent. A range refusal halves the window,
-but never below a range the provider has already answered (keyless dRPC
+after it is withdrawn, never sent. The keys' own reads wait the same way
+(the simulation of a veto, the fees, the nonce, the balance, the receipts:
+on provider `a`), so `--getlogs-tries` sets those too; keep the guardian on
+the default 7. A signed transaction does not wait: it goes to **every
+provider at once**, each asked at most twice (0.5 s apart), so a provider
+that refuses it never holds a veto back from the other. A range refusal
+halves the window, but never below a range the provider has already
+answered (keyless dRPC
 answers 101 blocks: the reader settles at 100, where halving from 2,000 gave
 62). Every error names the provider by its label (`provider b: eth_getLogs
 refused 8 times in a row (blocks ...): ...`), never by its URL.
@@ -583,10 +608,18 @@ Measured on 7 November 2026:
   2, two host-local settings in `deploy/sharer.json` (no rules version):
   - `guardian.checkTimeoutSec` **300** (it was 120). It is bounded by
     `guardian.passTimeoutSec` (300) and that by half of
-    `guardian.vetoUnverifiedBeforeSec` (900), so a pass still ends within
-    the late window. More (450) needs code: the scans' budget of their own.
-    One slow check can use a whole pass; the other pending roots wait for
-    the next one;
+    `guardian.vetoUnverifiedBeforeSec` (900), so a pass that starts in the
+    late window still ends in it. That alone does not cover **one check that
+    outlives its own root's hour**: a publisher holding a stolen key chooses
+    the URI and can make every check run to its deadline, and a guardian that
+    first meets such a root with less than about 5.5 minutes left (it was
+    restarted, or its PC was) decided after the hour, with no veto and no
+    freeze. So since 7 November 2026 a pending root's check also ends
+    `guardian.vetoLandingSec` (90 s, the default; it must stay below
+    `vetoUnverifiedBeforeSec`) before the root can become payable: it is then
+    unverifiable with time left, and the late rule vetoes it. More than 300
+    (450) needs code: the scans' budget of their own. One slow check can use
+    a whole pass; the other pending roots wait for the next one;
   - `keeper.maxEpochWaitSec` **86,400** (it was 7 days): a quiet launch's
     epoch is at most a day. It forces a daily epoch on a launch earning less
     than MIN_POT: about $0.03 of gas a day each, from the keeper key.
@@ -598,8 +631,9 @@ Measured on 7 November 2026:
 
   | | the guardian (300 s) | the keeper (two Tenderly lines, 13-minute step) |
   |---|---|---|
-  | busy, an hour (the usual 1.5 to 2 h of the GitHub keeper) | about 35 s | about 45 s |
-  | busy, the longest that fits | about 15 hours | about a day |
+  | busy, an hour | about 35 to 40 s | about 45 s |
+  | busy, 2 hours (the GitHub keeper's usual is 1.5 to 2) | about 60 s | about 70 s |
+  | busy, the longest that fits | about 15 hours | about a day, with no margin (about 580 s of some 600) |
   | quiet, a day | about 130 s | about 250 s |
   | quiet, the longest that fits | about 2.4 days | about 2.4 days |
 
@@ -613,6 +647,10 @@ Measured on 7 November 2026:
   3. a launch that turns sharing on more than about **4 days after its
      launch** gets no first epoch until step 3 (it replays the token from
      the launch block). Its income waits; nothing is lost.
+  4. stop or restart the guardian (an update, a reboot) only when no root is
+     pending with less than about **10 minutes** of its hour left: wait until
+     it is settled or vetoed. A guardian back with less than about 2 minutes
+     left cannot check and veto that root in time.
 
   **What stays unsafe.** Until step 3: an epoch longer than the check or
   the keeper can read (a busy one over about 15 hours, a quiet one over
@@ -627,8 +665,9 @@ Measured on 7 November 2026:
   force that freeze; free endpoints change without notice, and each line is
   a cross-check with no spare; publicnode's state window may shrink to
   about 6.9 days (measure it again on 13 November 2026). None of these
-  loses funds while the guardian is up: what it cannot verify it vetoes or
-  freezes. Each delays payouts.
+  loses funds while the guardian is up through a root's last minutes: what
+  it cannot verify - its file, its recompute, its RootPublished, or in time -
+  it vetoes or freezes. Each delays payouts.
 - **The keeper's pair, the same way.** The keeper computes every epoch on
   both of its providers within one run (its tick step has 13 minutes on
   GitHub Actions, and an epoch's computation keeps no progress), the
@@ -720,7 +759,8 @@ hour still sees 20 passes or more.
    prints a `DECIDE:` line for every CurbLaunchFactory in the record whose
    quote asset has no feed there; that one is added by hand (part 7.2 step
    3). Without it the asset's launches still run, but the keeper's fee on
-   them prices to 0 and their epochs wait for the 7-day rule.
+   them prices to 0 and their epochs wait for `keeper.maxEpochWaitSec` (a
+   day in `deploy/sharer.json`, 7 days by default).
 4. `site.base`: your site's address (no trailing slash).
 5. `dataRepo.owner`: your GitHub organisation.
 6. `ipfs.gateways`: your Pinata gateway and Filebase's. `ipfs.pinners`: the
@@ -1359,7 +1399,9 @@ What it does by itself:
   those it has never judged before those it found unverifiable before, and
   among each the one whose hour ends first first; each root's check ends
   after `guardian.checkTimeoutSec` (300 s in `deploy/sharer.json`, 120 by
-  default), every download and every read
+  default) - a pending root's, at the latest `guardian.vetoLandingSec` (90 s)
+  before it can become payable, so that a root it cannot verify is vetoed in
+  time - every download and every read
   included (a publisher holding a stolen key chooses the URI, and could
   point it at a file that never finishes arriving), and is not started again
   while an abandoned one still runs; the checks of a pass end after
@@ -1566,7 +1608,7 @@ day; `INFO` is for the record. The same alert is not repeated within an hour
 | The `publisher`/`pusher` key is LOW ON ETH | WARN | Below 0.005 ETH. | Send it ETH. |
 | The `publisher`/`pusher` key is OUT OF ETH | PAGE | It stopped. Payouts wait (nothing is lost). | Send it ETH. The next run continues by itself. |
 | A `publisher`/`pusher` transaction is stuck | PAGE | Not mined after several fee increases, or gas is above the cap. | Usually a gas spike: wait. It is resumed at the same nonce on the next run. |
-| A price is missing | WARN | A quote asset's Chainlink feed did not answer. Its keeper fee counts as 0 and its epochs wait for the 7-day rule. | Check the feed on data.chain.link. Nothing else to do; it recovers by itself. A feed that was replaced or retired is a change to the sharing block (part 7.1). |
+| A price is missing | WARN | A quote asset's Chainlink feed did not answer. Its keeper fee counts as 0 and its epochs wait for `keeper.maxEpochWaitSec` (a day in `deploy/sharer.json`, 7 days by default). | Check the feed on data.chain.link. Nothing else to do; it recovers by itself. A feed that was replaced or retired is a change to the sharing block (part 7.1). |
 | An epoch file could NOT be published | PAGE | Writing to the data repo, pinning, or reading back the file or one of its chunk files failed (the text names the chunk: past 512 accounts each chunk goes through all three before the index does), or the file is above the 64 MiB every reader holds it to (then nothing was written or pinned). Nothing went on chain. | Check GitHub status, the token's expiry, each pinning plan (part 5.1) and service. It tries that launch again after `keeper.minEpochGapSec` (an hour), not every run: each try recomputes the epoch and writes and pins the files again (a chunk's path is its hash, so writing it again changes nothing). |
 | An epoch file is GROWING large | PAGE (every 12 h) | A launch's epoch file - its index and its chunk files together - reached `keeper.largeFileBytes` (8 MiB) or `keeper.largeFileAccounts` (50,000 accounts or leaves). No file outgrows the read-back limit any more: past 512 accounts the rows go in chunk files of 512 (about 130 KiB each), and the index the chain hashes grows by some 350 bytes a chunk. But its leaves only accumulate, and every epoch writes, pins and reads back each chunk file, and every verifier and the guardian reads them all within `guardian.checkTimeoutSec`: the pinning plans fill and the checks slow down. A spray of tokens to fresh addresses grows it. It is still published. | Tell the developers, with the distributor address and the figures in the alert; look at who is adding accounts, and at each pinning plan's space (part 5.1). |
 | A CONTRACT holds a large share of a launch's holder weight | WARN (once per address) | An address with code that no rule excludes carries 5% or more of an epoch's weight. Pools (anything whose `token0()` or `token1()` is the launch token) are excluded whatever their factory; this is something else - a vault, a lending market, a bridge, a pool of another shape, or a Safe or smart wallet. | Look the address up on BaseScan. A Safe or a smart wallet is a holder like any other: nothing to do. A contract that cannot pass its share on to people, or lets anyone take it, goes into `sharing.rules.exclusions` under a new rules version (part 7.1). |
@@ -1578,7 +1620,7 @@ day; `INFO` is for the record. The same alert is not repeated within an hour
 | Epoch N does NOT verify - veto it | PAGE | A verifier recomputed an epoch and got something else. | If the guardian did not veto within minutes, sign the **ready-to-sign** veto in the alert from Safe A or Safe B (Transaction Builder: to, value 0, data). If a stolen key is possible, also sign the freeze. |
 | Epoch N does NOT verify and is no longer vetoable | PAGE | A wrong root became payable, or this host's sharing block is out of step (part 7.1). | Follow part 14, "A wrong root became payable": rule out the second case first, then freeze. |
 | An ACTIVE root does not verify | PAGE (hourly) | The epoch in force of a launch did not verify on this host. | As the row above. After a freeze it repeats every hour until the next epoch of that launch activates (part 14). |
-| Epoch N could not be verified | WARN / PAGE | A pending root could not be checked. PAGE at once when no source serves its file at all, when its check did not finish within `guardian.checkTimeoutSec` (or an earlier one still runs), or when this host's providers disagree on it (an honest keeper reads its copies back before publishing, so a person looks now); WARN for other reasons (this host's providers disagree on the epoch's data, the recompute failed) until it has been unverifiable for `guardian.vetoUnverifiedAfterSec` (10 minutes) or its hour is in its last 15 minutes, then PAGE ("... for N s" or "... its veto hour is nearly over"), and the guardian vetoes it. | Check the site and IPFS. A veto for this reason only delays payouts. While the guardian is down, treat even the WARN as a page (part 10.3). |
+| Epoch N could not be verified | WARN / PAGE | A pending root could not be checked. PAGE at once when no source serves its file at all, when its check did not finish within `guardian.checkTimeoutSec`, or by `guardian.vetoLandingSec` before its hour ends (or an earlier one still runs), or when this host's providers disagree on it (an honest keeper reads its copies back before publishing, so a person looks now); WARN for other reasons (this host's providers disagree on the epoch's data, the recompute failed) until it has been unverifiable for `guardian.vetoUnverifiedAfterSec` (10 minutes) or its hour is in its last 15 minutes, then PAGE ("... for N s" or "... its veto hour is nearly over"), and the guardian vetoes it. | Check the site and IPFS. A veto for this reason only delays payouts. While the guardian is down, treat even the WARN as a page (part 10.3). |
 | Epoch N: the served copies do not match the on-chain hash | PAGE | No copy (site, gateways) hashes to the contentHash on chain. Each copy's sha256 is named, and a gateway copy says whether it is the bytes of its CID. After 10 minutes of this, or late in the hour, the guardian vetoes it; on its own it never freezes for this (three or more roots to veto at once do, the row below). | Republish the file from the keeper's `/data` or the data repo (its sha256 must match), and check the site's hosting and the gateways. |
 | `<N>` pending roots do NOT verify or cannot be verified - the guardian freezes | PAGE | `guardian.freezeAtBadRoots` (3) or more pending roots are to be vetoed at once: roots that do not verify, and roots that could not be verified for 10 minutes or late in their hour. The guardian freezes first, then vetoes them together (a verifier pages with the freeze ready to sign). | If they do not verify: treat as a stolen publisher key (part 14). If it was an outage (the site and every gateway down, a provider failing): fix it; once the vetoed epochs are acknowledged (`ack-veto`), unfreeze (`announceUnfreeze()` by Safe A, `unfreeze()` 48 hours later). |
 | The guardian had no time to check `<N>` pending root(s) | WARN / PAGE (every 5 min) | Its checks ran past `guardian.passTimeoutSec`: too many pending roots at once, or checks too slow. It never vetoes a root it has not checked; it checks them on the next passes. PAGE when one of them is in the last 15 minutes of its hour: then the guardian freezes instead (once), which holds every pending root until it has checked them. | Look at the guardian's log for what is slow (a file that trickles, a recompute, a provider). After a freeze, as the row above. |
@@ -1605,7 +1647,7 @@ day; `INFO` is for the record. The same alert is not repeated within an hour
 | The guardian's veto of epoch N did NOT land in time | PAGE | The guardian had decided to veto a root and could not before its hour ended; the text says if the root is now active. | Part 14, "A wrong root became payable": freeze first. |
 | The guardian GAVE UP freezing | PAGE | A freeze it decided failed for a whole day. | Decide yourself: sign the ready-to-sign freeze from a Safe if it is still needed. |
 | This host's providers DISAGREE on a distributor's roots | PAGE | The guardian or a verifier read `active()`/`pending()` of a distributor differently on its two providers. A pending root either one shows is treated as unverifiable (vetoed after 10 minutes of that, or late in its hour). | One provider is behind or wrong: check its status, replace its URL if it persists (part 12). |
-| Epoch N is on chain, and its RootPublished cannot be trusted | PAGE | The event that names the root's URI is missing on a provider, or differs between them. The root is treated as unverifiable. | As the row above. If both providers look healthy, sign the veto from a Safe before the hour ends. |
+| Epoch N is on chain, and its RootPublished cannot be trusted | PAGE | The event that names the root's URI is missing on a provider, differs between them, or could not be read (a provider failed on it). The root is treated as unverifiable. | As the row above. If both providers look healthy, sign the veto from a Safe before the hour ends. |
 | Another holder KEEPS THE KEEPER LEASE | PAGE (every 12 h) | Somebody else's lease in `ops/lease.json` has kept this keeper from writing for longer than one standby run plus the TTL (`lease.blockedAfterSec`, 30 minutes). Its ticks count as failing from then on. The text names the holder and when its lease ends. | If no keeper of yours runs under that name (a standby run is `gha-<run id>-<attempt>`), a data repo token is in the wrong hands: revoke every data repo token (part 12), make new ones, then delete `ops/lease.json` in the data repo. |
 | A published epoch file cannot be found | WARN | `rebuild` could not fetch an old file. | Check the site and IPFS; restore the file from any copy (its sha256 must match). |
 | `<The keeper / The STANDBY keeper / The guardian / A verifier>` has had NO CLEAN TICK for `<time>` | PAGE (every 12 h) | Every tick of that service has failed for that long: the keeper and the standby after 30 minutes (`keeper.failingAfterSec`), the guardian after 10 (`guardian.failingAfterSec`), a verifier after 30 (`verifier.failingAfterSec`). The text names the last error. Its heartbeat may still move; its `lastOkAt` does not. A guardian or verifier pass whose checks ran past `guardian.passTimeoutSec` (300 s, counted from its first check) counts as failed ("this pass ran past its deadline"), and so does a keeper tick once another holder has kept the lease from it too long ("Another holder KEEPS THE KEEPER LEASE"). | Read the last error: usually a provider down, out of quota or with a revoked key (replace its URL, part 12), or a refused token (the next row). The standby replaces a keeper whose last clean tick is 45 minutes old; while the guardian is down only a Safe can veto (part 10.3). |
