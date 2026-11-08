@@ -856,7 +856,9 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
           overrun = true;
           continue;
         }
-        const { check } = await ctx.files.checkCopy('site', site, R.contentHash, null, AbortSignal.timeout(Math.max(1, checkMs())));
+        // AbortSignal.timeout() throws ERR_OUT_OF_RANGE on a fractional delay,
+        // and checkMs() counts from performance.now(): floor it.
+        const { check } = await ctx.files.checkCopy('site', site, R.contentHash, null, AbortSignal.timeout(Math.max(1, Math.floor(checkMs()))));
         if (!check.ok) await raiseCopyBad(ctx, v.d, R.epoch, R.contentHash, check);
       }
     }
