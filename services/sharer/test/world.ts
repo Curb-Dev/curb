@@ -42,8 +42,10 @@ export interface World {
   attempts: { harvestTx: string; uri: string; toBlock: bigint; vetoed: boolean }[];
   /** What a test may change on chain. */
   knobs: { pending: RootTuple; excludedOnChain: Set<string>; boundDistributor: string; recordWords: number };
-  /** Records an attempt's outcome on chain, from the block after its T. */
-  applyResult(i: number, r: AttemptResult): void;
+  /** Records an attempt's outcome on chain, from the block after its T;
+   *  the active root gets `payableAt` (its publish block's timestamp + the
+   *  veto window) when given, so its RootPublished can be found by it. */
+  applyResult(i: number, r: AttemptResult, payableAt?: number): void;
 }
 
 export function vectorWorld(v: any, opts: { salt?: string } = {}): World {
@@ -253,14 +255,14 @@ export function vectorWorld(v: any, opts: { salt?: string } = {}): World {
     },
     attempts,
     knobs,
-    applyResult(i, r) {
+    applyResult(i, r, payableAt) {
       if (r.result !== 'epoch') return;
       const at = attempts[i].toBlock + 1n;
       const prev = stateAt(at);
       const N = Number(r.root.epoch);
       const active: RootTuple = attempts[i].vetoed
         ? prev.active
-        : [r.root.merkleRoot, r.root.contentHash, r.root.cumHolders0, r.root.cumHolders1, r.root.cumKeeper0, r.root.fromBlock, r.root.toBlock, N, Number(attempts[i].toBlock) + 100];
+        : [r.root.merkleRoot, r.root.contentHash, r.root.cumHolders0, r.root.cumHolders1, r.root.cumKeeper0, r.root.fromBlock, r.root.toBlock, N, payableAt ?? Number(attempts[i].toBlock) + 100];
       timeline.push({ from: at, active, lastProposed: N });
     },
   };

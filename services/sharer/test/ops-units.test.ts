@@ -172,6 +172,7 @@ test('config: defaults, lowercased addresses, and every refusal', () => {
   assert.equal(c.lease.ttlSec, 600);
   assert.equal(c.lease.standbyAfterSec, 2700);
   assert.equal(c.guardian.intervalSec, 60);
+  assert.equal(c.guardian.vetoLandingSec, 90);
   assert.equal(c.eventsFromBlock, 5n);
   const bad: [string, (x: any) => void, RegExp][] = [
     ['an unknown key', (x) => (x.keeperr = {}), /unknown key "keeperr"/],
@@ -186,6 +187,7 @@ test('config: defaults, lowercased addresses, and every refusal', () => {
     ['a negative interval', (x) => (x.keeper = { intervalSec: -1 }), /integer/],
     ['a feed key twice', (x) => (x.sharing.feeds = { ['0x' + 'Cc'.repeat(20)]: { ethUsd: '0x' + '01'.repeat(20), quoteUsd: '0x' + '02'.repeat(20) }, ['0x' + 'cc'.repeat(20)]: { ethUsd: '0x' + '01'.repeat(20), quoteUsd: '0x' + '02'.repeat(20) } }), /twice/],
     ['a data repo root that climbs', (x) => (x.dataRepo = { owner: 'o', repo: 'r', root: '../x/' }), /root/],
+    ['a veto landing time outside the late window', (x) => (x.guardian = { vetoUnverifiedBeforeSec: 600, passTimeoutSec: 300, checkTimeoutSec: 120, vetoLandingSec: 600 }), /vetoLandingSec must be less than/],
   ];
   for (const [what, edit, re] of bad) {
     const x: any = BASE();

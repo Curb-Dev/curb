@@ -1,9 +1,10 @@
 // Stateless restarts and publishing arguments.
 //
 // The authoritative restart point is the active epoch's file: its URI comes
-// from the distributor's RootPublished event, its bytes are trusted only if
-// their sha256 is the active root's contentHash, and its leaves and its
-// stateAtEnd commitment are the next epoch's opening state. Past one chunk
+// from the distributor's RootPublished event (looked up in its own block),
+// its bytes are trusted only if their sha256 is the active root's
+// contentHash, and its leaves and its stateAtEnd commitment are the next
+// epoch's opening state. Past one chunk
 // of rows the file is an index and its chunks, each trusted only through the
 // sha256 the index gives, and every one of them is read. The file does not
 // list the complete balances: prepareEpoch rebuilds them from the chain (or
@@ -14,7 +15,7 @@ import { encodeFunctionData } from 'viem';
 import { parseEpochIndex, verifyEpochFile, stateFromEpochFile } from './calc/file.ts';
 import type { ActiveState, Address, ChunkInfo, EpochFile, EpochIndex, EpochResult } from './calc/types.ts';
 import { factoryAbi } from './chain/abis.ts';
-import { readDistributorState, readEpochHistory, readLaunchMeta, type DistributorState } from './chain/indexer.ts';
+import { readDistributorState, readLaunchMeta, rootPublishedIn, type DistributorState } from './chain/indexer.ts';
 import type { ChainReader } from './chain/reader.ts';
 
 /** Fetches an epoch file's bytes by URI (site, IPFS gateway, local cache). */
@@ -40,8 +41,13 @@ export async function loadActiveState(r: ChainReader, graduator: Address, distri
   const D = distributor.toLowerCase();
   const st = await readDistributorState(r, D, block);
   if (st.active.epoch === 0n) return { state: null, file: null, distributorState: st };
-  const meta = await readLaunchMeta(r, graduator, D, block);
-  const { published } = await readEpochHistory(r, D, meta.sharingSince, block);
+  // the distributor is the Graduator's for its token, cross-checked as every
+  // read of a launch is
+  await readLaunchMeta(r, graduator, D, block);
+  // the active root's event in the second it was published in, never the
+  // launch's history (indexer.ts rootPublishedIn): a vetoed root of the same
+  // second is another epoch's
+  const published = await rootPublishedIn(r, D, st.active, block);
   const ev = published.filter((p) => p.epoch === st.active.epoch);
   if (ev.length !== 1) throw new Error(`${ev.length} RootPublished events for active epoch ${st.active.epoch} of ${D}`);
   const p = ev[0];

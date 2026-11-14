@@ -95,13 +95,15 @@ export interface OpsConfig {
    *  keeper before its ticks count as failing (keeper.ts). */
   lease: { ttlSec: number; standbyAfterSec: number; heartbeatEverySec: number; blockedAfterSec: number };
   /** checkTimeoutSec bounds one root's check and passTimeoutSec the checks
-   *  of one pass (verify.ts); an unverifiable root is vetoed
-   *  vetoUnverifiedAfterSec after it was first found so, or in the last
+   *  of one pass (verify.ts), and a pending root's check also ends
+   *  vetoLandingSec before the root can become payable; an unverifiable
+   *  root is vetoed vetoUnverifiedAfterSec after it was first found so, or
+   *  in the last
    *  vetoUnverifiedBeforeSec of its hour; freezeAtBadRoots pending roots to
    *  veto at once freeze first (0: off for each of the three);
    *  maxGasPriceWei is the guardian key's own cap, for vetoes and freezes
    *  only. */
-  guardian: { intervalSec: number; vetoUnverifiedBeforeSec: number; vetoUnverifiedAfterSec: number; freezeAtBadRoots: number; freezeOnRepeat: boolean; repeatWindowSec: number; failingAfterSec: number; lowEthWei: bigint; checkTimeoutSec: number; passTimeoutSec: number; maxGasPriceWei: bigint };
+  guardian: { intervalSec: number; vetoUnverifiedBeforeSec: number; vetoUnverifiedAfterSec: number; freezeAtBadRoots: number; freezeOnRepeat: boolean; repeatWindowSec: number; failingAfterSec: number; lowEthWei: bigint; checkTimeoutSec: number; passTimeoutSec: number; vetoLandingSec: number; maxGasPriceWei: bigint };
   /** keeperSilentAfterSec: page when neither keeper has had a clean tick for
    *  this long; guardianSilentAfterSec: the same for the guardian (0: off). */
   verifier: { intervalSec: number; failingAfterSec: number; keeperSilentAfterSec: number; guardianSilentAfterSec: number };
@@ -332,7 +334,7 @@ export function parseOpsConfig(raw: unknown): OpsConfig {
 
   const gu = raw.guardian ?? {};
   if (!isObj(gu)) throw new ConfigError('config.guardian must be an object');
-  only(gu, ['intervalSec', 'vetoUnverifiedBeforeSec', 'vetoUnverifiedAfterSec', 'freezeAtBadRoots', 'freezeOnRepeat', 'repeatWindowDays', 'failingAfterSec', 'lowEthWei', 'checkTimeoutSec', 'passTimeoutSec', 'maxGasPriceWei'], 'config.guardian');
+  only(gu, ['intervalSec', 'vetoUnverifiedBeforeSec', 'vetoUnverifiedAfterSec', 'freezeAtBadRoots', 'freezeOnRepeat', 'repeatWindowDays', 'failingAfterSec', 'lowEthWei', 'checkTimeoutSec', 'passTimeoutSec', 'vetoLandingSec', 'maxGasPriceWei'], 'config.guardian');
   const guardian = {
     intervalSec: int(gu.intervalSec, 'config.guardian.intervalSec', 60, 5),
     vetoUnverifiedBeforeSec: int(gu.vetoUnverifiedBeforeSec, 'config.guardian.vetoUnverifiedBeforeSec', 900, 0),
@@ -358,6 +360,12 @@ export function parseOpsConfig(raw: unknown): OpsConfig {
     // not hold back the next root's veto
     checkTimeoutSec: int(gu.checkTimeoutSec, 'config.guardian.checkTimeoutSec', 120, 1),
     passTimeoutSec: int(gu.passTimeoutSec, 'config.guardian.passTimeoutSec', 300, 1),
+    // 90 s: what a veto needs once its root's check has ended - a fresh
+    // head, the root read again on every provider, the alert, the
+    // simulation, the fees, the send and its block - with room for a
+    // refusal spell on the way. A pending root's check ends this long before
+    // the root can become payable, at the latest (verify.ts)
+    vetoLandingSec: int(gu.vetoLandingSec, 'config.guardian.vetoLandingSec', 90, 1),
     // 100 gwei: a veto is ~100k gas, and the hour it must land in may be
     // the one somebody chose for a gas spike; the keeper keys keep their cap
     maxGasPriceWei: big(gu.maxGasPriceWei, 'config.guardian.maxGasPriceWei', 100_000_000_000n),
@@ -366,6 +374,8 @@ export function parseOpsConfig(raw: unknown): OpsConfig {
   // A late veto must land inside the window: a pass that starts in it, and
   // the next one, both end in it.
   if (guardian.vetoUnverifiedBeforeSec > 0 && 2 * guardian.passTimeoutSec > guardian.vetoUnverifiedBeforeSec) throw new ConfigError('config.guardian.passTimeoutSec must be at most half of config.guardian.vetoUnverifiedBeforeSec, or a late veto may not land in time');
+  // a check cut short for its veto ends inside the late window, or no rule vetoes it in time
+  if (guardian.vetoUnverifiedBeforeSec > 0 && guardian.vetoLandingSec >= guardian.vetoUnverifiedBeforeSec) throw new ConfigError('config.guardian.vetoLandingSec must be less than config.guardian.vetoUnverifiedBeforeSec, or a check cut short for its veto ends before the late window');
   const ve = raw.verifier ?? {};
   if (!isObj(ve)) throw new ConfigError('config.verifier must be an object');
   only(ve, ['intervalSec', 'failingAfterSec', 'keeperSilentAfterSec', 'guardianSilentAfterSec'], 'config.verifier');

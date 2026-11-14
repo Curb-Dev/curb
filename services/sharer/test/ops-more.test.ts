@@ -51,6 +51,9 @@ test('a missing price: the 7-day rule only, and an alert', async () => {
   const r1 = await tick(w, k);
   assert.equal(r1.published.length, 0);
   assert.ok(alertKeys(k).includes(`missing-price:${w.launches[0].D}`));
+  // the wait it names is the configured one, not a fixed 7 days
+  const said = k.ctx.alerts.raised.find((a) => a.key === `missing-price:${w.launches[0].D}`)!;
+  assert.ok(said.text.includes(`waits for keeper.maxEpochWaitSec (${w.cfg.keeper.maxEpochWaitSec} s since the last one)`), said.text);
   w.pass(7 * 86400);
   const r2 = await tick(w, k);
   assert.equal(r2.published.length, 1, js(r2));

@@ -45,8 +45,8 @@ export interface BuildOptions {
   holder?: string;
   role?: 'primary' | 'standby';
   refetch?: { tries: number; delayMs: number };
-  /** How often an eth_getLogs refused "busy" is asked (OPS_LOG_WINDOW;
-   *  the CLI's --getlogs-tries). */
+  /** How often a read refused "busy" is asked, an eth_getLogs or any other
+   *  (OPS_LOG_WINDOW; the CLI's --getlogs-tries). */
   logTries?: number;
 }
 
@@ -71,6 +71,9 @@ export class SetupError extends Error {
  *  7.5 s. A free endpoint refuses in spells longer than that (keyless dRPC,
  *  7 November 2026: up to 43 s) and a scan that gives up reads its chunk
  *  again on the next pass. 7 tries wait 63.5 s in all before a read fails.
+ *  Every other read - a header, an eth_call, a receipt - is asked as often
+ *  (the reader's own `tries`): a refusal spell is the endpoint's, not the
+ *  method's.
  *
  *  The same for a check's recompute: a refusal spell inside a check is
  *  waited out up to the check's own deadline (guardian.checkTimeoutSec)
@@ -78,7 +81,13 @@ export class SetupError extends Error {
  *  runs out stops at once all the same (its reads throw RequestStopped,
  *  which is never asked again: chainview.ts stoppable). A host whose
  *  providers refuse longer sets more with --getlogs-tries (each one doubles
- *  the wait). */
+ *  the wait).
+ *
+ *  The keys' TxSenders read through these readers too: the simulation, the
+ *  fees, the nonce, the balance and the receipts wait a spell out on
+ *  provider a as the checks do. The signed transaction does not: it goes
+ *  to every provider at once, each asked at most twice (tx.ts SEND_TRIES),
+ *  so a provider that refuses never holds a veto back from the others. */
 export const OPS_LOG_WINDOW: Readonly<Partial<LogWindowOptions>> = { tries: 7 };
 
 export function build(o: BuildOptions): Built {
@@ -98,7 +107,10 @@ export function build(o: BuildOptions): Built {
   if (rpcs.length === 0) throw new SetupError('no RPC provider: set the rpc_urls secret (two URLs from two different providers)');
   if (rpcs.length < 2 && !o.allowSingleProvider) throw new SetupError('one RPC provider given; two independent ones are required (every epoch is read from both and compared)');
   const logWindow = { ...OPS_LOG_WINDOW, ...(o.logTries !== undefined ? { tries: o.logTries } : {}) };
-  const readers = rpcs.map((r) => new ChainReader(r, { logWindow }));
+  // every read waits out a spell as long as an eth_getLogs does: a check
+  // reads headers 16 at once and the probe's eth_call, and gave up on the
+  // first spell longer than 7.5 s
+  const readers = rpcs.map((r) => new ChainReader(r, { logWindow, tries: logWindow.tries }));
 
   const store = new Store(o.dataDir);
   // complete balance states between epochs, kept under /data too (state-store.ts)

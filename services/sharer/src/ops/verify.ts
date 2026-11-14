@@ -101,8 +101,8 @@ import type { Address, EpochIndex } from '../calc/types.ts';
 import { canonicalJson } from '../calc/encoding.ts';
 import { parseEpochIndex, verifyEpochFile } from '../calc/file.ts';
 import { ChunkUnavailable, chunkFetcher, fetchChunks } from '../epoch-chunks.ts';
-import { readEpochHistory, type PublishedRoot, type RootView } from '../chain/indexer.ts';
-import type { ChainReader } from '../chain/reader.ts';
+import { findRootPublished, type PublishedRoot, type RootView } from '../chain/indexer.ts';
+import { onEveryProvider, type ChainReader } from '../chain/reader.ts';
 import { recomputeEpochFile, ProviderDisagreement, EpochNotReady, type SharerConfig } from '../epoch.ts';
 import { loadActiveState } from '../state.ts';
 import { distributorAbi, EVENTS, TOPICS } from '../chain/abis.ts';
@@ -142,10 +142,6 @@ export function reasonOf(word: string): string {
  *  never a reason to freeze; counting it would let one later mismatch -
  *  perhaps this host's own config out of step - freeze every launch. */
 const REPEAT_REASONS = new Set<string>([REASONS.RECOMPUTE, REASONS.INVALID].map((r) => reasonWord(r).toLowerCase()));
-
-/** The factory's SHARING_VETO_WINDOW: a root's RootPublished is in the block
- *  whose timestamp is its payableAt minus this. */
-export const VETO_WINDOW_SEC = 3600n;
 
 /** A failed veto pages again this often while its root is still pending. */
 const VETO_RETRY_PAGE_SEC = 300;
@@ -303,30 +299,6 @@ export function readyCalls(factory: Address, items: { d: Address; epoch: bigint 
 
 // ---------------------------------------------------------------- the event of a root
 
-/** The RootPublished of `root` on one provider, or null when that provider
- *  has none. publish() refuses a toBlock at or past its own block, and the
- *  event carries payableAt = its block's timestamp + the veto window, so the
- *  block is found by its timestamp (a bisection over the headers after
- *  toBlock) and only that block is asked for logs: a root published a year
- *  ago costs as little as one published a minute ago. */
-export async function publishedEvent(r: ChainReader, d: Address, root: RootView, head: bigint): Promise<PublishedRoot | null> {
-  const at = root.payableAt - VETO_WINDOW_SEC;
-  let lo = root.toBlock + 1n;
-  let hi = head;
-  if (root.payableAt === 0n || lo > hi || (await r.block(hi)).timestamp < at) return null;
-  while (lo < hi) {
-    const mid = (lo + hi) / 2n;
-    if ((await r.block(mid)).timestamp < at) lo = mid + 1n;
-    else hi = mid;
-  }
-  // the first block at that timestamp, and any after it sharing it
-  if ((await r.block(lo)).timestamp !== at) return null;
-  let to = lo;
-  while (to < head && (await r.block(to + 1n)).timestamp === at) to++;
-  const { published } = await readEpochHistory(r, d, lo, to);
-  return published.find((p) => p.epoch === root.epoch && p.payableAt === root.payableAt && p.merkleRoot === root.merkleRoot && p.contentHash === root.contentHash) ?? null;
-}
-
 /** The event of `root` as EVERY provider (`readers`, this host's) reports
  *  it, or why it cannot be trusted: missing on one of them, or different
  *  between them. Agreed events are cached by (distributor, epoch). */
@@ -335,8 +307,8 @@ async function eventEverywhere(ctx: OpsContext, readers: ChainReader[], d: Addre
   const cache = ctx.store.get<Record<string, PublishedRoot>>('publishedEvents', {});
   const hit = cache[key];
   if (hit && hit.payableAt === root.payableAt && hit.merkleRoot === root.merkleRoot && hit.contentHash === root.contentHash) return { p: hit, problem: null };
-  const found: (PublishedRoot | null)[] = [];
-  for (const r of readers) found.push(await publishedEvent(r, d, root, head));
+  // every provider at once, the answers in reader order
+  const found = await onEveryProvider(readers, (r) => findRootPublished(r, d, root, head));
   const id = (p: PublishedRoot | null) => (p ? `${p.block}:${p.txHash}:${p.uri}` : 'none');
   const say = () => readers.map((r, i) => `${r.label}: ${found[i] ? `block ${found[i]!.block}, ${found[i]!.uri}` : 'no event'}`).join('; ');
   if (found.some((p) => id(p) !== id(found[0]))) return { p: null, problem: `this host's providers disagree on the RootPublished of epoch ${root.epoch} (${say()})` };
@@ -522,6 +494,9 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
     }
 
     const latest = await commonHead(ctx.readers, 'latest');
+    // the chain's clock as last read - the oldest and the newest head time
+    // the providers showed - and when (step 3)
+    let clock = { oldest: latest.oldest, newest: latest.newest, at: performance.now() };
     const safe = await commonHead(ctx.readers, 'safe');
     // THE HISTORY SCANS ARE BOUNDED IN TIME TOO: together they start no new
     // chunk after guardian.passTimeoutSec (each reads one at least), and
@@ -624,6 +599,38 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
     // and unverifiable roots past their grace or late
     const bad = new Set<string>();
     let holds = f.frozen && f.pendingUnfreezeAt === 0n;
+    let fzNow = { frozen: f.frozen, unfreezeAt: f.pendingUnfreezeAt };
+    // A PENDING ROOT'S CHECK ENDS WHILE ITS VETO CAN STILL LAND: at
+    // guardian.checkTimeoutSec, or guardian.vetoLandingSec before the root
+    // can become payable, whichever comes first. The publisher chooses the
+    // URI, so a root sent with a stolen key can hold every check to its
+    // deadline (copies that never finish arriving). A check that ran past
+    // the hour would decide when no veto lands any more, and a root first
+    // met late in its hour (a guardian that restarted) would be neither
+    // vetoed nor frozen. Cut short, it is unverifiable with time left, and
+    // the late rule vetoes it. A root past that time already is checked in
+    // full (its page says it is no longer vetoable), and one a freeze holds
+    // has all the time there is.
+    //
+    // THE TIME LEFT IS COUNTED FROM THE LATEST "NOW" THERE IS: the newest
+    // head any provider showed, or this host's clock if it is later. Counted
+    // from a provider that is behind, or from a slow host clock, the check
+    // would run into the time its veto needs to land, and a root met late
+    // could become payable unvetoed. A provider (or a host clock) that claims
+    // a time in the future can only cut the check earlier, never stretch it:
+    // an honest root is then unverifiable and vetoed late, which delays its
+    // payout and pays nothing wrong. Only a root past its hour on EVERY
+    // provider (the oldest head) is checked in full.
+    const pendingCheck = (P: RootView): { ms: number; limit?: string } => {
+      const by = !fzNow.frozen ? P.payableAt : fzNow.unfreezeAt === 0n ? null : fzNow.unfreezeAt > P.payableAt ? fzNow.unfreezeAt : P.payableAt;
+      const full = checkMs();
+      if (by === null) return { ms: full };
+      const since = performance.now() - clock.at;
+      if (Number(by - clock.oldest) * 1000 - since <= 0) return { ms: full };
+      const left = Number(by) * 1000 - Math.max(Number(clock.newest) * 1000 + since, ctx.now());
+      const cut = Math.max(1000, left - cfg.guardian.vetoLandingSec * 1000);
+      return cut >= full ? { ms: full } : { ms: cut, limit: `guardian.vetoLandingSec before its hour ends: ${Math.max(0, Math.round(left / 1000))} s were left, counted from the newest provider head or this host's clock` };
+    };
     const k = cfg.guardian.freezeAtBadRoots;
     // k or more at once: freeze first, once, then send every veto owed
     const tooMany = async (): Promise<void> => {
@@ -662,14 +669,19 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
           rep.unchecked++;
           unreached.push(v);
           continue;
-        } else res = await checkRoot(ctx, d, P, latest.number, safe.number, checkMs());
+        } else {
+          const c = pendingCheck(P);
+          res = await checkRoot(ctx, d, P, latest.number, safe.number, c.ms, c.limit);
+        }
         rep.results.push(res);
         log.info('epoch checked', { distributor: d, epoch: P.epoch, verdict: res.verdict, reason: res.reason, problems: res.problems.slice(0, 5) });
         keep(key, res);
 
         // decided on a fresh head: the check may have taken minutes
         const now = await commonHead(ctx.readers, 'latest');
+        clock = { oldest: now.oldest, newest: now.newest, at: performance.now() };
         const fz = await freezeHolds(ctx, now.number);
+        fzNow = fz;
         const frozenNow = fz.frozen;
         holds = fz.holds;
         const at = await pendingAnywhere(ctx, d, P.epoch, now.number);
@@ -844,7 +856,9 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
           overrun = true;
           continue;
         }
-        const { check } = await ctx.files.checkCopy('site', site, R.contentHash, null, AbortSignal.timeout(Math.max(1, checkMs())));
+        // AbortSignal.timeout() throws ERR_OUT_OF_RANGE on a fractional delay,
+        // and checkMs() counts from performance.now(): floor it.
+        const { check } = await ctx.files.checkCopy('site', site, R.contentHash, null, AbortSignal.timeout(Math.max(1, Math.floor(checkMs()))));
         if (!check.ok) await raiseCopyBad(ctx, v.d, R.epoch, R.contentHash, check);
       }
     }
@@ -874,7 +888,7 @@ export async function watchTick(ctx: OpsContext, guardian: TxSender | null): Pro
  *  `ms`. A check that runs out is unverifiable, never a wait: it is told to
  *  stop (its downloads end at once, its reads at the next one), and until it
  *  has, its root is not checked again (`checking`). */
-async function checkRoot(ctx: OpsContext, d: Address, root: RootView, head: bigint, safe: bigint, ms: number): Promise<VerifyResult> {
+async function checkRoot(ctx: OpsContext, d: Address, root: RootView, head: bigint, safe: bigint, ms: number, limit = 'guardian.checkTimeoutSec'): Promise<VerifyResult> {
   const sec = Math.max(1, Math.round(ms / 1000));
   const key = `${d}:${root.epoch}`;
   const running = checking(ctx);
@@ -884,9 +898,18 @@ async function checkRoot(ctx: OpsContext, d: Address, root: RootView, head: bigi
       running.add(key);
       try {
         const readers = ctx.readers.map((r) => stoppable(r, signal));
-        const ev = await eventEverywhere(ctx, readers, d, root, head);
+        let ev: { p: PublishedRoot | null; problem: string | null };
+        try {
+          ev = await eventEverywhere(ctx, readers, d, root, head);
+        } catch (e) {
+          // abandoned at its deadline: its verdict is given already
+          if (signal.aborted) throw e;
+          // AN EVENT NOT READ IS A ROOT NOT VERIFIED, never no verdict at
+          // all: the grace and the late rule apply to it as to any other
+          ev = { p: null, problem: `its RootPublished could not be read on this host's providers: ${errorText(e)}` };
+        }
         if (!ev.p) {
-          await ctx.alerts.raise({ key: `event-unseen:${d}:${root.epoch}`, severity: 'page', title: `Epoch ${root.epoch} is on chain, and its RootPublished cannot be trusted`, text: `${ev.problem}. The root is treated as unverifiable (vetoed after the grace, or late in its hour). A provider of this host leaves events out or invents them: check both.`, distributor: d });
+          await ctx.alerts.raise({ key: `event-unseen:${d}:${root.epoch}`, severity: 'page', title: `Epoch ${root.epoch} is on chain, and its RootPublished cannot be trusted`, text: `${ev.problem}. The root is treated as unverifiable (vetoed after the grace, or late in its hour). A provider of this host fails, leaves events out or invents them: check both.`, distributor: d });
           return unverified(d, root, ev.problem!);
         }
         return await verifyPublished({ readers: ctx.readers, sharing: ctx.cfg.sharing, files: ctx.files, allowSingleProvider: ctx.allowSingleProvider, signal, distributorsAt: (T) => boundDistributors({ ...ctx, readers }, T, safe) }, d, ev.p);
@@ -894,7 +917,7 @@ async function checkRoot(ctx: OpsContext, d: Address, root: RootView, head: bigi
         running.delete(key);
       }
     },
-    () => unverified(d, root, `not checked within ${sec} s (guardian.checkTimeoutSec): a copy or a read did not finish in time`),
+    () => unverified(d, root, `not checked within ${sec} s (${limit}): a copy or a read did not finish in time`),
   );
 }
 

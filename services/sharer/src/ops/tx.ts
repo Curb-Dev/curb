@@ -166,6 +166,10 @@ export interface Sent {
   replaced: string[];
 }
 
+/** A signed transaction is asked again once, 0.5 s after a refusal that
+ *  looks transient, whatever the reader's own tries for reads. */
+export const SEND_TRIES = 1;
+
 
 export class TxSender {
   readonly role: string;
@@ -274,24 +278,30 @@ export class TxSender {
    *  that does not relay transactions (unknown, for Tenderly's gateway on
    *  7 November 2026) must not turn every veto sent through the other into
    *  "the guardian could NOT veto". Refused by all, provider a's refusal is
-   *  thrown. */
+   *  thrown.
+   *
+   *  EVERY PROVIDER AT ONCE, EACH ASKED AT MOST TWICE (SEND_TRIES). The
+   *  reads wait out a refusal spell for up to 63.5 s (runner.ts); a
+   *  broadcast handed over one provider after the other, with that wait,
+   *  held a veto back from provider b while provider a refused, and a late
+   *  veto has only guardian.vetoLandingSec left to land. */
   private async broadcast(raw: string): Promise<void> {
+    const answers = await Promise.allSettled(this.readers.map((r) => r.request('eth_sendRawTransaction', [raw], SEND_TRIES)));
     let first: unknown = null;
     let taken = false;
     const refused: string[] = [];
-    for (const [i, r] of this.readers.entries()) {
-      try {
-        await r.request('eth_sendRawTransaction', [raw]);
+    for (const [i, a] of answers.entries()) {
+      if (a.status === 'fulfilled') {
         taken = true;
-      } catch (e) {
-        const m = String((e as Error)?.message ?? e);
-        if (/already known|known transaction|nonce too low|already imported/i.test(m)) {
-          taken = true;
-          continue;
-        }
-        if (i === 0) first = e;
-        refused.push(`provider ${r.label}: ${m.slice(0, 200)}`);
+        continue;
       }
+      const m = String((a.reason as Error)?.message ?? a.reason);
+      if (/already known|known transaction|nonce too low|already imported/i.test(m)) {
+        taken = true;
+        continue;
+      }
+      if (i === 0) first = a.reason;
+      refused.push(`provider ${this.readers[i].label}: ${m.slice(0, 200)}`);
     }
     if (!taken) throw first;
     if (refused.length) this.log.warn('a provider refused the transaction another took', { refused });

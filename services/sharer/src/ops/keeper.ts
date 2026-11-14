@@ -24,7 +24,7 @@ import { treeOf } from '../calc/file.ts';
 import { CHUNK_ACCOUNTS } from '../calc/merkle.ts';
 import { chunkFetcher, readWholeEpoch } from '../epoch-chunks.ts';
 import { encodeFunctionData, decodeEventLog, keccak256, toHex } from 'viem';
-import { discoverSharing, readEpochHistory, type LaunchMeta } from '../chain/indexer.ts';
+import { discoverSharing, findRootPublished, type LaunchMeta, type RootView } from '../chain/indexer.ts';
 import type { ChainReader } from '../chain/reader.ts';
 import { prepareEpoch, ProviderDisagreement, EpochNotReady, type KeeperJournalEntry } from '../epoch.ts';
 import { loadActiveState, publishArgs } from '../state.ts';
@@ -657,23 +657,27 @@ export function recordSkip(ctx: OpsContext, d: Address, account: Address, at: nu
   });
 }
 
-/** The URI the chain recorded for epoch N of D (from its RootPublished). */
-async function uriOf(ctx: OpsContext, d: Address, epoch: bigint, sinceBlock: bigint, toBlock: bigint): Promise<string> {
-  const key = `${d}:${epoch}`;
+/** The URI the chain recorded for `root` of D: its RootPublished, looked up
+ *  in the second it was published in (indexer.ts rootPublishedIn), never
+ *  over the launch's history - a keeper that scanned from sharingSince for
+ *  every new active epoch stopped computing a busy launch after some four
+ *  days of sharing on a 1,000-block window. */
+async function uriOf(ctx: OpsContext, d: Address, root: RootView, head: bigint): Promise<string> {
+  const key = `${d}:${root.epoch}`;
   const cache = ctx.store.get<Record<string, string>>('uris', {});
   if (cache[key]) return cache[key];
-  const { published } = await readEpochHistory(ctx.readers[0], d, sinceBlock, toBlock);
-  for (const p of published) cache[`${d}:${p.epoch}`] = p.uri;
+  const p = await findRootPublished(ctx.readers[0], d, root, head);
+  if (!p) throw new Error(`no RootPublished for epoch ${root.epoch} of ${d}`);
+  cache[key] = p.uri;
   ctx.store.set('uris', cache);
-  if (!cache[key]) throw new Error(`no RootPublished for epoch ${epoch} of ${d}`);
-  return cache[key];
+  return p.uri;
 }
 
 /** The active epoch's file, checked against the chain's contentHash: the
  *  whole of it, every chunk its index names too (each checked against the
  *  sha256 the index gives). */
-async function activeFile(ctx: OpsContext, v: DistView, meta: LaunchMeta, latest: bigint): Promise<EpochFile> {
-  const uri = await uriOf(ctx, v.d, v.active.epoch, meta.sharingSince, latest);
+async function activeFile(ctx: OpsContext, v: DistView, latest: bigint): Promise<EpochFile> {
+  const uri = await uriOf(ctx, v.d, v.active, latest);
   const { bytes } = await ctx.files.fetchVerified(v.d, v.active.epoch, v.active.contentHash, uri);
   const f = (await readWholeEpoch(ctx.files, v.d, bytes)).file;
   noteHeld(ctx, v.d, f);
@@ -697,7 +701,7 @@ type SendFn = (who: 'publisher' | 'pusher', req: { to: string; data: string; lab
 async function pushActive(ctx: OpsContext, send: SendFn, v: DistView, meta: LaunchMeta, latest: { number: bigint; timestamp: bigint }, rep: TickReport): Promise<string> {
   const { cfg } = ctx;
   const r0 = ctx.readers[0];
-  const file = await activeFile(ctx, v, meta, latest.number);
+  const file = await activeFile(ctx, v, latest.number);
   const leaves = file.merkle.leaves;
   if (!leaves.length) return 'no leaves';
   // cut in the chunks the index names, each rebuilt to the root it gives
@@ -800,7 +804,7 @@ async function epochDue(
   const I1 = pre.received1 - v.active.cumHolders1;
   const money = await moneyOf(r0, { quote: meta.quoteToken, quoteIsWeth: meta.quoteToken === cfg.sharing.weth, feeds: cfg.sharing.feeds[meta.quoteToken] ?? null, ethUsd: cfg.ethUsdFeed }, latest.number);
   if (money.P === 0n) {
-    await ctx.alerts.raise({ key: `missing-price:${d}`, severity: 'warn', title: 'A price is missing', text: `The quote ${meta.quoteToken} of ${d} has no readable Chainlink price: the keeper fee counts as 0 and an epoch waits for the 7-day rule.`, distributor: d }, { cooldownSec: cfg.alerts.reminderSec });
+    await ctx.alerts.raise({ key: `missing-price:${d}`, severity: 'warn', title: 'A price is missing', text: `The quote ${meta.quoteToken} of ${d} has no readable Chainlink price: the keeper fee counts as 0 and an epoch waits for keeper.maxEpochWaitSec (${k.maxEpochWaitSec} s since the last one).`, distributor: d }, { cooldownSec: cfg.alerts.reminderSec });
   }
   if (I0 <= 0n && I1 <= 0n) {
     clearDue(ctx, d);

@@ -53,7 +53,8 @@ push the active root's leaves that are due (`src/ops/push.ts`: max($0.05,
 25 x the marginal leaf cost), the dust rule, PushSkipped claim-only for 30
 days or until 10x, batches of <= 200 leaves and <= 8M gas, a gas-price cap);
 payKeeper; then, when an epoch is due (no root pending, >= 1 h since the last
-T, a pot >= 50 x the estimated epoch cost or 7 days with income - the pot is
+T, a pot >= 50 x the estimated epoch cost or `keeper.maxEpochWaitSec` with
+income (a day in deploy/sharer.json, 7 days by default) - the pot is
 read with a simulated harvest, `PREVIEW_CODE`), harvest, wait for `safe`,
 compute on both providers, publish the file (data repo + pins + read back
 from the site and a gateway, `src/ops/publish.ts` - past 512 accounts every
@@ -74,8 +75,10 @@ providers and page where they differ; check the pending roots first, the
 one whose hour ends first first, then any active root not yet checked, then
 re-hash the site copy of the verified ones. A root's `RootPublished` (its
 URI) is looked up in the one block its `payableAt` names, on both providers,
-so nothing scans a launch's history. Each check has a deadline
-(`guardian.checkTimeoutSec`, 120 s) and the pass another
+and the active root's the same way (as the keeper does), so nothing scans a
+launch's history. Each check has a deadline
+(`guardian.checkTimeoutSec`, 120 s by default, 300 in `deploy/sharer.json`;
+its two providers are read at once) and the pass another
 (`guardian.passTimeoutSec`, 300 s); every download is bounded in time and
 size, body included (`src/ops/http.ts`). A check that runs out is
 unverifiable; once the pass runs out the pending roots left are vetoed if

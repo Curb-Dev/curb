@@ -17,10 +17,10 @@
 //   --health-port N (or CURB_SHARER_HEALTH_PORT, default 8080) for the loops;
 //                   CURB_SHARER_HEALTH_GRACE_SEC: how long a starting loop
 //                   counts as healthy before its first clean tick
-//   --getlogs-tries N  keeper, verify, guardian, rebuild: how often an
-//                   eth_getLogs refused for a rate limit is asked before the
-//                   read fails (default 7: 63.5 s of waiting; each one more
-//                   doubles it; 1 to 10)
+//   --getlogs-tries N  keeper, verify, guardian, rebuild: how often a read
+//                   refused for a rate limit (an eth_getLogs, and any other
+//                   request) is asked before it fails (default 7: 63.5 s of
+//                   waiting; each one more doubles it; 1 to 10)
 //
 // Exit codes: 0 done (or verified), 1 a failure or a mismatch, 2 bad usage or
 // an epoch that could not be verified. alert-test: 0 every sink took the
